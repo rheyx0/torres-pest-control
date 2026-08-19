@@ -19,52 +19,8 @@ export const clientClassificationOptions = [
   "OTHER",
 ];
 
-export const initialUsers = [
-  {
-    id: "user-1",
-    name: "Maya Torres",
-    email: "admin@torrespestcontrol.com",
-    username: "admin.torres",
-    password: "admin123",
-    role: "ADMIN",
-    status: "ACTIVE",
-    createdAt: "2026-01-15T08:00:00.000Z",
-    updatedAt: "2026-08-18T08:15:00.000Z",
-  },
-  {
-    id: "user-2",
-    name: "Ren Villanueva",
-    email: "ren@torrespestcontrol.com",
-    username: "staff.ren",
-    password: "staff123",
-    role: "STAFF",
-    status: "ACTIVE",
-    createdAt: "2026-02-01T08:00:00.000Z",
-    updatedAt: "2026-08-18T08:15:00.000Z",
-  },
-  {
-    id: "user-3",
-    name: "Jules Panganiban",
-    email: "jules@torrespestcontrol.com",
-    username: "tech.jules",
-    password: "tech123",
-    role: "TECHNICIAN",
-    status: "INACTIVE",
-    createdAt: "2026-02-15T08:00:00.000Z",
-    updatedAt: "2026-08-18T08:15:00.000Z",
-  },
-  {
-    id: "user-4",
-    name: "Anne Basa",
-    email: "anne@torrespestcontrol.com",
-    username: "staff.anne",
-    password: "staff123",
-    role: "STAFF",
-    status: "ACTIVE",
-    createdAt: "2026-03-01T08:00:00.000Z",
-    updatedAt: "2026-08-18T08:15:00.000Z",
-  },
-];
+// Admin/Staff/Technician accounts now live in Supabase (see supabase/schema.sql)
+// instead of mock data — App.js fetches them directly.
 
 export const mockAppointments = [
   {

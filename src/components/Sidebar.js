@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 
-function Sidebar() {
+function Sidebar({ currentUser, onLogout }) {
   const location = useLocation();
 
   const navItems = [
@@ -8,6 +8,7 @@ function Sidebar() {
     { label: "Client Profiles", path: "/clients" },
     { label: "Create Client Profile", path: "/clients/new" },
     { label: "User Accounts", path: "/users" },
+    ...(currentUser?.role === "ADMIN" ? [{ label: "Create Account", path: "/users/new" }] : []),
     { label: "User Account Profile", path: "/account" },
     { label: "Inventory", path: "/inventory" },
   ];
@@ -61,6 +62,27 @@ function Sidebar() {
       boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
       color: "#fff",
     },
+    userInfo: {
+      marginTop: "auto",
+      padding: "0.85rem 0.9rem",
+      borderTop: "1px solid rgba(255,255,255,0.18)",
+      color: "rgba(255,255,255,0.75)",
+      fontSize: "0.78rem",
+    },
+    logoutButton: {
+      display: "block",
+      width: "100%",
+      textAlign: "left",
+      marginTop: "0.5rem",
+      padding: "0.82rem 0.9rem",
+      borderRadius: "12px",
+      border: "1px solid rgba(255,255,255,0.18)",
+      background: "transparent",
+      color: "rgba(255,255,255,0.88)",
+      fontSize: "0.92rem",
+      fontWeight: 600,
+      cursor: "pointer",
+    },
   };
 
   return (
@@ -81,6 +103,16 @@ function Sidebar() {
           {item.label}
         </Link>
       ))}
+      <div style={styles.userInfo}>
+        {currentUser && (
+          <>
+            Logged in as <strong>{currentUser.name}</strong> ({currentUser.role})
+          </>
+        )}
+        <button type="button" onClick={onLogout} style={styles.logoutButton}>
+          Logout
+        </button>
+      </div>
     </div>
   );
 }
