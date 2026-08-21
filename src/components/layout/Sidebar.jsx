@@ -6,18 +6,27 @@
 // this only decides what to show.
 
 import { Link, useLocation } from "react-router-dom";
+import {
+  BriefcaseBusiness,
+  ClipboardPlus,
+  Gauge,
+  Package,
+  Settings,
+  UserCircle,
+  Users,
+} from "lucide-react";
 import useAuth from "../../hooks/useAuth";
 import { SUBSYSTEMS } from "../../utils/permissions";
 
 const NAV_ITEMS = [
-  { label: "Dashboard", path: "/", subsystem: null },
-  { label: "Client Profiles", path: "/clients", subsystem: SUBSYSTEMS.CLIENTS, action: "view" },
-  { label: "Create Client Profile", path: "/clients/new", subsystem: SUBSYSTEMS.CLIENTS, action: "create" },
-  { label: "User Accounts", path: "/users", subsystem: SUBSYSTEMS.USERS, action: "view" },
-  { label: "Create Account", path: "/users/new", subsystem: SUBSYSTEMS.USERS, action: "create" },
-  { label: "Inventory", path: "/inventory", subsystem: SUBSYSTEMS.INVENTORY, action: "view" },
-  { label: "My Profile", path: "/account", subsystem: null },
-  { label: "Settings", path: "/settings", subsystem: SUBSYSTEMS.SETTINGS, action: "view" },
+  { label: "Dashboard", path: "/", subsystem: null, Icon: Gauge },
+  { label: "Client Profiles", path: "/clients", subsystem: SUBSYSTEMS.CLIENTS, action: "view", Icon: BriefcaseBusiness },
+  { label: "Create Client Profile", path: "/clients/new", subsystem: SUBSYSTEMS.CLIENTS, action: "create", Icon: ClipboardPlus },
+  { label: "User Accounts", path: "/users", subsystem: SUBSYSTEMS.USERS, action: "view", Icon: Users },
+  { label: "Create Account", path: "/users/new", subsystem: SUBSYSTEMS.USERS, action: "create", Icon: UserCircle },
+  { label: "Inventory", path: "/inventory", subsystem: SUBSYSTEMS.INVENTORY, action: "view", Icon: Package },
+  { label: "My Profile", path: "/account", subsystem: null, Icon: UserCircle },
+  { label: "Settings", path: "/settings", subsystem: SUBSYSTEMS.SETTINGS, action: "view", Icon: Settings },
 ];
 
 const styles = {
@@ -56,7 +65,9 @@ const styles = {
     marginTop: "0.4rem",
   },
   link: {
-    display: "block",
+    display: "flex",
+    alignItems: "center",
+    gap: "0.65rem",
     padding: "0.75rem 0.9rem",
     borderRadius: "12px",
     color: "rgba(255,255,255,0.88)",
@@ -64,12 +75,12 @@ const styles = {
     fontSize: "0.9rem",
     fontWeight: 600,
     transition: "all 0.2s ease",
-    border: "1px solid transparent",
+    border: "1px solid rgba(255,255,255,0.18)",
+    boxSizing: "border-box",
   },
   activeLink: {
     background: "rgba(255,255,255,0.14)",
-    borderColor: "rgba(255,255,255,0.12)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
+    borderColor: "rgba(255,255,255,0.18)",
     color: "#fff",
   },
   userInfo: {
@@ -129,6 +140,7 @@ function Sidebar() {
               ...(location.pathname === item.path ? styles.activeLink : {}),
             }}
           >
+            <item.Icon size={17} strokeWidth={2} aria-hidden="true" />
             {item.label}
           </Link>
         ))}
