@@ -1,5 +1,4 @@
 import { CalendarDays, CheckCircle2, CircleDollarSign, Clock3, TrendingUp } from "lucide-react";
-import { mockAppointments } from "../../data/mockData";
 import useAuth from "../../hooks/useAuth";
 import { card, colors, pageShell } from "../../styles/theme";
 
@@ -20,10 +19,15 @@ function formatDate(date) {
 
 function DashboardOverview() {
   const { currentUser } = useAuth();
-  const totalAppointments = mockAppointments.length;
-  const pendingAppointments = mockAppointments.filter((appointment) => appointment.status === "Pending").length;
-  const completedAppointments = mockAppointments.filter((appointment) => appointment.status === "Completed").length;
-  const serviceCounts = mockAppointments.reduce((counts, appointment) => {
+  const appointments = [];
+  const totalAppointments = appointments.length || null;
+  const pendingAppointments = appointments.length
+    ? appointments.filter((appointment) => appointment.status === "Pending").length
+    : null;
+  const completedAppointments = appointments.length
+    ? appointments.filter((appointment) => appointment.status === "Completed").length
+    : null;
+  const serviceCounts = appointments.reduce((counts, appointment) => {
     counts[appointment.pestType] = (counts[appointment.pestType] || 0) + 1;
     return counts;
   }, {});
@@ -49,8 +53,8 @@ function DashboardOverview() {
             <span style={{ fontSize: "0.8rem", fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", opacity: 0.86 }}>Business Wealth</span>
             <CircleDollarSign size={22} />
           </div>
-          <div style={{ fontSize: "1.85rem", fontWeight: 800, lineHeight: 1.1 }}>₱128,400</div>
-          <div style={{ marginTop: "0.4rem", fontSize: "0.78rem", opacity: 0.82 }}>Projected service value</div>
+          <div style={{ fontSize: "1.85rem", fontWeight: 800, lineHeight: 1.1 }}>—</div>
+          <div style={{ marginTop: "0.4rem", fontSize: "0.78rem", opacity: 0.82 }}>No business data available</div>
         </div>
       </div>
 
@@ -61,7 +65,7 @@ function DashboardOverview() {
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "620px" }}>
               <thead><tr>{["Client", "Service", "Type", "Date", "Status"].map((heading) => <th key={heading} style={tableHeading}>{heading}</th>)}</tr></thead>
               <tbody>
-                {mockAppointments.slice(0, 5).map((appointment) => {
+                {appointments.slice(0, 5).map((appointment) => {
                   const status = statusColors[appointment.status] || statusColors.Pending;
                   return <tr key={appointment.id}>
                     <td style={tableCell}><strong>{appointment.clientName}</strong></td>
@@ -71,6 +75,7 @@ function DashboardOverview() {
                     <td style={tableCell}><span style={{ ...status, borderRadius: "999px", display: "inline-block", fontSize: "0.76rem", fontWeight: 800, padding: "0.35rem 0.65rem" }}>{appointment.status}</span></td>
                   </tr>;
                 })}
+                {appointments.length === 0 && <tr><td colSpan="5" style={{ ...tableCell, textAlign: "center", color: colors.muted }}>No appointment data available.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -86,6 +91,7 @@ function DashboardOverview() {
                 <div style={{ height: "7px", marginTop: "0.45rem", borderRadius: "999px", background: "#edf0f3" }}><div style={{ width: `${percentage}%`, height: "100%", borderRadius: "inherit", background: serviceColors[index % serviceColors.length] }} /></div>
               </div>;
             })}
+            {topServices.length === 0 && <div style={{ color: colors.muted, fontSize: "0.85rem" }}>No service data available.</div>}
           </div>
         </section>
       </div>
@@ -96,10 +102,10 @@ function DashboardOverview() {
           <TrendingUp size={28} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "1rem", marginTop: "1.35rem" }}>
-          <WealthStat label="Projected value" value="₱128,400" />
-          <WealthStat label="Average service" value="₱32,100" />
-          <WealthStat label="Completion rate" value={`${Math.round((completedAppointments / totalAppointments) * 100)}%`} />
-          <WealthStat label="Active pipeline" value={`${pendingAppointments + mockAppointments.filter((item) => item.status === "In Progress").length} jobs`} />
+          <WealthStat label="Projected value" value={null} />
+          <WealthStat label="Average service" value={null} />
+          <WealthStat label="Completion rate" value={null} />
+          <WealthStat label="Active pipeline" value={null} />
         </div>
       </section>
     </div>
@@ -109,12 +115,12 @@ function DashboardOverview() {
 function SummaryCard({ title, value, detail, Icon, accent }) {
   return <div style={card}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.9rem" }}><span style={{ color: colors.muted, fontSize: "0.78rem", fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase" }}>{title}</span><span style={{ width: 42, height: 42, display: "grid", placeItems: "center", borderRadius: 14, background: `${accent}18`, color: accent }}><Icon size={20} /></span></div>
-    <div style={{ color: colors.ink, fontSize: "2rem", fontWeight: 800, lineHeight: 1 }}>{value}</div><div style={{ marginTop: "0.45rem", color: colors.muted, fontSize: "0.78rem" }}>{detail}</div>
+    <div style={{ color: colors.ink, fontSize: "2rem", fontWeight: 800, lineHeight: 1 }}>{value ?? "—"}</div><div style={{ marginTop: "0.45rem", color: colors.muted, fontSize: "0.78rem" }}>{detail}</div>
   </div>;
 }
 
 function SectionHeader({ title }) { return <div style={{ borderBottom: `1px solid ${colors.line}`, padding: "1rem 1.25rem", color: colors.ink, fontSize: "0.98rem", fontWeight: 800 }}>{title}</div>; }
-function WealthStat({ label, value }) { return <div style={{ borderLeft: "2px solid rgba(255,255,255,0.28)", paddingLeft: "0.8rem" }}><div style={{ fontSize: "1.2rem", fontWeight: 800 }}>{value}</div><div style={{ marginTop: "0.25rem", fontSize: "0.76rem", opacity: 0.75 }}>{label}</div></div>; }
+function WealthStat({ label, value }) { return <div style={{ borderLeft: "2px solid rgba(255,255,255,0.28)", paddingLeft: "0.8rem" }}><div style={{ fontSize: "1.2rem", fontWeight: 800 }}>{value ?? "—"}</div><div style={{ marginTop: "0.25rem", fontSize: "0.76rem", opacity: 0.75 }}>{label}</div></div>; }
 
 const tableHeading = { padding: "0.75rem 0.9rem", borderBottom: `1px solid ${colors.line}`, background: "#f5f6f8", color: "#7b8798", fontSize: "0.7rem", fontWeight: 800, letterSpacing: "0.05em", textAlign: "left", textTransform: "uppercase" };
 const tableCell = { padding: "0.85rem 0.9rem", borderBottom: `1px solid ${colors.line}`, color: colors.body, fontSize: "0.82rem", whiteSpace: "nowrap" };
