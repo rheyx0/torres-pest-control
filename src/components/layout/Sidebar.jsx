@@ -134,7 +134,7 @@ function Sidebar() {
   return (
     <nav style={styles.sidebar}>
       <div style={styles.logoWrap}>
-        <img src="/logo.jpg" alt="Torres Pest Control" style={styles.logoImage} />
+        <img src="/logo.png" alt="Torres Pest Control" style={styles.logoImage} />
       </div>
 
       <div style={styles.navLinks}>
