@@ -27,6 +27,7 @@ import {
   primaryButton,
   secondaryButton,
   successButton,
+  card,
 } from "../../styles/theme";
 
 function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
@@ -76,13 +77,7 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
 
   return (
     <div
-      style={{
-        background: "linear-gradient(180deg, #ffffff 0%, #fffdfd 100%)",
-        border: `1px solid ${colors.softLine}`,
-        borderRadius: "20px",
-        padding: "1.25rem",
-        boxShadow: "0 18px 32px rgba(15, 23, 42, 0.06)",
-      }}
+      style={{ ...card, padding: "1.25rem" }}
     >
       <div
         style={{
@@ -133,7 +128,9 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
               <div
                 key={user.id}
                 style={{
-                  border: "1px solid #efefef",
+                  border: "1px solid rgba(127, 17, 17, 0.14)",
+                  borderLeft: `3px solid ${colors.brandLight}`,
+                  background: "rgba(255, 248, 248, 0.7)",
                   borderRadius: "12px",
                   padding: "1rem",
                   display: "grid",

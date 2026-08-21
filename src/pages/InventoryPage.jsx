@@ -7,6 +7,7 @@
 import { useState } from "react";
 import useInventory from "../hooks/useInventory";
 import { useToast } from "../context/ToastContext";
+import { card, colors, primaryButton } from "../styles/theme";
 
 function InventoryPage() {
   const { inventory, addItem: onAddItem, loading, error } = useInventory();
@@ -134,18 +135,18 @@ function InventoryPage() {
     <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
       <div style={{ marginBottom: "1.25rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
         <div>
-          <p style={{ color: "#8b1e1e", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontSize: "0.75rem" }}>
+          <p style={{ color: colors.brandInk, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", fontSize: "0.75rem" }}>
             Inventory
           </p>
           <h1 style={{ margin: "0.2rem 0 0", fontSize: "2rem", color: "#111827" }}>Item Profile</h1>
         </div>
-        <button type="button" onClick={() => setOpenForm((value) => !value)} style={{ border: "none", borderRadius: "10px", background: "#8b1e1e", color: "#fff", padding: "0.8rem 1rem", fontWeight: 700, cursor: "pointer" }}>
+        <button type="button" onClick={() => setOpenForm((value) => !value)} style={primaryButton}>
           {openForm ? "Close Form" : "Add Inventory Item"}
         </button>
       </div>
 
       {openForm && (
-        <form onSubmit={handleSubmit} style={{ background: "#fff", border: "1px solid #ebebeb", borderRadius: "16px", padding: "1.25rem", marginBottom: "1.5rem" }}>
+        <form onSubmit={handleSubmit} style={{ ...card, marginBottom: "1.5rem" }}>
           <div style={{ marginBottom: "1.5rem", borderBottom: "2px solid #f0f0f0", paddingBottom: "1rem" }}>
             <h3 style={{ color: "#111827", marginBottom: "1rem" }}>Basic Information</h3>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
@@ -268,7 +269,7 @@ function InventoryPage() {
         </form>
       )}
 
-      <div style={{ background: "#fff", border: "1px solid #ebebeb", borderRadius: "16px", overflow: "hidden" }}>
+      <div style={{ ...card, padding: 0, overflow: "hidden" }}>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr 0.8fr 1fr 1.2fr", gap: "0.75rem", padding: "1rem 1.25rem", background: "#fafafa", fontWeight: 700, color: "#374151" }}>
           <span>Item Name</span>
           <span>Type</span>
@@ -364,7 +365,8 @@ function InventoryDetailModal({ item, onClose }) {
     >
       <div
         style={{
-          background: "#fff",
+          background: "linear-gradient(180deg, #ffffff 0%, #fff8f8 100%)",
+          border: `2px solid ${colors.brandLight}`,
           borderRadius: "16px",
           padding: "2rem",
           maxWidth: "600px",
@@ -375,7 +377,7 @@ function InventoryDetailModal({ item, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", borderBottom: "2px solid #f0f0f0", paddingBottom: "1rem" }}>
-          <h2 style={{ margin: 0, color: "#111827" }}>{item.name}</h2>
+          <h2 style={{ margin: 0, color: colors.brandInk }}>{item.name}</h2>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: "#6b7280" }}>
             ✕
           </button>

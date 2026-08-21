@@ -153,24 +153,19 @@ function ClientForm({ initialValues, onSubmit, submitLabel = "Save Client", foot
           </Field>
         )}
 
-        {/* Optional — not a sprint field, but the column exists and it's the
-            one thing a pest-control client profile obviously wants. A datalist
-            offers the common answers without restricting the input. */}
-        <Field label="Pest Concern" hint="Optional. Pick one or type your own.">
-          <input
+        <Field label="Pest Concern" hint="Optional. Select the main concern.">
+          <select
             aria-label="Pest Concern"
             name="pestConcern"
-            list="pest-concern-options"
             value={form.pestConcern}
             onChange={handleFieldChange}
             style={inputStyle}
-            placeholder="e.g. Termites"
-          />
-          <datalist id="pest-concern-options">
+          >
+            <option value="">Select a pest concern</option>
             {PEST_CONCERN_SUGGESTIONS.map((option) => (
-              <option key={option} value={option} />
+              <option key={option} value={option}>{option}</option>
             ))}
-          </datalist>
+          </select>
         </Field>
       </div>
 

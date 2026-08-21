@@ -58,22 +58,6 @@ function UserForm({ accounts = [], onSubmit, submitting = false }) {
 
   return (
     <form onSubmit={handleSubmit} style={card}>
-      <div
-        style={{
-          background: "#f0fdf4",
-          border: "1px solid #bbf7d0",
-          borderRadius: "16px",
-          padding: "1rem 1.25rem",
-          marginBottom: "1.5rem",
-          color: "#166534",
-          fontSize: "0.9rem",
-          lineHeight: 1.6,
-        }}
-      >
-        This creates their login and profile in one step. Pick a temporary password and share it with
-        them separately — they can log in with it right away, then change it from Settings.
-      </div>
-
       <div style={{ display: "grid", gap: "1rem" }}>
         <Field label="Full Name" error={errors.name}>
           <input
