@@ -46,6 +46,8 @@ const styles = {
   logoWrap: {
     marginBottom: "1.25rem",
     padding: "0.85rem 0.8rem 1rem",
+    background: "#fff7ed",
+    borderRadius: "10px",
     borderBottom: "1px solid rgba(255,255,255,0.18)",
   },
   logoImage: {
