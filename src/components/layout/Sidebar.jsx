@@ -15,7 +15,6 @@ const NAV_ITEMS = [
   { label: "Create Client Profile", path: "/clients/new", subsystem: SUBSYSTEMS.CLIENTS, action: "create" },
   { label: "User Accounts", path: "/users", subsystem: SUBSYSTEMS.USERS, action: "view" },
   { label: "Create Account", path: "/users/new", subsystem: SUBSYSTEMS.USERS, action: "create" },
-  { label: "Activity Log", path: "/activity", subsystem: SUBSYSTEMS.LOGS, action: "view" },
   { label: "Inventory", path: "/inventory", subsystem: SUBSYSTEMS.INVENTORY, action: "view" },
   { label: "My Profile", path: "/account", subsystem: null },
   { label: "Settings", path: "/settings", subsystem: SUBSYSTEMS.SETTINGS, action: "view" },

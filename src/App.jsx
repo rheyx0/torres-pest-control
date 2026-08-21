@@ -25,7 +25,6 @@ import CreateClientPage from "./pages/CreateClientPage";
 import ClientDetailPage from "./pages/ClientDetailPage";
 import InventoryPage from "./pages/InventoryPage";
 import SettingsPage from "./pages/SettingsPage";
-import ActivityLogPage from "./pages/ActivityLogPage";
 
 import { SUBSYSTEMS } from "./utils/permissions";
 import { isSupabaseConfigured } from "./services/supabaseClient";
@@ -105,11 +104,6 @@ function App() {
                   path="/inventory"
                   element={<Guarded subsystem={SUBSYSTEMS.INVENTORY} action="view"><InventoryPage /></Guarded>}
                 />
-                <Route
-                  path="/activity"
-                  element={<Guarded subsystem={SUBSYSTEMS.LOGS} action="view"><ActivityLogPage /></Guarded>}
-                />
-
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </InventoryProvider>

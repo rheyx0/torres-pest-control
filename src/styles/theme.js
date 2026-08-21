@@ -50,7 +50,7 @@ export const invalidInputStyle = {
 };
 
 export const primaryButton = {
-  border: "none",
+  border: "1px solid rgba(255,255,255,0.18)",
   borderRadius: "12px",
   background: `linear-gradient(135deg, ${colors.brand} 0%, ${colors.brandLight} 100%)`,
   color: "#fff",
@@ -71,7 +71,7 @@ export const secondaryButton = {
 };
 
 export const dangerButton = {
-  border: "none",
+  border: "1px solid rgba(255,255,255,0.18)",
   background: "linear-gradient(135deg, #475569 0%, #64748b 100%)",
   color: "#fff",
   borderRadius: "12px",

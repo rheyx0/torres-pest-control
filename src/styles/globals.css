@@ -28,7 +28,7 @@ html,
 body,
 #root {
   height: 100%;
-  overflow: hidden;
+  min-height: 100%;
 }
 
 body {
@@ -50,15 +50,14 @@ button {
   font-size: inherit;
 }
 
-/* Keep mouse clicks from adding a bright browser ring while preserving a
-   softer keyboard focus indicator. */
+/* Keep the focus treatment close to the sidebar Logout border. */
 button:focus {
   outline: none;
 }
 
 :focus-visible {
-  outline: 2px solid rgba(255, 228, 228, 0.72);
-  outline-offset: 2px;
+  outline: 1px solid rgba(255, 255, 255, 0.2);
+  outline-offset: 0;
 }
 
 .app-shell {
@@ -68,7 +67,6 @@ button:focus {
 .app-content {
   min-height: 100vh;
   margin-left: 264px;
-  overflow-y: auto;
 }
 
 a {
