@@ -26,34 +26,11 @@ const ALL = ["view", "create", "edit", "delete"];
 const READ_ONLY = ["view"];
 const NONE = [];
 
-// Roles not yet backed by a table (MANAGER, OWNER, SYSTEM_ADMIN) are defined
-// here anyway so the matrix is complete when the schema migration lands.
 const MATRIX = {
-  [ROLES.SYSTEM_ADMIN]: {
-    users: ALL,
-    clients: ALL,
-    inventory: ALL,
-    logs: ALL,
-    settings: ALL,
-  },
   [ROLES.ADMIN]: {
     users: ALL,
     clients: ALL,
     inventory: ALL,
-    logs: READ_ONLY,
-    settings: READ_ONLY,
-  },
-  [ROLES.OWNER]: {
-    users: READ_ONLY,
-    clients: ALL,
-    inventory: ALL,
-    logs: READ_ONLY,
-    settings: READ_ONLY,
-  },
-  [ROLES.MANAGER]: {
-    users: READ_ONLY,
-    clients: ["view", "create", "edit"],
-    inventory: ["view", "create", "edit"],
     logs: READ_ONLY,
     settings: READ_ONLY,
   },
@@ -66,7 +43,7 @@ const MATRIX = {
   },
   [ROLES.TECHNICIAN]: {
     users: NONE,
-    clients: ["view", "edit"],
+    clients: ["view", "create", "edit"],
     inventory: READ_ONLY,
     logs: NONE,
     settings: READ_ONLY,

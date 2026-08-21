@@ -5,28 +5,15 @@ export const ROLES = {
   ADMIN: "ADMIN",
   STAFF: "STAFF",
   TECHNICIAN: "TECHNICIAN",
-  MANAGER: "MANAGER",
-  OWNER: "OWNER",
-  SYSTEM_ADMIN: "SYSTEM_ADMIN",
 };
 
-// The sprint backlog names six roles ("Staff/Admin, Technician, Manager,
-// Owner, System Admin"). All six are listed here so the UI and the
-// permission matrix are ready for them.
+// Roles currently supported by the project.
 export const SPRINT_ROLES = [
   ROLES.ADMIN,
   ROLES.STAFF,
   ROLES.TECHNICIAN,
-  ROLES.MANAGER,
-  ROLES.OWNER,
-  ROLES.SYSTEM_ADMIN,
 ];
 
-// ...but only these three are actually backed by a database table today.
-// Role is currently expressed as *which table the row lives in*, so a role
-// with no table cannot be created or logged in as. Selecting an
-// unimplemented role is blocked in the UI until the schema migration
-// collapses the three tables into one `users` table with a `role` column.
 export const IMPLEMENTED_ROLES = [ROLES.ADMIN, ROLES.STAFF, ROLES.TECHNICIAN];
 
 export const isRoleImplemented = (role) => IMPLEMENTED_ROLES.includes(role);

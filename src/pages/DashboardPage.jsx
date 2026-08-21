@@ -12,9 +12,6 @@ import { ROLES } from "../utils/constants";
 
 const DASHBOARD_BY_ROLE = {
   [ROLES.ADMIN]: AdminDashboard,
-  [ROLES.SYSTEM_ADMIN]: AdminDashboard,
-  [ROLES.OWNER]: AdminDashboard,
-  [ROLES.MANAGER]: StaffDashboard,
   [ROLES.STAFF]: StaffDashboard,
   [ROLES.TECHNICIAN]: TechnicianDashboard,
 };

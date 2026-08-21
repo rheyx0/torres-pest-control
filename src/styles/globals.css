@@ -50,14 +50,16 @@ button {
   font-size: inherit;
 }
 
-/* Keep the focus treatment close to the sidebar Logout border. */
-button:focus {
+/* Focus must not add a second, brighter outline to buttons or dashboard links. */
+button:focus,
+button:active,
+a:focus,
+a:active {
   outline: none;
 }
 
 :focus-visible {
-  outline: 1px solid rgba(255, 255, 255, 0.2);
-  outline-offset: 0;
+  outline: none;
 }
 
 .app-shell {

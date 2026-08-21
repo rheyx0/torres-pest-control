@@ -87,8 +87,8 @@ export async function fetchAllAccounts() {
   const accounts = (data || []).map((row) => mapAccountRow(row, row.role));
   return {
     error: null,
-    admins: accounts.filter((account) => account.role === ROLES.ADMIN || account.role === ROLES.SYSTEM_ADMIN),
-    staff: accounts.filter((account) => account.role === ROLES.STAFF || account.role === ROLES.MANAGER || account.role === ROLES.OWNER),
+    admins: accounts.filter((account) => account.role === ROLES.ADMIN),
+    staff: accounts.filter((account) => account.role === ROLES.STAFF),
     technicians: accounts.filter((account) => account.role === ROLES.TECHNICIAN),
   };
 }

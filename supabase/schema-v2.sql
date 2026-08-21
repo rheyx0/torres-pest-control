@@ -59,14 +59,7 @@ $$ language plpgsql;
 -- All six roles the sprint names. Adding a role is now one line here instead
 -- of a new table plus a new branch in check_login.
 do $$ begin
-  create type user_role as enum (
-    'SYSTEM_ADMIN',
-    'ADMIN',
-    'OWNER',
-    'MANAGER',
-    'STAFF',
-    'TECHNICIAN'
-  );
+  create type user_role as enum ('ADMIN', 'STAFF', 'TECHNICIAN');
 exception when duplicate_object then null; end $$;
 
 -- PENDING implements "New account is stored with a default status
@@ -465,7 +458,7 @@ returns boolean
 language sql
 immutable
 as $$
-  select caller.role in ('SYSTEM_ADMIN', 'ADMIN');
+  select caller.role = 'ADMIN';
 $$;
 
 create or replace function public.write_log(
@@ -595,9 +588,9 @@ begin
   if target.id is null then raise exception 'Account not found.'; end if;
 
   -- Never let the last active admin be locked out.
-  if new_status <> 'ACTIVE' and target.role in ('ADMIN', 'SYSTEM_ADMIN') then
+  if new_status <> 'ACTIVE' and target.role = 'ADMIN' then
     if (select count(*) from users u
-         where u.role in ('ADMIN', 'SYSTEM_ADMIN') and u.status = 'ACTIVE') <= 1 then
+         where u.role = 'ADMIN' and u.status = 'ACTIVE') <= 1 then
       raise exception 'At least one active admin account is required.';
     end if;
   end if;
