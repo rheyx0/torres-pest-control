@@ -50,16 +50,21 @@ button {
   font-size: inherit;
 }
 
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Focus must not add a second, brighter outline to buttons or dashboard links. */
 button:focus,
 button:active,
 a:focus,
 a:active {
-  outline: none;
+  outline: 0 !important;
 }
 
 :focus-visible {
-  outline: none;
+  outline: 0 !important;
 }
 
 .app-shell {

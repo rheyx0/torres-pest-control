@@ -1,4 +1,5 @@
-import { CalendarDays, CheckCircle2, CircleDollarSign, Clock3, TrendingUp } from "lucide-react";
+import { CalendarDays, CheckCircle2, CircleDollarSign, Clock3, Plus, Settings, Search, TrendingUp } from "lucide-react";
+import { Link } from "react-router-dom";
 import useAuth from "../../hooks/useAuth";
 import { card, colors, pageShell } from "../../styles/theme";
 
@@ -108,7 +109,39 @@ function DashboardOverview() {
           <WealthStat label="Active pipeline" value={null} />
         </div>
       </section>
+
+      <div style={{ ...card, marginTop: "1rem", padding: "1rem 1.25rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+        <span style={{ color: colors.ink, fontWeight: 800, marginRight: "0.25rem" }}>Quick actions</span>
+        <DashboardAction to="/clients/new" Icon={Plus}>Create Client Profile</DashboardAction>
+        <DashboardAction to="/clients" Icon={Search}>View Clients</DashboardAction>
+        <DashboardAction to="/settings" Icon={Settings}>Settings</DashboardAction>
+      </div>
     </div>
+  );
+}
+
+function DashboardAction({ to, Icon, children }) {
+  return (
+    <Link
+      to={to}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.45rem",
+        border: "1px solid rgba(127, 17, 17, 0.22)",
+        borderRadius: "10px",
+        background: "#fff8f8",
+        color: colors.brandInk,
+        padding: "0.65rem 0.85rem",
+        fontSize: "0.84rem",
+        fontWeight: 700,
+        textDecoration: "none",
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      <Icon size={16} />
+      {children}
+    </Link>
   );
 }
 
