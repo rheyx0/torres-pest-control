@@ -59,8 +59,15 @@ a {
 button:focus,
 button:active,
 a:focus,
-a:active {
-  outline: 0 !important;
+a:active,
+nav a:focus,
+nav a:focus-visible,
+nav a:active,
+nav button:focus,
+nav button:focus-visible,
+nav button:active {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 :focus-visible {

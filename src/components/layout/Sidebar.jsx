@@ -75,11 +75,11 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "0.65rem",
-    padding: "0.75rem 0.9rem",
-    borderRadius: "12px",
+    padding: "0.6rem 0.75rem",
+    borderRadius: "10px",
     color: "rgba(255,255,255,0.88)",
     textDecoration: "none",
-    fontSize: "0.9rem",
+    fontSize: "0.82rem",
     fontWeight: 600,
     transition: "transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease",
     border: "1px solid rgba(255,255,255,0.18)",
@@ -111,12 +111,12 @@ const styles = {
     width: "100%",
     textAlign: "left",
     marginTop: "0.6rem",
-    padding: "0.75rem 0.9rem",
-    borderRadius: "12px",
+    padding: "0.6rem 0.75rem",
+    borderRadius: "10px",
     border: "1px solid rgba(255,255,255,0.18)",
     background: "transparent",
     color: "rgba(255,255,255,0.88)",
-    fontSize: "0.9rem",
+    fontSize: "0.82rem",
     fontWeight: 600,
     cursor: "pointer",
     transition: "transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease",
@@ -160,7 +160,7 @@ function Sidebar() {
               event.currentTarget.style.boxShadow = "none";
             }}
           >
-            <item.Icon size={17} strokeWidth={2} aria-hidden="true" />
+            <item.Icon size={15} strokeWidth={2} aria-hidden="true" />
             {item.label}
           </Link>
         ))}
