@@ -48,6 +48,13 @@ const styles = {
     padding: "0.85rem 0.8rem 1rem",
     borderBottom: "1px solid rgba(255,255,255,0.18)",
   },
+  logoImage: {
+    display: "block",
+    width: "150px",
+    maxWidth: "100%",
+    height: "auto",
+    objectFit: "contain",
+  },
   logo: {
     color: "#fff",
     fontWeight: 800,
@@ -74,7 +81,7 @@ const styles = {
     textDecoration: "none",
     fontSize: "0.9rem",
     fontWeight: 600,
-    transition: "all 0.2s ease",
+    transition: "transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease",
     border: "1px solid rgba(255,255,255,0.18)",
     boxSizing: "border-box",
   },
@@ -112,6 +119,7 @@ const styles = {
     fontSize: "0.9rem",
     fontWeight: 600,
     cursor: "pointer",
+    transition: "transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease",
   },
 };
 
@@ -126,8 +134,7 @@ function Sidebar() {
   return (
     <nav style={styles.sidebar}>
       <div style={styles.logoWrap}>
-        <div style={styles.logo}>Torres</div>
-        <span style={styles.small}>PEST CONTROL</span>
+        <img src="/logo.png" alt="Torres Pest Control" style={styles.logoImage} />
       </div>
 
       <div style={styles.navLinks}>
@@ -142,6 +149,14 @@ function Sidebar() {
               outline: "none",
               boxShadow: "none",
             }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.transform = "translateX(4px)";
+              event.currentTarget.style.boxShadow = "0 8px 18px rgba(0, 0, 0, 0.16)";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.transform = "translateX(0)";
+              event.currentTarget.style.boxShadow = "none";
+            }}
           >
             <item.Icon size={17} strokeWidth={2} aria-hidden="true" />
             {item.label}
@@ -155,7 +170,22 @@ function Sidebar() {
             Logged in as <strong>{currentUser.name}</strong> ({currentUser.role})
           </>
         )}
-        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={logout} style={{ ...styles.logoutButton, outline: "none", boxShadow: "none" }}>
+        <button
+          type="button"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={logout}
+          onMouseEnter={(event) => {
+            event.currentTarget.style.transform = "translateX(4px)";
+            event.currentTarget.style.background = "rgba(255,255,255,0.12)";
+            event.currentTarget.style.boxShadow = "0 8px 18px rgba(0, 0, 0, 0.16)";
+          }}
+          onMouseLeave={(event) => {
+            event.currentTarget.style.transform = "translateX(0)";
+            event.currentTarget.style.background = "transparent";
+            event.currentTarget.style.boxShadow = "none";
+          }}
+          style={{ ...styles.logoutButton, outline: "none", boxShadow: "none" }}
+        >
           Logout
         </button>
       </div>
