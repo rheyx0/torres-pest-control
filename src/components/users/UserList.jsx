@@ -128,9 +128,8 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
               <div
                 key={user.id}
                 style={{
-                  border: "1px solid rgba(127, 17, 17, 0.14)",
-                  borderLeft: `3px solid ${colors.brandLight}`,
-                  background: "rgba(255, 248, 248, 0.7)",
+                  border: `1px solid ${colors.softLine}`,
+                  background: "rgba(255, 255, 255, 0.78)",
                   borderRadius: "12px",
                   padding: "1rem",
                   display: "grid",

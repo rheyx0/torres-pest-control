@@ -53,7 +53,6 @@ function ClientDetails({
             <p style={{ margin: 0, color: colors.brandInk, fontSize: "0.72rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Client record</p>
             <h2 style={{ margin: "0.25rem 0 0", color: colors.ink, fontSize: "1.25rem" }}>Profile overview</h2>
           </div>
-          <span style={{ color: colors.muted, fontSize: "0.78rem" }}>Updated {formatDateTime(client.updatedAt)}</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem" }}>
           <InfoRow
