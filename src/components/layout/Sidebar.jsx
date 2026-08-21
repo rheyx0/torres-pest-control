@@ -151,10 +151,12 @@ function Sidebar() {
             }}
             onMouseEnter={(event) => {
               event.currentTarget.style.transform = "translateX(4px)";
+              event.currentTarget.style.background = "rgba(255,255,255,0.12)";
               event.currentTarget.style.boxShadow = "0 8px 18px rgba(0, 0, 0, 0.16)";
             }}
             onMouseLeave={(event) => {
               event.currentTarget.style.transform = "translateX(0)";
+              event.currentTarget.style.background = "transparent";
               event.currentTarget.style.boxShadow = "none";
             }}
           >
