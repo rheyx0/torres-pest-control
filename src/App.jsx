@@ -28,6 +28,7 @@ import SettingsPage from "./pages/SettingsPage";
 import ActivityLogPage from "./pages/ActivityLogPage";
 
 import { SUBSYSTEMS } from "./utils/permissions";
+import { isSupabaseConfigured } from "./services/supabaseClient";
 import "./styles/globals.css";
 
 /** Wraps a route in auth + layout, and optionally a permission check. */
@@ -50,6 +51,18 @@ function Guarded({ subsystem, action, children }) {
 }
 
 function App() {
+  if (!isSupabaseConfigured) {
+    return (
+      <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#f6f7f9" }}>
+        <section style={{ maxWidth: 560, padding: 32, border: "1px solid #d9dee7", borderRadius: 12, background: "#fff", color: "#172033" }}>
+          <h1 style={{ marginTop: 0 }}>Supabase configuration required</h1>
+          <p>Create a <code>.env.local</code> file in the project root with these variables, then restart the development server:</p>
+          <pre style={{ padding: 16, overflowX: "auto", background: "#f1f3f6", borderRadius: 8 }}>{"REACT_APP_SUPABASE_URL=https://your-project-id.supabase.co\nREACT_APP_SUPABASE_PUBLISHABLE_KEY=your-publishable-key"}</pre>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <Router>
       <AuthProvider>

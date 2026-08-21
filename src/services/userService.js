@@ -57,24 +57,39 @@ function describeError(error) {
   ].join("");
 }
 
-/** Loads all three account tables in parallel. */
+/** Loads accounts from the v2 users table. */
 export async function fetchAllAccounts() {
-  const [adminsRes, staffRes, techRes] = await Promise.all([
-    supabase.from("admins").select(ADMIN_COLUMNS),
-    supabase.from("staff").select(STAFF_COLUMNS),
-    supabase.from("technicians").select(STAFF_COLUMNS),
-  ]);
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, name, username, email, phone, role, status, is_primary, created_at, updated_at, last_login_at")
+    .order("created_at", { ascending: true });
 
-  const firstError = adminsRes.error || staffRes.error || techRes.error;
-  if (firstError) {
-    return { error: describeError(firstError), admins: [], staff: [], technicians: [] };
+  if (error && error.code !== "PGRST205") {
+    return { error: describeError(error), admins: [], staff: [], technicians: [] };
   }
 
+  if (error?.code === "PGRST205") {
+    const [adminsRes, staffRes, techRes] = await Promise.all([
+      supabase.from("admins").select(ADMIN_COLUMNS),
+      supabase.from("staff").select(STAFF_COLUMNS),
+      supabase.from("technicians").select(STAFF_COLUMNS),
+    ]);
+    const firstError = adminsRes.error || staffRes.error || techRes.error;
+    if (firstError) return { error: describeError(firstError), admins: [], staff: [], technicians: [] };
+    return {
+      error: null,
+      admins: (adminsRes.data || []).map((row) => mapAccountRow(row, ROLES.ADMIN)),
+      staff: (staffRes.data || []).map((row) => mapAccountRow(row, ROLES.STAFF)),
+      technicians: (techRes.data || []).map((row) => mapAccountRow(row, ROLES.TECHNICIAN)),
+    };
+  }
+
+  const accounts = (data || []).map((row) => mapAccountRow(row, row.role));
   return {
     error: null,
-    admins: (adminsRes.data || []).map((row) => mapAccountRow(row, ROLES.ADMIN)),
-    staff: (staffRes.data || []).map((row) => mapAccountRow(row, ROLES.STAFF)),
-    technicians: (techRes.data || []).map((row) => mapAccountRow(row, ROLES.TECHNICIAN)),
+    admins: accounts.filter((account) => account.role === ROLES.ADMIN || account.role === ROLES.SYSTEM_ADMIN),
+    staff: accounts.filter((account) => account.role === ROLES.STAFF || account.role === ROLES.MANAGER || account.role === ROLES.OWNER),
+    technicians: accounts.filter((account) => account.role === ROLES.TECHNICIAN),
   };
 }
 

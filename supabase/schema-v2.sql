@@ -77,10 +77,10 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 -- UPGRADING FROM v1? v1's account_status had only ACTIVE and INACTIVE.
--- Postgres will not let a new enum value be added and then USED in the same
--- transaction, and the DO block above is one transaction — so this cannot be
--- folded in here. If `create type` above was skipped because the type already
--- existed, stop and run this ONE line on its own first, then re-run this file:
+-- If this type already exists, run the following ONE line as a separate query
+-- in Supabase SQL Editor, wait for it to commit, and then re-run this file.
+-- Postgres will not let a new enum value be added and then used in the same
+-- transaction, so it cannot be folded into this script:
 --
 --     alter type account_status add value if not exists 'PENDING' before 'ACTIVE';
 --

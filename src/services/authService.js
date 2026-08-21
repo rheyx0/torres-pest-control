@@ -7,6 +7,30 @@
 import { supabase } from "./supabaseClient";
 import { STORAGE_KEYS } from "../utils/constants";
 
+function describeLoginError(error) {
+  if (!error) return "Login service is unavailable.";
+  if (error.code === "PGRST202" || error.code === "42883") {
+    return "The Supabase check_login function is missing or has the wrong arguments. Run supabase/schema-v2.sql in Supabase SQL Editor.";
+  }
+  return error.message || "Login service is unavailable.";
+}
+
+async function checkLogin(email, password) {
+  const v2Response = await supabase.rpc("check_login", {
+    login_identifier: email,
+    login_password: password,
+  });
+
+  if (!v2Response.error || !["PGRST202", "42883"].includes(v2Response.error.code)) {
+    return v2Response;
+  }
+
+  return supabase.rpc("check_login", {
+    login_email: email,
+    login_password: password,
+  });
+}
+
 /**
  * Sprint AC (Login): "System validates credentials and denies access if
  * incorrect" and "Failed login attempts show an error message without
@@ -19,14 +43,11 @@ import { STORAGE_KEYS } from "../utils/constants";
  * @returns {{ session?: {id, role}, profile?: object, error?: string }}
  */
 export async function login(email, password) {
-  const { data, error } = await supabase.rpc("check_login", {
-    login_email: email,
-    login_password: password,
-  });
+  const { data, error } = await checkLogin(email, password);
 
   if (error) {
     console.error("Login error:", error);
-    return { error: "Invalid email or password." };
+    return { error: describeLoginError(error) };
   }
 
   const match = (data || [])[0];
@@ -63,10 +84,7 @@ export function saveSession(session) {
  * column-level grants hide it from ordinary selects.
  */
 export async function verifyPassword(email, password) {
-  const { data, error } = await supabase.rpc("check_login", {
-    login_email: email,
-    login_password: password,
-  });
+  const { data, error } = await checkLogin(email, password);
 
   if (error) return false;
   return (data || []).length > 0;
