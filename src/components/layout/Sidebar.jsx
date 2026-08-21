@@ -75,11 +75,11 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "0.65rem",
-    padding: "0.6rem 0.75rem",
-    borderRadius: "10px",
+    padding: "0.75rem 0.9rem",
+    borderRadius: "12px",
     color: "rgba(255,255,255,0.88)",
     textDecoration: "none",
-    fontSize: "0.82rem",
+    fontSize: "0.9rem",
     fontWeight: 600,
     transition: "transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease",
     border: "1px solid rgba(255,255,255,0.18)",
@@ -111,12 +111,12 @@ const styles = {
     width: "100%",
     textAlign: "left",
     marginTop: "0.6rem",
-    padding: "0.6rem 0.75rem",
-    borderRadius: "10px",
+    padding: "0.75rem 0.9rem",
+    borderRadius: "12px",
     border: "1px solid rgba(255,255,255,0.18)",
     background: "transparent",
     color: "rgba(255,255,255,0.88)",
-    fontSize: "0.82rem",
+    fontSize: "0.9rem",
     fontWeight: 600,
     cursor: "pointer",
     transition: "transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease",
@@ -151,17 +151,15 @@ function Sidebar() {
               boxShadow: "none",
             }}
             onMouseEnter={(event) => {
-              event.currentTarget.style.transform = "translateX(4px)";
               event.currentTarget.style.background = "rgba(255,255,255,0.12)";
               event.currentTarget.style.boxShadow = "0 8px 18px rgba(0, 0, 0, 0.16)";
             }}
             onMouseLeave={(event) => {
-              event.currentTarget.style.transform = "translateX(0)";
               event.currentTarget.style.background = "transparent";
               event.currentTarget.style.boxShadow = "none";
             }}
           >
-            <item.Icon size={15} strokeWidth={2} aria-hidden="true" />
+            <item.Icon size={17} strokeWidth={2} aria-hidden="true" />
             {item.label}
           </Link>
         ))}
@@ -185,12 +183,10 @@ function Sidebar() {
             event.currentTarget.style.boxShadow = "none";
           }}
           onMouseEnter={(event) => {
-            event.currentTarget.style.transform = "translateX(4px)";
             event.currentTarget.style.background = "rgba(255,255,255,0.12)";
             event.currentTarget.style.boxShadow = "0 8px 18px rgba(0, 0, 0, 0.16)";
           }}
           onMouseLeave={(event) => {
-            event.currentTarget.style.transform = "translateX(0)";
             event.currentTarget.style.background = "transparent";
             event.currentTarget.style.boxShadow = "none";
           }}
