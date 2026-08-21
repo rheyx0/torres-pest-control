@@ -1,0 +1,74 @@
+/* Minimal reset and design tokens.
+ *
+ * The app styles components with inline `style={{...}}` props (see
+ * src/styles/theme.js for the shared objects). This file deliberately stays
+ * small: page-level resets, focus visibility, and the tokens a future CSS
+ * migration would build on. It is not a component stylesheet.
+ */
+
+:root {
+  --brand: #7f1111;
+  --brand-light: #bf3e3e;
+  --brand-ink: #8b1e1e;
+  --ink: #0f172a;
+  --body: #111827;
+  --muted: #6b7280;
+  --line: #dfe4ea;
+  --success: #1f7a5f;
+  --danger: #b91c1c;
+  --radius: 12px;
+  --radius-lg: 20px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--body);
+  background: #f7f7f8;
+}
+
+/* Inputs don't inherit the body font by default. */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+/* Keyboard focus stays visible; mouse clicks don't get a ring. */
+:focus-visible {
+  outline: 2px solid var(--brand-light);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--brand-ink);
+}
+
+/* Long tables and code blocks scroll inside themselves rather than pushing
+   the page sideways. */
+.scroll-x {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
