@@ -1,0 +1,102 @@
+/* Minimal reset and design tokens.
+ *
+ * The app styles components with inline `style={{...}}` props (see
+ * src/styles/theme.js for the shared objects). This file deliberately stays
+ * small: page-level resets, focus visibility, and the tokens a future CSS
+ * migration would build on. It is not a component stylesheet.
+ */
+
+:root {
+  --brand: #7f1111;
+  --brand-light: #bf3e3e;
+  --brand-ink: #8b1e1e;
+  --ink: #0f172a;
+  --body: #111827;
+  --muted: #6b7280;
+  --line: #dfe4ea;
+  --success: #1f7a5f;
+  --danger: #b91c1c;
+  --radius: 12px;
+  --radius-lg: 20px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--body);
+  background: #f7f7f8;
+}
+
+/* Inputs don't inherit the body font by default. */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Focus must not add a second, brighter outline to buttons or dashboard links. */
+button:focus,
+button:active,
+a:focus,
+a:active,
+nav a:focus,
+nav a:focus-visible,
+nav a:active,
+nav button:focus,
+nav button:focus-visible,
+nav button:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+:focus-visible {
+  outline: 0 !important;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-content {
+  min-height: 100vh;
+  margin-left: 264px;
+}
+
+a {
+  color: var(--brand-ink);
+}
+
+/* Long tables and code blocks scroll inside themselves rather than pushing
+   the page sideways. */
+.scroll-x {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
