@@ -1,20 +1,16 @@
 // Admin / System Admin view: account oversight plus the activity log.
 
-import { Link } from "react-router-dom";
 import { BriefcaseBusiness, ShieldCheck, Users } from "lucide-react";
 import MetricCard from "../common/MetricCard";
 import PageHeader from "../common/PageHeader";
-import ActivityFeed from "./ActivityFeed";
 import useUsers from "../../hooks/useUsers";
 import useClients from "../../hooks/useClients";
-import useLogs from "../../hooks/useLogs";
 import { ACCOUNT_STATUS, ROLES } from "../../utils/constants";
 import { colors, pageShell } from "../../styles/theme";
 
 function AdminDashboard() {
   const { users } = useUsers();
   const { clients } = useClients();
-  const logs = useLogs(6);
 
   const totalStaffAccounts = users.filter((user) => user.role !== ROLES.ADMIN).length;
   const activeAccounts = users.filter(
@@ -52,15 +48,6 @@ function AdminDashboard() {
           Icon={BriefcaseBusiness}
         />
       </div>
-
-      <ActivityFeed
-        logs={logs}
-        footer={
-          <Link to="/activity" style={{ color: colors.brandInk, fontWeight: 700, textDecoration: "none" }}>
-            View full activity log →
-          </Link>
-        }
-      />
     </div>
   );
 }

@@ -23,14 +23,17 @@ const NAV_ITEMS = [
 
 const styles = {
   sidebar: {
+    position: "fixed",
+    inset: "0 auto 0 0",
     width: "264px",
-    minHeight: "100vh",
+    height: "100vh",
     background: "linear-gradient(180deg, #7f1111 0%, #561313 100%)",
     padding: "1.4rem 1rem 1.2rem",
     display: "flex",
     flexDirection: "column",
     gap: "0.35rem",
     boxShadow: "18px 0 40px rgba(86, 19, 19, 0.18)",
+    overflow: "hidden",
   },
   logoWrap: {
     marginBottom: "1.25rem",
@@ -77,6 +80,15 @@ const styles = {
     color: "rgba(255,255,255,0.75)",
     fontSize: "0.78rem",
   },
+  navLinks: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.35rem",
+    paddingBottom: "0.5rem",
+  },
   logoutButton: {
     display: "block",
     width: "100%",
@@ -108,18 +120,20 @@ function Sidebar() {
         <span style={styles.small}>PEST CONTROL</span>
       </div>
 
-      {navItems.map((item) => (
-        <Link
-          key={item.path}
-          to={item.path}
-          style={{
-            ...styles.link,
-            ...(location.pathname === item.path ? styles.activeLink : {}),
-          }}
-        >
-          {item.label}
-        </Link>
-      ))}
+      <div style={styles.navLinks}>
+        {navItems.map((item) => (
+          <Link
+            key={item.path}
+            to={item.path}
+            style={{
+              ...styles.link,
+              ...(location.pathname === item.path ? styles.activeLink : {}),
+            }}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </div>
 
       <div style={styles.userInfo}>
         {currentUser && (

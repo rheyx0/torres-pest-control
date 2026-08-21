@@ -66,7 +66,7 @@ const MATRIX = {
   },
   [ROLES.TECHNICIAN]: {
     users: NONE,
-    clients: READ_ONLY,
+    clients: ["view", "edit"],
     inventory: READ_ONLY,
     logs: NONE,
     settings: READ_ONLY,

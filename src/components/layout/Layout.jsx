@@ -11,9 +11,9 @@ import { appBackground } from "../../styles/theme";
 
 function Layout({ children }) {
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: appBackground }}>
+    <div className="app-shell" style={{ background: appBackground }}>
       <Sidebar />
-      <div style={{ flex: 1, padding: "2.25rem 2rem 2.5rem", background: "transparent" }}>
+      <div className="app-content" style={{ padding: "2.25rem 2rem 2.5rem", background: "transparent" }}>
         <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
           <Navbar />
           {children || <Outlet />}
