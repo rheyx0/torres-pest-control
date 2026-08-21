@@ -47,8 +47,15 @@ function ClientDetails({
 
       {/* AC (View Single Client Profile): "Detail view displays full client
           information, classification, and attached documents." */}
-      <div style={{ ...card, marginBottom: "1.5rem" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+      <section style={{ ...card, marginBottom: "1.5rem", padding: "1.35rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+          <div>
+            <p style={{ margin: 0, color: colors.brandInk, fontSize: "0.72rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Client record</p>
+            <h2 style={{ margin: "0.25rem 0 0", color: colors.ink, fontSize: "1.25rem" }}>Profile overview</h2>
+          </div>
+          <span style={{ color: colors.muted, fontSize: "0.78rem" }}>Updated {formatDateTime(client.updatedAt)}</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem" }}>
           <InfoRow
             label="Classification"
             value={
@@ -61,12 +68,12 @@ function ClientDetails({
           <InfoRow label="Source" value={client.source} />
           <InfoRow label="Phone" value={client.phone} />
           <InfoRow label="Email" value={client.email} />
-          <InfoRow label="Address" value={client.address} />
+          <div style={{ gridColumn: "1 / -1" }}><InfoRow label="Address" value={client.address} /></div>
           {/* AC (Edit Client Profile): "Edit history/timestamp is logged." */}
           <InfoRow label="Created" value={formatDateTime(client.createdAt)} />
           <InfoRow label="Last Updated" value={formatDateTime(client.updatedAt)} />
         </div>
-      </div>
+      </section>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "1.5rem" }}>
         <div style={card}>
