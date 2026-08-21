@@ -52,7 +52,7 @@ const styles = {
   },
   logoImage: {
     display: "block",
-    width: "150px",
+    width: "190px",
     maxWidth: "100%",
     height: "auto",
     objectFit: "contain",
