@@ -13,7 +13,7 @@ function Layout({ children }) {
   return (
     <div className="app-shell" style={{ background: appBackground }}>
       <Sidebar />
-      <div className="app-content" style={{ padding: "2.25rem 2rem 2.5rem", background: "transparent" }}>
+      <div className="app-content" style={{ padding: "2.25rem 2rem 2.5rem", background: "rgba(255, 247, 247, 0.42)" }}>
         <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
           <Navbar />
           {children || <Outlet />}

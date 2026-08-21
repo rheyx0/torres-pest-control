@@ -20,6 +20,8 @@ function Navbar() {
         alignItems: "center",
         gap: "1rem",
         padding: "0 0 1.5rem",
+        borderBottom: "1px solid rgba(127, 17, 17, 0.1)",
+        marginBottom: "1.5rem",
         flexWrap: "wrap",
       }}
     >

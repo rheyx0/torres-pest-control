@@ -25,11 +25,12 @@ export const pageShell = {
 };
 
 export const card = {
-  background: "linear-gradient(180deg, #ffffff 0%, #fffdfd 100%)",
-  border: `1px solid ${colors.softLine}`,
+  background: "linear-gradient(180deg, #ffffff 0%, #fff8f8 100%)",
+  border: `1px solid rgba(127, 17, 17, 0.14)`,
+  borderTop: `3px solid ${colors.brandLight}`,
   borderRadius: "20px",
   padding: "1.5rem",
-  boxShadow: "0 18px 32px rgba(15, 23, 42, 0.06)",
+  boxShadow: "0 18px 32px rgba(127, 17, 17, 0.08)",
 };
 
 export const inputStyle = {
@@ -61,8 +62,8 @@ export const primaryButton = {
 };
 
 export const secondaryButton = {
-  border: `1px solid ${colors.line}`,
-  background: "#fff",
+  border: `1px solid rgba(127, 17, 17, 0.22)`,
+  background: "#fff8f8",
   color: colors.body,
   borderRadius: "12px",
   padding: "0.75rem 1rem",
@@ -96,7 +97,7 @@ export const badge = {
 };
 
 export const appBackground =
-  "radial-gradient(circle at top left, #fff3f3 0%, #f7f7f8 36%, #f1f5f9 100%)";
+  "radial-gradient(circle at top left, #ffe6e6 0%, #fff7f7 32%, #f4f5f7 78%, #f1f5f9 100%)";
 
 export const fieldGrid = {
   display: "grid",

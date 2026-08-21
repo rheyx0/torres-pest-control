@@ -7,6 +7,9 @@ function PageHeader({ eyebrow, title, actions }) {
     <div
       style={{
         marginBottom: "1.5rem",
+        padding: "0.25rem 0 1rem 1rem",
+        borderLeft: `4px solid ${colors.brandLight}`,
+        borderBottom: `1px solid rgba(127, 17, 17, 0.14)`,
         display: "flex",
         justifyContent: "space-between",
         alignItems: "flex-end",
