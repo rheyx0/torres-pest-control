@@ -135,9 +135,12 @@ function Sidebar() {
           <Link
             key={item.path}
             to={item.path}
+            onMouseDown={(event) => event.preventDefault()}
             style={{
               ...styles.link,
               ...(location.pathname === item.path ? styles.activeLink : {}),
+              outline: "none",
+              boxShadow: "none",
             }}
           >
             <item.Icon size={17} strokeWidth={2} aria-hidden="true" />
@@ -152,7 +155,7 @@ function Sidebar() {
             Logged in as <strong>{currentUser.name}</strong> ({currentUser.role})
           </>
         )}
-        <button type="button" onClick={logout} style={styles.logoutButton}>
+        <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={logout} style={{ ...styles.logoutButton, outline: "none", boxShadow: "none" }}>
           Logout
         </button>
       </div>
