@@ -8,6 +8,12 @@ import { Link } from "react-router-dom";
 import useAuth from "../../hooks/useAuth";
 import { badge, colors } from "../../styles/theme";
 
+const ROLE_BADGES = {
+  ADMIN: { background: "#fee2e2", color: "#991b1b", border: "#fca5a5" },
+  STAFF: { background: "#fef3c7", color: "#92400e", border: "#fcd34d" },
+  TECHNICIAN: { background: "#dbeafe", color: "#1d4ed8", border: "#93c5fd" },
+};
+
 function Navbar() {
   const { currentUser } = useAuth();
   if (!currentUser) return null;
@@ -25,7 +31,18 @@ function Navbar() {
         flexWrap: "wrap",
       }}
     >
-      <span style={badge}>{currentUser.role}</span>
+      <span
+        style={{
+          ...badge,
+          ...ROLE_BADGES[currentUser.role],
+          border: `1px solid ${ROLE_BADGES[currentUser.role]?.border || colors.brandLight}`,
+          display: "inline-flex",
+          alignItems: "center",
+          minHeight: "32px",
+        }}
+      >
+        {currentUser.role}
+      </span>
       <Link
         to="/account"
         style={{ color: colors.brandInk, fontWeight: 700, textDecoration: "none", fontSize: "0.9rem" }}
