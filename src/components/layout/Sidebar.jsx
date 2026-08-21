@@ -143,6 +143,7 @@ function Sidebar() {
             key={item.path}
             to={item.path}
             onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => event.currentTarget.blur()}
             style={{
               ...styles.link,
               ...(location.pathname === item.path ? styles.activeLink : {}),
@@ -175,7 +176,14 @@ function Sidebar() {
         <button
           type="button"
           onMouseDown={(event) => event.preventDefault()}
-          onClick={logout}
+          onClick={(event) => {
+            event.currentTarget.blur();
+            logout();
+          }}
+          onBlur={(event) => {
+            event.currentTarget.style.outline = "none";
+            event.currentTarget.style.boxShadow = "none";
+          }}
           onMouseEnter={(event) => {
             event.currentTarget.style.transform = "translateX(4px)";
             event.currentTarget.style.background = "rgba(255,255,255,0.12)";
