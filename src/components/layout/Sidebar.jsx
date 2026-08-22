@@ -5,7 +5,6 @@
 // route behind it is reachable. RoleBasedRoute does the actual enforcing —
 // this only decides what to show.
 
-import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   BriefcaseBusiness,
@@ -129,7 +128,6 @@ const styles = {
 function Sidebar() {
   const location = useLocation();
   const { currentUser, can, logout } = useAuth();
-  const [hoveredPath, setHoveredPath] = useState(null);
 
   const navItems = NAV_ITEMS.filter(
     (item) => !item.subsystem || can(item.subsystem, item.action)
@@ -144,7 +142,6 @@ function Sidebar() {
       <div style={styles.navLinks}>
         {navItems.map((item) => {
           const isActive = location.pathname === item.path;
-          const isHovered = hoveredPath === item.path;
 
           return (
             <Link
@@ -152,15 +149,21 @@ function Sidebar() {
               className="sidebar-nav-link"
               to={item.path}
               aria-current={isActive ? "page" : undefined}
-              onMouseEnter={() => setHoveredPath(item.path)}
-              onMouseLeave={() => setHoveredPath(null)}
+              onMouseEnter={(event) => {
+                event.currentTarget.style.background = "rgba(255,255,255,0.12)";
+                event.currentTarget.style.boxShadow = "0 8px 18px rgba(0, 0, 0, 0.16)";
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.background = isActive ? styles.activeLink.background : "transparent";
+                event.currentTarget.style.boxShadow = "none";
+              }}
               style={{
                 ...styles.link,
                 ...(isActive ? styles.activeLink : {}),
-                background: isHovered ? "rgba(255,255,255,0.12)" : isActive ? styles.activeLink.background : "transparent",
+                background: isActive ? styles.activeLink.background : "transparent",
                 border: "1px solid rgba(255,255,255,0.18)",
                 outline: "none",
-                boxShadow: isHovered ? "0 8px 18px rgba(0, 0, 0, 0.16)" : "none",
+                boxShadow: "none",
               }}
             >
               <item.Icon size={17} strokeWidth={2} aria-hidden="true" />
