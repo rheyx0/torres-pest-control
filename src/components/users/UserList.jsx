@@ -29,6 +29,12 @@ import {
   card,
 } from "../../styles/theme";
 
+const roleBadgeColors = {
+  ADMIN: { background: "#fef2f2", color: "#b91c1c" },
+  STAFF: { background: "#fefce8", color: "#a16207" },
+  TECHNICIAN: { background: "#eff6ff", color: "#1d4ed8" },
+};
+
 function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
@@ -142,7 +148,7 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
                     <div style={{ color: colors.muted, marginTop: "0.15rem" }}>{user.email}</div>
                   </div>
                   <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", flexWrap: "wrap" }}>
-                    <span style={badge}>{user.role}</span>
+                    <span style={{ ...badge, ...(roleBadgeColors[user.role] || {}) }}>{user.role}</span>
                     <span
                       style={{
                         ...badge,
