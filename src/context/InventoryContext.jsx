@@ -13,6 +13,9 @@ export function InventoryProvider({ children }) {
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [movements, setMovements] = useState([]);
+  const [movementsLoading, setMovementsLoading] = useState(false);
+  const [movementsError, setMovementsError] = useState("");
 
   const actor = currentUser?.name;
 
@@ -74,9 +77,101 @@ export function InventoryProvider({ children }) {
     [actor, inventory]
   );
 
+  /** Edit only ever changes Name / Type / Unit — see updateItemBasics(). */
+  const updateItemBasics = useCallback(
+    async (itemId, form) => {
+      const { item, error: updateError } = await inventoryService.updateItemBasics(itemId, form);
+      if (updateError) return updateError;
+
+      setInventory((previous) => previous.map((entry) => (entry.id === itemId ? item : entry)));
+      addLog(actor, `Edited "${item.name}".`, LOG_TYPES.INVENTORY);
+      return true;
+    },
+    [actor]
+  );
+
+  const setItemStatus = useCallback(
+    async (itemId, status) => {
+      const { item, error: statusError } = await inventoryService.setItemStatus(itemId, status);
+      if (statusError) return statusError;
+
+      setInventory((previous) => previous.map((entry) => (entry.id === itemId ? item : entry)));
+      const verb = status === inventoryService.INVENTORY_STATUS.DISABLED ? "Disabled" : "Enabled";
+      addLog(actor, `${verb} "${item.name}".`, LOG_TYPES.INVENTORY);
+      return true;
+    },
+    [actor]
+  );
+
+  /**
+   * The only path that changes quantity. Runs as one server-side
+   * transaction (stock_in()), so the movement row and the quantity bump
+   * can't drift apart even under concurrent Stock Ins.
+   */
+  const stockIn = useCallback(
+    async (itemId, { amount, date, reference }) => {
+      const target = inventory.find((entry) => entry.id === itemId);
+      const result = await inventoryService.stockIn(itemId, { amount, date, reference, actor });
+      if (result.error) return result.error;
+
+      setInventory((previous) =>
+        previous.map((entry) => (entry.id === itemId ? { ...entry, quantity: result.newQuantity } : entry))
+      );
+      setMovements((previous) => [
+        { ...result.movement, itemName: target?.name || "Unknown item", itemUnit: target?.unit || "" },
+        ...previous,
+      ]);
+      addLog(actor, `Stocked in ${result.movement.amount} ${target?.unit || ""} of "${target?.name || "an item"}".`, LOG_TYPES.INVENTORY);
+      return true;
+    },
+    [actor, inventory]
+  );
+
+  const refreshMovements = useCallback(async () => {
+    setMovementsLoading(true);
+    setMovementsError("");
+
+    const result = await inventoryService.fetchMovements();
+    if (result.error) setMovementsError(result.error);
+    else setMovements(result.movements);
+
+    setMovementsLoading(false);
+    return result;
+  }, []);
+
   const value = useMemo(
-    () => ({ inventory, loading, error, refresh, addItem, updateItem, removeItem }),
-    [inventory, loading, error, refresh, addItem, updateItem, removeItem]
+    () => ({
+      inventory,
+      loading,
+      error,
+      refresh,
+      addItem,
+      updateItem,
+      updateItemBasics,
+      removeItem,
+      setItemStatus,
+      stockIn,
+      movements,
+      movementsLoading,
+      movementsError,
+      refreshMovements,
+    }),
+    [
+      inventory,
+      loading,
+      error,
+      refresh,
+      addItem,
+      updateItem,
+      updateItemBasics,
+      removeItem,
+      setItemStatus,
+      stockIn,
+      movements,
+      movementsLoading,
+      movementsError,
+      refreshMovements,
+    ]
   );
 
   return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>;

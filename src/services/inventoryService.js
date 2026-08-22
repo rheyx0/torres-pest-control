@@ -12,12 +12,22 @@
 
 import { supabase } from "./supabaseClient";
 
+export const INVENTORY_STATUS = {
+  ACTIVE: "ACTIVE",
+  DISABLED: "DISABLED",
+};
+
 const COLUMNS = `
-  id, name, type, quantity, unit, cost, supplier, storage_location, reorder_level,
+  id, name, type, quantity, unit, cost, supplier, storage_location, reorder_level, status,
   created_at, updated_at,
   chemical_type, expiration_date, safety_level, hazard_rating, date_received,
   serial_number, condition, last_maintenance_date, next_maintenance_date, manufacturer, model,
   material_category, description
+`;
+
+const MOVEMENT_COLUMNS = `
+  id, item_id, amount, movement_date, reference, actor, created_at,
+  inventory ( name, unit )
 `;
 
 function describeError(error) {
@@ -46,6 +56,7 @@ export function mapInventoryRow(row) {
     supplier: row.supplier || "",
     storageLocation: row.storage_location || "",
     reorderLevel: row.reorder_level === null ? null : Number(row.reorder_level),
+    status: row.status || INVENTORY_STATUS.ACTIVE,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
 
@@ -71,11 +82,15 @@ export function mapInventoryRow(row) {
 const nullIfBlank = (value) =>
   value === undefined || value === null || value === "" ? null : value;
 
+// Quantity is intentionally absent here. It's no longer settable through
+// the Item Profile form — new items start at 0 (the column default), and
+// after that the only path that can change it is stock_in() below. That
+// keeps quantity impossible to desync from the movement log: there's no
+// form field left that could set it directly.
 function buildPayload(item) {
   const payload = {
     name: item.name?.trim(),
     type: item.type,
-    quantity: Number(item.quantity) || 0,
     unit: item.unit,
     cost: Number(item.cost) || 0,
     supplier: nullIfBlank(item.supplier),
@@ -147,6 +162,93 @@ export async function deleteItem(itemId) {
   const { error } = await supabase.from("inventory").delete().eq("id", itemId);
   if (error) return { error: describeError(error) };
   return { ok: true };
+}
+
+/**
+ * Edit only ever pre-fills and writes Name / Type / Unit — that's the only
+ * data it's designed to change. A dedicated payload (rather than reusing
+ * buildPayload with a half-filled `item`) so it never touches Supplier,
+ * Reorder Level, or the type-specific columns it doesn't show.
+ */
+export async function updateItemBasics(itemId, { name, type, unit }) {
+  const { data, error } = await supabase
+    .from("inventory")
+    .update({ name: name?.trim(), type, unit })
+    .eq("id", itemId)
+    .select(COLUMNS)
+    .single();
+
+  if (error) return { error: describeError(error) };
+  return { item: mapInventoryRow(data) };
+}
+
+export async function setItemStatus(itemId, status) {
+  const { data, error } = await supabase
+    .from("inventory")
+    .update({ status })
+    .eq("id", itemId)
+    .select(COLUMNS)
+    .single();
+
+  if (error) return { error: describeError(error) };
+  return { item: mapInventoryRow(data) };
+}
+
+/**
+ * The only way quantity can change post-creation. Runs server-side as one
+ * transaction (see stock_in() in 005-inventory-stock-movements.sql) so the
+ * movement row and the quantity bump can't get out of sync, and so a
+ * disabled item is rejected even if the UI's guard is somehow bypassed.
+ */
+export async function stockIn(itemId, { amount, date, reference, actor }) {
+  const { data, error } = await supabase.rpc("stock_in", {
+    p_item_id: itemId,
+    p_amount: Number(amount),
+    p_movement_date: date,
+    p_reference: nullIfBlank(reference),
+    p_actor: actor || null,
+  });
+
+  if (error) return { error: describeError(error) };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return { error: "Stock In did not return a result." };
+
+  return {
+    movement: {
+      id: row.movement_id,
+      itemId: row.item_id,
+      amount: Number(row.amount),
+      movementDate: row.movement_date,
+      reference: row.reference || "",
+      actor: row.actor || "",
+      createdAt: row.created_at,
+    },
+    newQuantity: Number(row.new_quantity),
+  };
+}
+
+function mapMovementRow(row) {
+  return {
+    id: row.id,
+    itemId: row.item_id,
+    amount: Number(row.amount),
+    movementDate: row.movement_date,
+    reference: row.reference || "",
+    actor: row.actor || "",
+    createdAt: row.created_at,
+    itemName: row.inventory?.name || "Unknown item",
+    itemUnit: row.inventory?.unit || "",
+  };
+}
+
+export async function fetchMovements() {
+  const { data, error } = await supabase
+    .from("inventory_movements")
+    .select(MOVEMENT_COLUMNS)
+    .order("created_at", { ascending: false });
+
+  if (error) return { error: describeError(error), movements: [] };
+  return { error: null, movements: (data || []).map(mapMovementRow) };
 }
 
 /** Drives the low-stock badge. */
