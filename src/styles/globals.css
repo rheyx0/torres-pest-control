@@ -70,6 +70,19 @@ nav button:active {
   box-shadow: none !important;
 }
 
+/* Sidebar links must never retain a browser "pressed" or visited outline. */
+.sidebar-nav-link,
+.sidebar-nav-link:link,
+.sidebar-nav-link:visited,
+.sidebar-nav-link:hover,
+.sidebar-nav-link:focus,
+.sidebar-nav-link:focus-visible,
+.sidebar-nav-link:active {
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
 :focus-visible {
   outline: 0 !important;
 }
