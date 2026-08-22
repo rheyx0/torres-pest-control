@@ -84,7 +84,7 @@ const styles = {
     fontSize: "0.9rem",
     fontWeight: 600,
     transition: "transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease",
-    border: "1px solid rgba(255,255,255,0.18)",
+    border: "none",
     boxSizing: "border-box",
   },
   activeLink: {
@@ -115,7 +115,7 @@ const styles = {
     marginTop: "0.6rem",
     padding: "0.75rem 0.9rem",
     borderRadius: "12px",
-    border: "1px solid rgba(255,255,255,0.18)",
+    border: "none",
     background: "transparent",
     color: "rgba(255,255,255,0.88)",
     fontSize: "0.9rem",
@@ -161,7 +161,7 @@ function Sidebar() {
                 ...styles.link,
                 ...(isActive ? styles.activeLink : {}),
                 background: isActive ? styles.activeLink.background : "transparent",
-                border: "1px solid rgba(255,255,255,0.18)",
+                border: "none",
                 outline: "none",
                 boxShadow: "none",
               }}

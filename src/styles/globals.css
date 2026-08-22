@@ -55,6 +55,25 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Every interactive control has a consistent, responsive hover treatment. */
+button:not(:disabled),
+a[href] {
+  cursor: pointer;
+  transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+}
+
+button:not(:disabled):hover,
+a[href]:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16) !important;
+}
+
+button:not(:disabled):active,
+a[href]:active {
+  transform: translateY(0);
+}
+
 /* Focus must not add a second, brighter outline to buttons or dashboard links. */
 button:focus,
 button:active,
@@ -78,7 +97,7 @@ nav button:active {
 .sidebar-nav-link:focus,
 .sidebar-nav-link:focus-visible,
 .sidebar-nav-link:active {
-  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border: none !important;
   outline: none !important;
   box-shadow: none !important;
 }

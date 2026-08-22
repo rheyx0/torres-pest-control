@@ -16,7 +16,6 @@ import Field from "../common/Field";
 import InfoRow from "../common/InfoRow";
 import EmptyState from "../common/EmptyState";
 import { ACCOUNT_STATUS, SPRINT_ROLES } from "../../utils/constants";
-import { formatLastLogin } from "../../utils/formatters";
 import { validateEmailFormat, isEmailTaken } from "../../utils/validators";
 import {
   badge,
@@ -190,8 +189,8 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
                   </div>
                 ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0.75rem" }}>
-                    <InfoRow label="Username" value={user.username} />
-                    <InfoRow label="Last Login" value={formatLastLogin(user.lastLoginAt)} />
+                    <InfoRow tone="brand" label="Username" value={user.username} />
+                    <InfoRow tone="brand" label="Phone Number" value={user.phone} />
                   </div>
                 )}
 

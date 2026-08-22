@@ -56,6 +56,7 @@ function ClientDetails({
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem" }}>
           <InfoRow
+            tone="brand"
             label="Classification"
             value={
               client.classification === "OTHER" && client.classificationOther
@@ -63,15 +64,16 @@ function ClientDetails({
                 : humanizeEnum(client.classification)
             }
           />
-          <InfoRow label="Pest Concern" value={client.pestConcern} />
-          <InfoRow label="Source" value={client.source} />
-          <InfoRow label="Phone" value={client.phone} />
-          <InfoRow label="Email" value={client.email} />
-          <div style={{ gridColumn: "1 / -1" }}><InfoRow label="Address" value={client.address} /></div>
-          {/* AC (Edit Client Profile): "Edit history/timestamp is logged." */}
-          <InfoRow label="Created" value={formatDateTime(client.createdAt)} />
-          <InfoRow label="Last Updated" value={formatDateTime(client.updatedAt)} />
+          <InfoRow tone="brand" label="Pest Concern" value={client.pestConcern} />
+          <InfoRow tone="brand" label="Source" value={client.source} />
+          <InfoRow tone="brand" label="Phone" value={client.phone} />
+          <InfoRow tone="brand" label="Email" value={client.email} />
+          <div style={{ gridColumn: "1 / -1" }}><InfoRow tone="brand" label="Address" value={client.address} /></div>
         </div>
+        {/* AC (Edit Client Profile): "Edit history/timestamp is logged." */}
+        <p style={{ margin: "1rem 0 0", color: colors.muted, fontSize: "0.82rem" }}>
+          Created {formatDateTime(client.createdAt)} <span aria-hidden="true">•</span> Last updated {formatDateTime(client.updatedAt)}
+        </p>
       </section>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "1.5rem" }}>
