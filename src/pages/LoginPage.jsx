@@ -15,11 +15,6 @@ function LoginPage() {
 
   return (
     <div className="login-page">
-      <aside
-        className="login-brand-panel"
-        aria-hidden="true"
-        style={{ backgroundImage: `linear-gradient(145deg, rgba(215, 0, 0, 0.06), rgba(46, 0, 0, 0.12)), url(${process.env.PUBLIC_URL}/login-background.jpg)` }}
-      />
       <main className="login-form-panel">
         <Login onLogin={login} />
       </main>

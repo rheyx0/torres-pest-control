@@ -134,42 +134,38 @@ a {
 .login-page {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(280px, 31vw) 1fr;
-  background: #ffffff;
+  grid-template-columns: 1fr;
+  background: linear-gradient(112deg, #c90808 0%, #950707 37%, #470000 70%, #1b0000 100%);
 }
 
 .login-brand-panel {
-  min-height: 100vh;
-  background-position: center;
-  background-size: cover;
-  border-radius: 0 42px 42px 0;
-  box-shadow: 14px 0 28px rgba(90, 0, 0, 0.08);
+  display: none;
 }
 
 .login-form-panel {
   display: grid;
   place-items: center;
-  padding: 2rem;
+  padding: 1.5rem;
 }
 
 .login-card {
-  width: min(100%, 380px);
+  width: min(100%, 310px);
   background: linear-gradient(180deg, #ffffff 0%, #fffdfd 100%);
   border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 20px;
-  padding: 2.25rem 2rem 2rem;
-  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
+  border-radius: 30px;
+  padding: 1.4rem 1.25rem 1.25rem;
+  box-shadow: 0 20px 40px rgba(27, 0, 0, 0.3);
 }
 
 .login-heading {
   text-align: center;
-  margin-bottom: 1.75rem;
+  margin-bottom: 1rem;
 }
 
 .login-logo {
   display: block;
-  width: min(100%, 145px);
-  max-height: 145px;
+  width: min(100%, 62px);
+  max-height: 62px;
   height: auto;
   object-fit: contain;
   margin: 0 auto;
@@ -190,10 +186,20 @@ a {
   filter: brightness(0.96);
 }
 
+.login-card label {
+  gap: 0.35rem !important;
+  font-size: 0.78rem;
+}
+
+.login-card input {
+  padding: 0.68rem 0.75rem !important;
+  border-radius: 9px !important;
+  font-size: 0.8rem !important;
+}
+
 @media (max-width: 720px) {
   .login-page {
-    grid-template-columns: 1fr;
-    background: linear-gradient(145deg, #fff7f7, #ffffff);
+    background: linear-gradient(135deg, #bd0808 0%, #650000 55%, #210000 100%);
   }
 
   .login-brand-panel {

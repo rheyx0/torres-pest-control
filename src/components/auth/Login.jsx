@@ -28,7 +28,7 @@ function Login({ onLogin }) {
     <form onSubmit={handleSubmit} className="login-card">
       <div className="login-heading">
         <img className="login-logo" src="/login-logo.png" alt="Torres Pest Control" />
-        <h1 style={{ margin: "0.85rem 0 0", fontSize: "1.45rem", color: colors.ink, fontWeight: 800 }}>
+        <h1 style={{ margin: "0.45rem 0 0", fontSize: "1.05rem", color: colors.ink, fontWeight: 800 }}>
           Sign In
         </h1>
       </div>
@@ -85,13 +85,13 @@ const loginInputStyle = {
 };
 
 const loginButtonStyle = {
-  marginTop: "1.5rem",
+  marginTop: "1rem",
   width: "100%",
   border: "none",
   borderRadius: "12px",
   background: "linear-gradient(100deg, #9d1212 0%, #c83e3e 100%)",
   color: "#fff",
-  padding: "0.9rem 1.2rem",
+  padding: "0.78rem 1rem",
   fontWeight: 800,
   boxShadow: "0 12px 24px rgba(127, 17, 17, 0.24)",
 };
