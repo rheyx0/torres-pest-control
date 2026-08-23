@@ -40,6 +40,36 @@ const CREATE_FORM_DEFAULTS = {
   description: "",
 };
 
+const UNIT_OPTIONS = ["mL", "L", "g", "kg", "pcs", "box", "bottle", "pack", "roll", "pair", "unit"];
+
+function UnitField({ value, onChange }) {
+  const usesCustomUnit = !UNIT_OPTIONS.includes(value);
+
+  return (
+    <Field label="Unit *">
+      <select
+        value={usesCustomUnit ? "OTHER" : value}
+        onChange={(event) => onChange(event.target.value === "OTHER" ? "" : event.target.value)}
+        style={inputStyle}
+        required
+      >
+        {UNIT_OPTIONS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+        <option value="OTHER">Other</option>
+      </select>
+      {usesCustomUnit && (
+        <input
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          style={{ ...inputStyle, marginTop: "0.5rem" }}
+          placeholder="Enter a unit"
+          required
+          aria-label="Custom unit"
+        />
+      )}
+    </Field>
+  );
+}
+
 function InventoryPage() {
   const {
     inventory,
@@ -103,7 +133,7 @@ function InventoryPage() {
     const newItem = {
       name: form.name.trim(),
       type: form.type,
-      unit: form.unit,
+      unit: form.unit.trim(),
       cost: Number(form.cost),
       supplier: form.supplier || null,
       storageLocation: form.storageLocation || null,
@@ -128,7 +158,7 @@ function InventoryPage() {
       newItem.description = form.description || null;
     }
 
-    if (!newItem.name || Number.isNaN(newItem.cost)) return;
+    if (!newItem.name || !newItem.unit || Number.isNaN(newItem.cost)) return;
 
     const result = await onAddItem(newItem);
     if (result !== true) {
@@ -186,9 +216,7 @@ function InventoryPage() {
                       <option value="MATERIAL">Material</option>
                     </select>
                   </Field>
-                  <Field label="Unit *">
-                    <input name="unit" value={form.unit} onChange={handleChange} style={inputStyle} placeholder="L, kg, pcs, etc." required />
-                  </Field>
+                  <UnitField value={form.unit} onChange={(unit) => setForm((previous) => ({ ...previous, unit }))} />
                   <Field label="Cost per Unit (₱) *">
                     <input name="cost" type="number" min="0" step="0.01" value={form.cost} onChange={handleChange} style={inputStyle} placeholder="0.00" required />
                   </Field>
@@ -612,9 +640,7 @@ function EditItemModal({ item, onClose, onSave }) {
               <option value="MATERIAL">Material</option>
             </select>
           </Field>
-          <Field label="Unit *">
-            <input name="unit" value={values.unit} onChange={handleChange} style={inputStyle} required />
-          </Field>
+          <UnitField value={values.unit} onChange={(unit) => setValues((previous) => ({ ...previous, unit }))} />
           <Field label="Cost per Unit (₱) *">
             <input name="cost" type="number" min="0" step="0.01" value={values.cost} onChange={handleChange} style={inputStyle} required />
           </Field>
