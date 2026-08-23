@@ -264,7 +264,7 @@ function InventoryPage() {
               {form.type === "MATERIAL" && (
                 <div style={{ marginBottom: "1.5rem", borderBottom: "2px solid #f0f0f0", paddingBottom: "1rem" }}>
                   <h3 style={{ color: "#111827", marginBottom: "1rem" }}>Material Details</h3>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "minmax(200px, 320px)", gap: "1rem" }}>
                     <Field label="Material Category *">
                       <select name="materialCategory" value={form.materialCategory} onChange={handleChange} style={inputStyle} required>
                         <option value="PROTECTIVE_GEAR">Protective Gear</option>
@@ -273,7 +273,9 @@ function InventoryPage() {
                         <option value="OTHER">Other</option>
                       </select>
                     </Field>
-                    <Field label="Description" style={{ gridColumn: "1 / -1" }}>
+                  </div>
+                  <div style={{ marginTop: "1rem" }}>
+                    <Field label="Description">
                       <textarea name="description" value={form.description} onChange={handleChange} style={{ ...inputStyle, minHeight: "100px", resize: "vertical" }} placeholder="Description of material" />
                     </Field>
                   </div>
@@ -441,7 +443,7 @@ function InventoryPage() {
               <div style={{ color: "#374151" }}>{new Date(movement.movementDate).toLocaleDateString()}</div>
               <div style={{ fontWeight: 700, color: "#111827" }}>{movement.itemName}</div>
               <div style={{ fontWeight: 700, color: "#166534" }}>
-                +{movement.amount} {movement.itemUnit}
+                +{movement.amount}
               </div>
               <div style={{ color: "#6b7280" }}>{movement.reference || "—"}</div>
               <div style={{ color: "#6b7280" }}>{movement.actor || "—"}</div>
@@ -603,7 +605,7 @@ function StockInModal({ item, onClose, onSubmit }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     const numericAmount = Number(amount);
-    if (!numericAmount || numericAmount <= 0 || !date) return;
+    if (!Number.isInteger(numericAmount) || numericAmount <= 0 || !date) return;
     setSaving(true);
     await onSubmit({ amount: numericAmount, date, reference: reference.trim() });
     setSaving(false);
@@ -617,7 +619,7 @@ function StockInModal({ item, onClose, onSubmit }) {
         </p>
         <div style={{ display: "grid", gap: "1rem" }}>
           <Field label={`Amount (${item.unit}) *`}>
-            <input type="number" min="0" step="0.1" value={amount} onChange={(e) => setAmount(e.target.value)} style={inputStyle} placeholder="0" required autoFocus />
+            <input type="number" min="1" step="1" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} style={inputStyle} placeholder="0" required autoFocus />
           </Field>
           <Field label="Date *">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} required />
@@ -743,7 +745,7 @@ function InventoryDetailModal({ item, onClose }) {
             Material Details
           </h3>
           <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "1rem" }}>
-            <DetailRow label="Material Category" value={item.materialCategory} />
+            <DetailRow label="Material Category" value={formatMaterialCategory(item.materialCategory)} />
             {item.description && <DetailRow label="Description" value={item.description} />}
           </div>
         </div>
@@ -770,6 +772,16 @@ function InventoryDetailModal({ item, onClose }) {
       </div>
     </ModalShell>
   );
+}
+
+function formatMaterialCategory(category) {
+  return category
+    ? category
+        .toLowerCase()
+        .split("_")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ")
+    : "";
 }
 
 function DetailRow({ label, value }) {
