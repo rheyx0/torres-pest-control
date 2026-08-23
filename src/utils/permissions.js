@@ -17,6 +17,7 @@ import { ROLES } from "./constants";
 export const SUBSYSTEMS = {
   USERS: "users",
   CLIENTS: "clients",
+  CLIENT_DOCUMENTS: "clientDocuments",
   INVENTORY: "inventory",
   LOGS: "logs",
   SETTINGS: "settings",
@@ -30,6 +31,7 @@ const MATRIX = {
   [ROLES.ADMIN]: {
     users: ALL,
     clients: ALL,
+    clientDocuments: ALL,
     inventory: ALL,
     logs: READ_ONLY,
     settings: READ_ONLY,
@@ -37,13 +39,15 @@ const MATRIX = {
   [ROLES.STAFF]: {
     users: NONE,
     clients: ["view", "create", "edit"],
+    clientDocuments: ["view", "create", "delete"],
     inventory: READ_ONLY,
     logs: NONE,
     settings: READ_ONLY,
   },
   [ROLES.TECHNICIAN]: {
     users: NONE,
-    clients: ["view", "create", "edit"],
+    clients: READ_ONLY,
+    clientDocuments: ["view", "create"],
     inventory: READ_ONLY,
     logs: NONE,
     settings: READ_ONLY,

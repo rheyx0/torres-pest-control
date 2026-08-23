@@ -30,7 +30,16 @@ export const ACCOUNT_STATUS = {
   INACTIVE: "INACTIVE",
 };
 
-export const CLIENT_SOURCES = ["Walk-in", "Referral"];
+export const CLIENT_SOURCES = [
+  "Walk-in",
+  "Referral",
+  "Website Contact Form",
+  "Phone Call",
+  "Email",
+  "Facebook",
+  "Google Business Profile",
+  "Other",
+];
 
 // Suggestions for the "Pest Concern" field, offered via a <datalist> so staff
 // can pick a common one or type anything else. Kept as free text rather than

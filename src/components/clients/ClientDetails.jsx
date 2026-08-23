@@ -18,6 +18,8 @@ import { card, colors, pageShell } from "../../styles/theme";
 function ClientDetails({
   client,
   canEdit,
+  canUploadDocuments,
+  canRemoveDocuments,
   onSave,
   onUploadDocument,
   onRemoveDocument,
@@ -80,7 +82,8 @@ function ClientDetails({
         <div style={card}>
           <ClientDocuments
             documents={client.documents || []}
-            canEdit={canEdit}
+            canUpload={canUploadDocuments}
+            canRemove={canRemoveDocuments}
             onUpload={onUploadDocument}
             onRemove={onRemoveDocument}
             onResolveUrl={onResolveDocumentUrl}

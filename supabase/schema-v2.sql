@@ -301,7 +301,7 @@ create table if not exists inventory (
   id                uuid primary key default gen_random_uuid(),
   name              text not null,
   type              inventory_type not null,
-  quantity          numeric not null,
+  quantity          numeric not null default 0,
   unit              text not null,
   cost              numeric not null,
   supplier          text,

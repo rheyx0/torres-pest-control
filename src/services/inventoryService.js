@@ -138,7 +138,9 @@ export async function fetchInventory() {
 export async function createItem(item) {
   const { data, error } = await supabase
     .from("inventory")
-    .insert(buildPayload(item))
+    // Quantity starts at zero by design. It is never supplied by the form;
+    // Stock In is the only user-facing operation that can increase it.
+    .insert({ ...buildPayload(item), quantity: 0 })
     .select(COLUMNS)
     .single();
 

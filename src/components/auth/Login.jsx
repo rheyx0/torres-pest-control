@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Field from "../common/Field";
-import { buttonWhen, colors, inputStyle } from "../../styles/theme";
+import { colors } from "../../styles/theme";
 
 function Login({ onLogin }) {
   const [email, setEmail] = useState("");
@@ -25,43 +25,10 @@ function Login({ onLogin }) {
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      style={{
-        width: "100%",
-        maxWidth: "380px",
-        background: "linear-gradient(180deg, #ffffff 0%, #fffdfd 100%)",
-        border: `1px solid ${colors.softLine}`,
-        borderRadius: "20px",
-        padding: "2rem",
-        boxShadow: "0 18px 32px rgba(15, 23, 42, 0.08)",
-      }}
-    >
-      <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
-        <div
-          style={{
-            color: colors.brand,
-            fontWeight: 800,
-            fontSize: "1.3rem",
-            letterSpacing: "0.05em",
-            textTransform: "uppercase",
-          }}
-        >
-          Torres
-        </div>
-        <span
-          style={{
-            display: "block",
-            color: colors.brandInk,
-            fontSize: "0.7rem",
-            fontWeight: 700,
-            letterSpacing: "0.12em",
-            marginTop: "0.25rem",
-          }}
-        >
-          PEST CONTROL
-        </span>
-        <h1 style={{ margin: "1rem 0 0", fontSize: "1.4rem", color: colors.ink, fontWeight: 800 }}>
+    <form onSubmit={handleSubmit} className="login-card">
+      <div className="login-heading">
+        <img className="login-logo" src="/brand-logo.png" alt="Torres Pest Control" />
+        <h1 style={{ margin: "0.85rem 0 0", fontSize: "1.45rem", color: colors.ink, fontWeight: 800 }}>
           Sign In
         </h1>
       </div>
@@ -73,7 +40,7 @@ function Login({ onLogin }) {
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            style={inputStyle}
+            style={loginInputStyle}
             autoFocus
           />
         </Field>
@@ -83,7 +50,7 @@ function Login({ onLogin }) {
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            style={inputStyle}
+            style={loginInputStyle}
           />
         </Field>
       </div>
@@ -94,11 +61,34 @@ function Login({ onLogin }) {
         </div>
       )}
 
-      <button type="submit" disabled={submitting} style={{ ...buttonWhen(submitting), marginTop: "1.5rem", width: "100%" }}>
+      <button type="submit" disabled={submitting} style={{ ...loginButtonStyle, opacity: submitting ? 0.7 : 1, cursor: submitting ? "default" : "pointer" }}>
         {submitting ? "Signing in…" : "Log In"}
       </button>
     </form>
   );
 }
+
+const loginInputStyle = {
+  width: "100%",
+  border: "1px solid #d9e3f3",
+  borderRadius: "12px",
+  padding: "0.82rem 0.9rem",
+  fontSize: "0.96rem",
+  background: "#eaf1fd",
+  color: colors.body,
+  boxShadow: "inset 0 1px 2px rgba(15, 23, 42, 0.03)",
+};
+
+const loginButtonStyle = {
+  marginTop: "1.5rem",
+  width: "100%",
+  border: "none",
+  borderRadius: "12px",
+  background: "linear-gradient(100deg, #9d1212 0%, #c83e3e 100%)",
+  color: "#fff",
+  padding: "0.9rem 1.2rem",
+  fontWeight: 800,
+  boxShadow: "0 12px 24px rgba(127, 17, 17, 0.24)",
+};
 
 export default Login;

@@ -57,6 +57,8 @@ function ClientDetailPage() {
     <ClientDetails
       client={client}
       canEdit={can(SUBSYSTEMS.CLIENTS, "edit")}
+      canUploadDocuments={can(SUBSYSTEMS.CLIENT_DOCUMENTS, "create")}
+      canRemoveDocuments={can(SUBSYSTEMS.CLIENT_DOCUMENTS, "delete")}
       onSave={handleSave}
       onUploadDocument={handleUpload}
       onRemoveDocument={handleRemove}

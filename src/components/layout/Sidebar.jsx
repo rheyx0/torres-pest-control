@@ -46,9 +46,7 @@ const styles = {
   logoWrap: {
     marginBottom: "1.25rem",
     padding: "0.85rem 0.8rem 1rem",
-    background: "#fff7ed",
     borderRadius: "10px",
-    borderBottom: "1px solid rgba(255,255,255,0.18)",
   },
   logoImage: {
     display: "block",
@@ -136,7 +134,7 @@ function Sidebar() {
   return (
     <nav style={styles.sidebar}>
       <div style={styles.logoWrap}>
-        <img src="/logo.png" alt="Torres Pest Control" style={styles.logoImage} />
+        <img src="/brand-logo.png" alt="Torres Pest Control" style={styles.logoImage} />
       </div>
 
       <div style={styles.navLinks}>
@@ -162,8 +160,8 @@ function Sidebar() {
                 ...(isActive ? styles.activeLink : {}),
                 background: isActive ? styles.activeLink.background : "transparent",
                 border: "none",
-                outline: "none",
                 boxShadow: "none",
+                outline: "none",
               }}
             >
               <item.Icon size={17} strokeWidth={2} aria-hidden="true" />

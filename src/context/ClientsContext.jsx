@@ -11,6 +11,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import * as clientService from "../services/clientService";
 import { addLog, LOG_TYPES } from "../services/logService";
 import { useAuthContext } from "./AuthContext";
+import { can, SUBSYSTEMS } from "../utils/permissions";
 
 const ClientsContext = createContext(null);
 
@@ -21,6 +22,10 @@ export function ClientsProvider({ children }) {
   const [error, setError] = useState("");
 
   const actor = currentUser?.name;
+  const allowed = useCallback(
+    (subsystem, action) => can(currentUser?.role, subsystem, action),
+    [currentUser?.role]
+  );
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -47,6 +52,7 @@ export function ClientsProvider({ children }) {
 
   const addClient = useCallback(
     async (form) => {
+      if (!allowed(SUBSYSTEMS.CLIENTS, "create")) return "You do not have permission to create client profiles.";
       const { client, error: createError } = await clientService.createClient(form);
       if (createError) return createError;
 
@@ -54,11 +60,12 @@ export function ClientsProvider({ children }) {
       addLog(actor, `Created client profile for ${client.name}.`, LOG_TYPES.CLIENT);
       return client;
     },
-    [actor]
+    [actor, allowed]
   );
 
   const updateClient = useCallback(
     async (clientId, form) => {
+      if (!allowed(SUBSYSTEMS.CLIENTS, "edit")) return "You do not have permission to edit client profiles.";
       const { client, error: updateError } = await clientService.updateClient(clientId, form);
       if (updateError) return updateError;
 
@@ -71,11 +78,12 @@ export function ClientsProvider({ children }) {
       addLog(actor, `Updated client profile for ${client.name}.`, LOG_TYPES.CLIENT);
       return true;
     },
-    [actor]
+    [actor, allowed]
   );
 
   const addDocument = useCallback(
     async (clientId, file) => {
+      if (!allowed(SUBSYSTEMS.CLIENT_DOCUMENTS, "create")) return "You do not have permission to upload documents.";
       const { document, error: uploadError } = await clientService.uploadDocument(clientId, file);
       if (uploadError) return uploadError;
 
@@ -89,11 +97,12 @@ export function ClientsProvider({ children }) {
       addLog(actor, `Uploaded "${document.name}".`, LOG_TYPES.DOCUMENT);
       return true;
     },
-    [actor]
+    [actor, allowed]
   );
 
   const removeDocument = useCallback(
     async (clientId, document) => {
+      if (!allowed(SUBSYSTEMS.CLIENT_DOCUMENTS, "delete")) return "You do not have permission to delete documents.";
       const { error: deleteError } = await clientService.deleteDocument(document);
       if (deleteError) return deleteError;
 
@@ -107,7 +116,7 @@ export function ClientsProvider({ children }) {
       addLog(actor, `Removed "${document.name}".`, LOG_TYPES.DOCUMENT);
       return true;
     },
-    [actor]
+    [actor, allowed]
   );
 
   const getClient = useCallback(

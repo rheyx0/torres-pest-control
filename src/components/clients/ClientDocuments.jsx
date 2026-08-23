@@ -19,7 +19,7 @@ import { validateDocument } from "../../utils/validators";
 import { formatDate, formatFileSize } from "../../utils/formatters";
 import { colors } from "../../styles/theme";
 
-function ClientDocuments({ documents = [], canEdit = true, onUpload, onRemove, onResolveUrl }) {
+function ClientDocuments({ documents = [], canUpload = false, canRemove = false, onUpload, onRemove, onResolveUrl }) {
   const [message, setMessage] = useState(null); // { text, tone }
   const [busyId, setBusyId] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -91,7 +91,7 @@ function ClientDocuments({ documents = [], canEdit = true, onUpload, onRemove, o
     <div>
       <h2 style={{ marginTop: 0, marginBottom: "1rem", color: colors.body }}>Attached Documents</h2>
 
-      {canEdit && (
+      {canUpload && (
         <div
           style={{
             marginBottom: "1rem",
@@ -185,7 +185,7 @@ function ClientDocuments({ documents = [], canEdit = true, onUpload, onRemove, o
                   >
                     Download
                   </button>
-                  {canEdit && (
+                  {canRemove && (
                     <button
                       type="button"
                       onClick={() => handleRemove(document)}

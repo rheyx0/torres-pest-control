@@ -4,9 +4,8 @@
 // writes a row to the Stock Movement Log. That's why there's a "History" tab
 // now alongside the item list: it's the same page, not a separate route.
 //
-// Edit is deliberately narrow — Name / Type / Unit only, matching
-// updateItemBasics(). It doesn't touch Supplier, Reorder Level, or the
-// type-specific fields, so it can't clobber data it doesn't show.
+// Item profiles are fully editable, except Quantity. Quantity is changed only
+// through Stock In so it always has a matching movement-history record.
 //
 // Splitting this into components/inventory/* is still deferred (see the
 // original note this replaced) — the file's just bigger now.
@@ -24,6 +23,7 @@ const CREATE_FORM_DEFAULTS = {
   unit: "L",
   cost: "",
   supplier: "",
+  storageLocation: "",
   reorderLevel: "",
   chemicalType: "INSECTICIDE",
   expirationDate: "",
@@ -44,7 +44,7 @@ function InventoryPage() {
   const {
     inventory,
     addItem: onAddItem,
-    updateItemBasics,
+    updateItem,
     setItemStatus,
     stockIn,
     loading,
@@ -106,6 +106,7 @@ function InventoryPage() {
       unit: form.unit,
       cost: Number(form.cost),
       supplier: form.supplier || null,
+      storageLocation: form.storageLocation || null,
       reorderLevel: form.reorderLevel ? Number(form.reorderLevel) : null,
     };
 
@@ -193,6 +194,9 @@ function InventoryPage() {
                   </Field>
                   <Field label="Supplier">
                     <input name="supplier" value={form.supplier} onChange={handleChange} style={inputStyle} placeholder="Supplier name" />
+                  </Field>
+                  <Field label="Storage Location">
+                    <input name="storageLocation" value={form.storageLocation} onChange={handleChange} style={inputStyle} placeholder="e.g. Storage Room A" />
                   </Field>
                   <Field label="Reorder Level">
                     <input name="reorderLevel" type="number" min="0" step="0.1" value={form.reorderLevel} onChange={handleChange} style={inputStyle} placeholder="0" />
@@ -459,7 +463,7 @@ function InventoryPage() {
           item={editItem}
           onClose={() => setEditItem(null)}
           onSave={async (values) => {
-            const result = await updateItemBasics(editItem.id, values);
+            const result = await updateItem(editItem.id, values);
             if (result !== true) {
               showError(typeof result === "string" ? result : "Could not update the item.");
               return false;
@@ -545,19 +549,47 @@ function TabButton({ active, onClick, children }) {
 }
 
 function EditItemModal({ item, onClose, onSave }) {
-  const [values, setValues] = useState({ name: item.name, type: item.type, unit: item.unit });
+  const [values, setValues] = useState({
+    ...CREATE_FORM_DEFAULTS,
+    name: item.name || "",
+    type: item.type || "CHEMICAL",
+    unit: item.unit || "",
+    cost: item.cost ?? "",
+    supplier: item.supplier || "",
+    storageLocation: item.storageLocation || "",
+    reorderLevel: item.reorderLevel ?? "",
+    chemicalType: item.chemicalType || "INSECTICIDE",
+    expirationDate: item.expirationDate || "",
+    safetyLevel: item.safetyLevel || "",
+    hazardRating: item.hazardRating || "",
+    dateReceived: item.dateReceived || "",
+    serialNumber: item.serialNumber || "",
+    condition: item.condition || "ACTIVE",
+    lastMaintenanceDate: item.lastMaintenanceDate || "",
+    nextMaintenanceDate: item.nextMaintenanceDate || "",
+    manufacturer: item.manufacturer || "",
+    model: item.model || "",
+    materialCategory: item.materialCategory || "SUPPLIES",
+    description: item.description || "",
+  });
   const [saving, setSaving] = useState(false);
+  const [validationError, setValidationError] = useState("");
 
   const handleChange = (event) => {
     const { name, value } = event.target;
+    setValidationError("");
     setValues((previous) => ({ ...previous, [name]: value }));
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!values.name.trim() || !values.unit.trim()) return;
+    if (!values.name.trim() || !values.unit.trim() || values.cost === "") return;
+    if (values.lastMaintenanceDate && values.nextMaintenanceDate && values.nextMaintenanceDate <= values.lastMaintenanceDate) {
+      setValidationError("Next maintenance must be after the last maintenance date.");
+      return;
+    }
     setSaving(true);
-    await onSave({ name: values.name.trim(), type: values.type, unit: values.unit.trim() });
+    await onSave({ ...values, name: values.name.trim(), unit: values.unit.trim() });
     setSaving(false);
   };
 
@@ -565,14 +597,16 @@ function EditItemModal({ item, onClose, onSave }) {
     <ModalShell onClose={onClose} title={`Edit "${item.name}"`}>
       <form onSubmit={handleSubmit}>
         <p style={{ margin: "0 0 1.25rem", color: "#6b7280", fontSize: "0.85rem" }}>
-          Edit covers Name, Type, and Unit only. Supplier, Reorder Level, and type-specific details aren't editable here yet.
+          Update this item's details here. Quantity stays protected and can only be changed through Stock In, which records every adjustment in history.
         </p>
-        <div style={{ display: "grid", gap: "1rem" }}>
+        {validationError && <p style={{ margin: "0 0 1rem", color: "#b91c1c", fontSize: "0.85rem", fontWeight: 700 }}>{validationError}</p>}
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
           <Field label="Item Name *">
             <input name="name" value={values.name} onChange={handleChange} style={inputStyle} required />
           </Field>
           <Field label="Type *">
-            <select name="type" value={values.type} onChange={handleChange} style={inputStyle} required>
+            <select name="type" value={values.type} disabled style={{ ...inputStyle, background: "#f3f4f6", cursor: "not-allowed" }} title="Type is fixed after creation to preserve the item's stock history.">
               <option value="CHEMICAL">Chemical</option>
               <option value="EQUIPMENT">Equipment</option>
               <option value="MATERIAL">Material</option>
@@ -581,7 +615,59 @@ function EditItemModal({ item, onClose, onSave }) {
           <Field label="Unit *">
             <input name="unit" value={values.unit} onChange={handleChange} style={inputStyle} required />
           </Field>
+          <Field label="Cost per Unit (₱) *">
+            <input name="cost" type="number" min="0" step="0.01" value={values.cost} onChange={handleChange} style={inputStyle} required />
+          </Field>
+          <Field label="Supplier">
+            <input name="supplier" value={values.supplier} onChange={handleChange} style={inputStyle} />
+          </Field>
+          <Field label="Storage Location">
+            <input name="storageLocation" value={values.storageLocation} onChange={handleChange} style={inputStyle} />
+          </Field>
+          <Field label="Reorder Level">
+            <input name="reorderLevel" type="number" min="0" step="0.1" value={values.reorderLevel} onChange={handleChange} style={inputStyle} />
+          </Field>
         </div>
+
+        {values.type === "CHEMICAL" && (
+          <section style={editSectionStyle}>
+            <h3 style={editSectionHeadingStyle}>Chemical Details</h3>
+            <div style={editGridStyle}>
+              <Field label="Chemical Type *">
+                <select name="chemicalType" value={values.chemicalType} onChange={handleChange} style={inputStyle} required>
+                  <option value="INSECTICIDE">Insecticide</option><option value="FUNGICIDE">Fungicide</option><option value="RODENTICIDE">Rodenticide</option><option value="HERBICIDE">Herbicide</option><option value="FUMIGANT">Fumigant</option><option value="OTHER">Other</option>
+                </select>
+              </Field>
+              <Field label="Expiration Date"><input name="expirationDate" type="date" value={values.expirationDate} onChange={handleChange} style={inputStyle} /></Field>
+              <Field label="Safety Level"><input name="safetyLevel" value={values.safetyLevel} onChange={handleChange} style={inputStyle} /></Field>
+              <Field label="Hazard Rating"><input name="hazardRating" value={values.hazardRating} onChange={handleChange} style={inputStyle} /></Field>
+              <Field label="Date Received"><input name="dateReceived" type="date" value={values.dateReceived} onChange={handleChange} style={inputStyle} /></Field>
+            </div>
+          </section>
+        )}
+
+        {values.type === "EQUIPMENT" && (
+          <section style={editSectionStyle}>
+            <h3 style={editSectionHeadingStyle}>Equipment Details</h3>
+            <p style={{ margin: "0 0 1rem", color: "#6b7280", fontSize: "0.85rem" }}>After servicing equipment, set Last Maintenance to the service date and schedule its Next Maintenance date.</p>
+            <div style={editGridStyle}>
+              <Field label="Serial Number"><input name="serialNumber" value={values.serialNumber} onChange={handleChange} style={inputStyle} /></Field>
+              <Field label="Condition *"><select name="condition" value={values.condition} onChange={handleChange} style={inputStyle} required><option value="ACTIVE">Active</option><option value="MAINTENANCE">Maintenance</option><option value="DAMAGED">Damaged</option><option value="INACTIVE">Inactive</option></select></Field>
+              <Field label="Manufacturer"><input name="manufacturer" value={values.manufacturer} onChange={handleChange} style={inputStyle} /></Field>
+              <Field label="Model"><input name="model" value={values.model} onChange={handleChange} style={inputStyle} /></Field>
+              <Field label="Last Maintenance Date"><input name="lastMaintenanceDate" type="date" value={values.lastMaintenanceDate} onChange={handleChange} style={inputStyle} /></Field>
+              <Field label="Next Maintenance Date"><input name="nextMaintenanceDate" type="date" value={values.nextMaintenanceDate} onChange={handleChange} style={inputStyle} /></Field>
+            </div>
+          </section>
+        )}
+
+        {values.type === "MATERIAL" && (
+          <section style={editSectionStyle}>
+            <h3 style={editSectionHeadingStyle}>Material Details</h3>
+            <Field label="Material Category *"><select name="materialCategory" value={values.materialCategory} onChange={handleChange} style={inputStyle} required><option value="PROTECTIVE_GEAR">Protective Gear</option><option value="SUPPLIES">Supplies</option><option value="TOOLS_ACCESSORIES">Tools & Accessories</option><option value="OTHER">Other</option></select></Field>
+            <div style={{ marginTop: "1rem" }}><Field label="Description"><textarea name="description" value={values.description} onChange={handleChange} style={{ ...inputStyle, minHeight: "100px", resize: "vertical" }} /></Field></div>
+          </section>
+        )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1.5rem", gap: "0.5rem" }}>
           <button type="button" onClick={onClose} style={secondaryButton}>
@@ -829,6 +915,24 @@ const inputStyle = {
   fontSize: "0.96rem",
   background: "#ffffff",
   color: "#111827",
+};
+
+const editSectionStyle = {
+  marginTop: "1.5rem",
+  paddingTop: "1.25rem",
+  borderTop: "1px solid #e5e7eb",
+};
+
+const editSectionHeadingStyle = {
+  margin: "0 0 1rem",
+  color: "#374151",
+  fontSize: "1rem",
+};
+
+const editGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+  gap: "1rem",
 };
 
 export default InventoryPage;

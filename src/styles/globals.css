@@ -131,6 +131,64 @@ a {
   max-width: 100%;
 }
 
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(280px, 31vw) 1fr;
+  background: #ffffff;
+}
+
+.login-brand-panel {
+  min-height: 100vh;
+  background-position: center;
+  background-size: cover;
+  border-radius: 0 42px 42px 0;
+  box-shadow: 14px 0 28px rgba(90, 0, 0, 0.08);
+}
+
+.login-form-panel {
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+}
+
+.login-card {
+  width: min(100%, 380px);
+  background: linear-gradient(180deg, #ffffff 0%, #fffdfd 100%);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 20px;
+  padding: 2.25rem 2rem 2rem;
+  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
+}
+
+.login-heading {
+  text-align: center;
+  margin-bottom: 1.75rem;
+}
+
+.login-logo {
+  display: block;
+  width: min(100%, 260px);
+  height: auto;
+  object-fit: contain;
+  margin: 0 auto;
+}
+
+@media (max-width: 720px) {
+  .login-page {
+    grid-template-columns: 1fr;
+    background: linear-gradient(145deg, #fff7f7, #ffffff);
+  }
+
+  .login-brand-panel {
+    display: none;
+  }
+
+  .login-form-panel {
+    padding: 1.25rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
