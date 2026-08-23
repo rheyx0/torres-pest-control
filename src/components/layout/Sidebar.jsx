@@ -44,8 +44,8 @@ const styles = {
     overflow: "hidden",
   },
   logoWrap: {
-    marginBottom: "1.25rem",
-    padding: "0.85rem 0.8rem 1rem",
+    marginBottom: "0.35rem",
+    padding: "0.15rem 0.8rem 0.35rem",
     borderRadius: "10px",
   },
   logoImage: {

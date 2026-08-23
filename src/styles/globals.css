@@ -168,10 +168,26 @@ a {
 
 .login-logo {
   display: block;
-  width: min(100%, 260px);
+  width: min(100%, 145px);
+  max-height: 145px;
   height: auto;
   object-fit: contain;
   margin: 0 auto;
+}
+
+.login-submit-button:not(:disabled) {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.login-submit-button:not(:disabled):hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+  box-shadow: 0 16px 28px rgba(127, 17, 17, 0.34) !important;
+}
+
+.login-submit-button:not(:disabled):active {
+  transform: translateY(0);
+  filter: brightness(0.96);
 }
 
 @media (max-width: 720px) {

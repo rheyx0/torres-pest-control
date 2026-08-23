@@ -27,7 +27,7 @@ function Login({ onLogin }) {
   return (
     <form onSubmit={handleSubmit} className="login-card">
       <div className="login-heading">
-        <img className="login-logo" src="/brand-logo.png" alt="Torres Pest Control" />
+        <img className="login-logo" src="/login-logo.png" alt="Torres Pest Control" />
         <h1 style={{ margin: "0.85rem 0 0", fontSize: "1.45rem", color: colors.ink, fontWeight: 800 }}>
           Sign In
         </h1>
@@ -61,7 +61,12 @@ function Login({ onLogin }) {
         </div>
       )}
 
-      <button type="submit" disabled={submitting} style={{ ...loginButtonStyle, opacity: submitting ? 0.7 : 1, cursor: submitting ? "default" : "pointer" }}>
+      <button
+        type="submit"
+        className="login-submit-button"
+        disabled={submitting}
+        style={{ ...loginButtonStyle, opacity: submitting ? 0.7 : 1, cursor: submitting ? "default" : "pointer" }}
+      >
         {submitting ? "Signing in…" : "Log In"}
       </button>
     </form>
