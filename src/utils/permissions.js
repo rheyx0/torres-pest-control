@@ -70,4 +70,5 @@ export function visibleSubsystems(role) {
   return Object.values(SUBSYSTEMS).filter((subsystem) => can(role, subsystem, "view"));
 }
 
-export default { can, visibleSubsystems, SUBSYSTEMS };
+const permissionsApi = { can, visibleSubsystems, SUBSYSTEMS };
+export default permissionsApi;
