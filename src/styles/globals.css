@@ -1,0 +1,219 @@
+/* Minimal reset and design tokens.
+ *
+ * The app styles components with inline `style={{...}}` props (see
+ * src/styles/theme.js for the shared objects). This file deliberately stays
+ * small: page-level resets, focus visibility, and the tokens a future CSS
+ * migration would build on. It is not a component stylesheet.
+ */
+
+:root {
+  --brand: #7f1111;
+  --brand-light: #bf3e3e;
+  --brand-ink: #8b1e1e;
+  --ink: #0f172a;
+  --body: #111827;
+  --muted: #6b7280;
+  --line: #dfe4ea;
+  --success: #1f7a5f;
+  --danger: #b91c1c;
+  --radius: 12px;
+  --radius-lg: 20px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--body);
+  background: #f7f7f8;
+}
+
+/* Inputs don't inherit the body font by default. */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Every interactive control has a consistent, responsive hover treatment. */
+button:not(:disabled),
+a[href] {
+  cursor: pointer;
+  transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+}
+
+button:not(:disabled):hover,
+a[href]:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16) !important;
+}
+
+button:not(:disabled):active,
+a[href]:active {
+  transform: translateY(0);
+}
+
+/* Focus must not add a second, brighter outline to buttons or dashboard links. */
+button:focus,
+button:active,
+a:focus,
+a:active,
+nav a:focus,
+nav a:focus-visible,
+nav a:active,
+nav button:focus,
+nav button:focus-visible,
+nav button:active {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Sidebar links must never retain a browser "pressed" or visited outline. */
+.sidebar-nav-link,
+.sidebar-nav-link:link,
+.sidebar-nav-link:visited,
+.sidebar-nav-link:hover,
+.sidebar-nav-link:focus,
+.sidebar-nav-link:focus-visible,
+.sidebar-nav-link:active {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.sidebar-nav-link:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16) !important;
+}
+
+:focus-visible {
+  outline: 0 !important;
+}
+
+.app-shell {
+  min-height: 100vh;
+}
+
+.app-content {
+  min-height: 100vh;
+  margin-left: 264px;
+}
+
+a {
+  color: var(--brand-ink);
+}
+
+/* Long tables and code blocks scroll inside themselves rather than pushing
+   the page sideways. */
+.scroll-x {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1fr;
+  background: linear-gradient(112deg, #c90808 0%, #950707 37%, #470000 70%, #1b0000 100%);
+}
+
+.login-brand-panel {
+  display: none;
+}
+
+.login-form-panel {
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.login-card {
+  width: min(100%, 310px);
+  background: linear-gradient(180deg, #ffffff 0%, #fffdfd 100%);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 30px;
+  padding: 1.4rem 1.25rem 1.25rem;
+  box-shadow: 0 20px 40px rgba(27, 0, 0, 0.3);
+}
+
+.login-heading {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.login-logo {
+  display: block;
+  width: min(100%, 62px);
+  max-height: 62px;
+  height: auto;
+  object-fit: contain;
+  margin: 0 auto;
+}
+
+.login-submit-button:not(:disabled) {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.login-submit-button:not(:disabled):hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+  box-shadow: 0 16px 28px rgba(127, 17, 17, 0.34) !important;
+}
+
+.login-submit-button:not(:disabled):active {
+  transform: translateY(0);
+  filter: brightness(0.96);
+}
+
+.login-card label {
+  gap: 0.35rem !important;
+  font-size: 0.78rem;
+}
+
+.login-card input {
+  padding: 0.68rem 0.75rem !important;
+  border-radius: 9px !important;
+  font-size: 0.8rem !important;
+}
+
+@media (max-width: 720px) {
+  .login-page {
+    background: linear-gradient(135deg, #bd0808 0%, #650000 55%, #210000 100%);
+  }
+
+  .login-brand-panel {
+    display: none;
+  }
+
+  .login-form-panel {
+    padding: 1.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
