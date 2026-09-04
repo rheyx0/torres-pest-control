@@ -80,13 +80,16 @@ function UserForm({ accounts = [], onSubmit, submitting = false }) {
           />
         </Field>
 
-        <Field label="Phone">
+        <Field label="Phone" error={errors.phone} hint="Philippine standard format (11 digits, starts with 09)">
           <input
             aria-label="Phone"
             name="phone"
+            type="tel"
+            maxLength={11}
+            placeholder="09XXXXXXXXX"
             value={form.phone}
             onChange={handleFieldChange}
-            style={inputStyle}
+            style={styleFor("phone")}
           />
         </Field>
 

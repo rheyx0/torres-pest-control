@@ -13,7 +13,13 @@ function Layout({ children }) {
   return (
     <div className="app-shell" style={{ background: appBackground }}>
       <Sidebar />
-      <div className="app-content" style={{ padding: "2.25rem 2rem 2.5rem", background: "rgba(255, 247, 247, 0.42)" }}>
+      <div
+        className="app-content"
+        style={{ padding: "2.25rem 2rem 2.5rem", background: "rgba(255, 247, 247, 0.42)" }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && event.target.tagName !== "TEXTAREA") event.preventDefault();
+        }}
+      >
         <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
           <Navbar />
           {children || <Outlet />}

@@ -18,13 +18,6 @@ export const IMPLEMENTED_ROLES = [ROLES.ADMIN, ROLES.STAFF, ROLES.TECHNICIAN];
 
 export const isRoleImplemented = (role) => IMPLEMENTED_ROLES.includes(role);
 
-// Maps a role to its Supabase table. Disappears after the schema migration.
-export const TABLE_BY_ROLE = {
-  [ROLES.ADMIN]: "admins",
-  [ROLES.STAFF]: "staff",
-  [ROLES.TECHNICIAN]: "technicians",
-};
-
 export const ACCOUNT_STATUS = {
   ACTIVE: "ACTIVE",
   INACTIVE: "INACTIVE",

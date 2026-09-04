@@ -23,7 +23,7 @@ function StaffDashboard() {
 
   return (
     <div style={pageShell}>
-      <PageHeader eyebrow="Overview" title={`Welcome back, ${currentUser?.name || "there"}`} />
+          <PageHeader eyebrow="Overview" title={`Welcome back, ${currentUser?.username || currentUser?.name || "there"}`} />
 
       <div
         style={{

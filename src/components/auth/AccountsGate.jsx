@@ -69,7 +69,7 @@ function AccountsGate({ children }) {
     );
   }
 
-  if (loading || !currentUser) {
+  if (!currentUser && loading) {
     return (
       <CenteredMessage>
         <div style={{ color: colors.muted, fontWeight: 600 }}>Loading your account…</div>

@@ -109,7 +109,7 @@ export function InventoryProvider({ children }) {
    * can't drift apart even under concurrent Stock Ins.
    */
   const stockIn = useCallback(
-    async (itemId, { amount, date, reference, intakeBranchOrStation, idempotencyKey }) => {
+    async (itemId, { amount, date, reference, intakeBranchOrStation, idempotencyKey, unitCost }) => {
       const target = inventory.find((entry) => entry.id === itemId);
       const result = await inventoryService.stockIn(itemId, {
         amount,
@@ -119,11 +119,16 @@ export function InventoryProvider({ children }) {
         actorId: currentUser?.id,
         intakeBranchOrStation,
         idempotencyKey,
+        unitCost,
       });
       if (result.error) return result.error;
 
       setInventory((previous) =>
-        previous.map((entry) => (entry.id === itemId ? { ...entry, quantity: result.newQuantity } : entry))
+        previous.map((entry) =>
+          entry.id === itemId
+            ? { ...entry, quantity: result.newQuantity, cost: unitCost !== undefined ? Number(unitCost) : entry.cost }
+            : entry
+        )
       );
       setMovements((previous) => [
         { ...result.movement, itemName: target?.name || "Unknown item", itemUnit: target?.unit || "" },

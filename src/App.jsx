@@ -24,7 +24,6 @@ import ClientsPage from "./pages/ClientsPage";
 import CreateClientPage from "./pages/CreateClientPage";
 import ClientDetailPage from "./pages/ClientDetailPage";
 import InventoryPage from "./pages/InventoryPage";
-import SettingsPage from "./pages/SettingsPage";
 
 import { SUBSYSTEMS } from "./utils/permissions";
 import { isSupabaseConfigured } from "./services/supabaseClient";
@@ -73,11 +72,6 @@ function App() {
 
                 <Route path="/" element={<Guarded><DashboardPage /></Guarded>} />
                 <Route path="/account" element={<Guarded><UserAccountPage /></Guarded>} />
-                <Route
-                  path="/settings"
-                  element={<Guarded subsystem={SUBSYSTEMS.SETTINGS} action="view"><SettingsPage /></Guarded>}
-                />
-
                 <Route
                   path="/users"
                   element={<Guarded subsystem={SUBSYSTEMS.USERS} action="view"><UsersPage /></Guarded>}

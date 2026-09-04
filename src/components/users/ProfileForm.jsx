@@ -1,22 +1,20 @@
-// The signed-in user's own profile.
-//
-// The username field is gone: there is no username column, so the old form
-// let people edit a value that was silently dropped on save and reverted on
-// refresh. Username is shown read-only (it mirrors the email) until the
-// schema gains a real column.
-
 import { useEffect, useState } from "react";
 import Field from "../common/Field";
-import { validateEmailFormat } from "../../utils/validators";
+import { validateEmailFormat, validatePhilippinePhone } from "../../utils/validators";
 import { buttonWhen, card, colors, inputStyle, invalidInputStyle } from "../../styles/theme";
 
 function ProfileForm({ user, onSubmit }) {
-  const [form, setForm] = useState({ name: "", email: "" });
+  const [form, setForm] = useState({ name: "", username: "", email: "", phone: "" });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    setForm({ name: user?.name || "", email: user?.email || "" });
+    setForm({
+      name: user?.name || "",
+      username: user?.username || "",
+      email: user?.email || "",
+      phone: user?.phone || "",
+    });
   }, [user]);
 
   const handleChange = (event) => {
@@ -27,56 +25,64 @@ function ProfileForm({ user, onSubmit }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-
     const nextErrors = {};
-    if (!form.name.trim()) nextErrors.name = "Name is required.";
+    if (!form.name.trim()) nextErrors.name = "Full name is required.";
+    if (!form.username.trim()) nextErrors.username = "Username is required.";
+
     const emailError = validateEmailFormat(form.email);
     if (emailError) nextErrors.email = emailError;
+    const phoneError = validatePhilippinePhone(form.phone);
+    if (phoneError) nextErrors.phone = phoneError;
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
     setSubmitting(true);
-    await onSubmit?.({ name: form.name.trim(), email: form.email.trim() });
+    await onSubmit?.({
+      name: form.name.trim(),
+      username: form.username.trim(),
+      email: form.email.trim(),
+      phone: form.phone.trim(),
+    });
     setSubmitting(false);
   };
 
   const readOnlyStyle = { ...inputStyle, background: "#f9fafb", color: colors.muted };
+  const styleFor = (field) => (errors[field] ? invalidInputStyle : inputStyle);
 
   return (
     <form onSubmit={handleSubmit} style={card}>
-      <div style={{ display: "grid", gap: "1rem" }}>
+      <h2 style={{ margin: "0 0 0.5rem", fontSize: "1.25rem", color: colors.ink }}>
+        Account Information
+      </h2>
+      <p style={{ margin: "0 0 1.25rem", color: colors.muted, fontSize: "0.88rem" }}>
+        View and update your personal and contact details.
+      </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem", alignItems: "start" }}>
         <Field label="Full Name" error={errors.name}>
-          <input
-            name="name"
-            value={form.name}
-            onChange={handleChange}
-            style={errors.name ? invalidInputStyle : inputStyle}
-          />
+          <input name="name" value={form.name} onChange={handleChange} style={styleFor("name")} />
         </Field>
-
-        <Field label="Email Address" error={errors.email} hint="This is also your sign-in username.">
-          <input
-            name="email"
-            type="email"
-            value={form.email}
-            onChange={handleChange}
-            style={errors.email ? invalidInputStyle : inputStyle}
-          />
+        <Field label="Username" error={errors.username}>
+          <input name="username" value={form.username} onChange={handleChange} style={styleFor("username")} />
         </Field>
-
-        <Field label="Role">
+        <Field label="Email Address" error={errors.email}>
+          <input name="email" type="email" value={form.email} onChange={handleChange} style={styleFor("email")} />
+        </Field>
+        <Field label="Phone Number" error={errors.phone} hint="Philippine standard (11 digits, starts with 09)">
+          <input name="phone" type="tel" maxLength={11} value={form.phone} onChange={handleChange} style={{ ...styleFor("phone"), width: "100%", boxSizing: "border-box" }} />
+        </Field>
+        <Field label="Assigned Role">
           <input value={user?.role || ""} readOnly style={readOnlyStyle} />
         </Field>
-
-        <Field label="Status">
+        <Field label="Account Status">
           <input value={user?.status || ""} readOnly style={readOnlyStyle} />
         </Field>
       </div>
 
       <div style={{ marginTop: "1.5rem" }}>
         <button type="submit" disabled={submitting} style={buttonWhen(submitting)}>
-          {submitting ? "Saving…" : "Save Changes"}
+          {submitting ? "Saving Profile..." : "Save Changes"}
         </button>
       </div>
     </form>

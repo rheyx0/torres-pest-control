@@ -11,7 +11,6 @@ import {
   ClipboardPlus,
   Gauge,
   Package,
-  Settings,
   UserCircle,
   Users,
 } from "lucide-react";
@@ -26,7 +25,6 @@ const NAV_ITEMS = [
   { label: "Create Account", path: "/users/new", subsystem: SUBSYSTEMS.USERS, action: "create", Icon: UserCircle },
   { label: "Inventory", path: "/inventory", subsystem: SUBSYSTEMS.INVENTORY, action: "view", Icon: Package },
   { label: "My Profile", path: "/account", subsystem: null, Icon: UserCircle },
-  { label: "Settings", path: "/settings", subsystem: SUBSYSTEMS.SETTINGS, action: "view", Icon: Settings },
 ];
 
 const styles = {
@@ -174,7 +172,7 @@ function Sidebar() {
       <div style={styles.userInfo}>
         {currentUser && (
           <>
-            Logged in as <strong>{currentUser.name}</strong> ({currentUser.role})
+            Logged in as <strong>{currentUser.username || currentUser.name}</strong> ({currentUser.role})
           </>
         )}
         <button

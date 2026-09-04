@@ -1,9 +1,17 @@
+# Supabase setup notes
 # Planned Supabase structure (not yet connected)
 
 This describes how the app *would* be wired up to Supabase once you're ready.
 Right now `src/App.js` still reads/writes everything through `localStorage` —
 none of this is active yet, and there's no Prisma involved — just Supabase
-directly (its SQL schema + the `@supabase/supabase-js` client).
+directly (its SQL schema + the `@supabase/supabase-js` client). Account creation, account status changes,
+and login use the v2 `users` and `sessions` tables plus their security-definer
+RPCs.
+
+Run `schema-v2.sql` first, then all migrations in order, especially
+`008-workflow-integrity.sql` and `009-user-editing-and-stock-cost.sql`.
+After running SQL, refresh PostgREST's schema cache if the app reports that an
+RPC is missing.
 
 ## Folder structure once connected
 
@@ -32,24 +40,23 @@ handlers would call Supabase directly instead of a custom Express API.
 3. A matching row is inserted into `admins` / `staff` / `technicians`
    (whichever table matches the role) with `auth_user_id` set to the new
    Supabase Auth user's id, holding the profile fields (name, phone, status).
-4. On login, the app reads `auth.jwt()`'s role claim to know which table to
-   query for the full profile.
+4. On login, `check_login` creates a row in `sessions`; inactive accounts are
+   rejected and deactivation removes any existing session.
 
 ## What changes in `App.js` when this gets wired up
 
 - `useState(() => localStorage.getItem(...))` → `useEffect` that calls
   `supabase.from('admins').select('*')` (etc.) on mount.
 - `login(username, password)` → `supabase.auth.signInWithPassword(...)`.
-- `addAdmin/addStaff/addTechnician` → `supabase.from('admins').insert(...)`
-  (requires being logged in as an admin — enforced by the RLS policy, not
-  just hidden UI).
+- Account creation → `create_user(...)` RPC.
+- Account updates → `update_user(...)` RPC.
+- Activation/deactivation → `set_user_status(...)` RPC.
+- These RPCs enforce the administrator check server-side.
 - The `torres_*` localStorage keys go away entirely; Supabase is the
   persistence layer.
 
-## Not done yet, on purpose
+## Important
 
-- No `@supabase/supabase-js` package installed.
-- No `.env` file with real credentials.
-- No Supabase project created.
-- `supabase/schema.sql` hasn't been run anywhere yet.
-- `src/App.js` is untouched by this — still 100% localStorage, as requested.
+The old `admins`, `staff`, and `technicians` tables are legacy storage. New
+accounts created by the app appear in `public.users`. Check that table in
+Supabase, not the old role-specific tables.

@@ -28,7 +28,7 @@ const COLUMNS = `
 
 const MOVEMENT_COLUMNS = `
   id, item_id, amount, movement_date, reference, actor, created_at,
-  inventory ( name, unit )
+  inventory ( name, unit, cost )
 `;
 
 function describeError(error) {
@@ -212,21 +212,30 @@ export async function setItemStatus(itemId, status) {
  * movement row and the quantity bump can't get out of sync, and so a
  * disabled item is rejected even if the UI's guard is somehow bypassed.
  */
-export async function stockIn(itemId, { amount, date, reference, actor, actorId, intakeBranchOrStation, idempotencyKey }) {
+export async function stockIn(
+  itemId,
+  { amount, date, reference, actor, actorId, intakeBranchOrStation, idempotencyKey, unitCost }
+) {
+  const numericCost = unitCost !== undefined && unitCost !== null && unitCost !== "" ? Number(unitCost) : null;
+
   const { data, error } = await supabase.rpc("stock_in", {
     p_item_id: itemId,
     p_amount: Number(amount),
     p_movement_date: date,
     p_reference: nullIfBlank(reference),
     p_actor: actor || null,
-    p_idempotency_key: idempotencyKey,
-    p_actor_id: actorId || null,
-    p_intake_branch_or_station: intakeBranchOrStation || null,
   });
 
   if (error) return { error: describeError(error) };
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) return { error: "Stock In did not return a result." };
+
+  // Update item catalog cost if a unitCost was explicitly entered
+  if (numericCost !== null && !isNaN(numericCost) && numericCost >= 0) {
+    await supabase.from("inventory").update({ cost: numericCost }).eq("id", itemId);
+  }
+
+  const calculatedTotal = numericCost !== null ? Number(amount) * numericCost : 0;
 
   return {
     movement: {
@@ -234,8 +243,11 @@ export async function stockIn(itemId, { amount, date, reference, actor, actorId,
       itemId: row.item_id,
       amount: Number(row.amount),
       movementDate: row.movement_date,
-      reference: row.reference || "",
-      actor: row.actor || "",
+      reference: row.reference || reference || "",
+      actor: row.actor || actor || "",
+      intakeBranchOrStation: intakeBranchOrStation || "",
+      unitCost: numericCost || 0,
+      totalCost: calculatedTotal,
       createdAt: row.created_at,
     },
     newQuantity: Number(row.new_quantity),
@@ -243,13 +255,20 @@ export async function stockIn(itemId, { amount, date, reference, actor, actorId,
 }
 
 function mapMovementRow(row) {
+  const amount = Number(row.amount) || 0;
+  const unitCost = Number(row.unit_cost ?? row.inventory?.cost ?? 0);
+  const totalCost = Number(row.total_cost ?? (amount * unitCost));
+
   return {
     id: row.id,
     itemId: row.item_id,
-    amount: Number(row.amount),
+    amount,
     movementDate: row.movement_date,
-    reference: row.reference || "",
-    actor: row.actor || "",
+    reference: row.reference || row.purchase_reference || "—",
+    intakeBranchOrStation: row.intake_branch_or_station || "—",
+    actor: row.actor || "—",
+    unitCost,
+    totalCost,
     createdAt: row.created_at,
     itemName: row.inventory?.name || "Unknown item",
     itemUnit: row.inventory?.unit || "",

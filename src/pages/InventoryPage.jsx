@@ -10,8 +10,10 @@
 // Splitting this into components/inventory/* is still deferred (see the
 // original note this replaced) — the file's just bigger now.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useInventory from "../hooks/useInventory";
+import useAuth from "../hooks/useAuth";
+import { SUBSYSTEMS } from "../utils/permissions";
 import { useToast } from "../context/ToastContext";
 import { INVENTORY_STATUS } from "../services/inventoryService";
 import { card, colors, primaryButton, secondaryButton, dangerButton, successButton } from "../styles/theme";
@@ -43,10 +45,10 @@ const CREATE_FORM_DEFAULTS = {
   conversionMultiplier: "1",
 };
 
-const UNIT_OPTIONS = ["mL", "L", "g", "kg", "pcs", "box", "bottle", "pack", "roll", "pair", "unit"];
+const UNIT_OPTIONS = ["L", "mL", "kg", "g", "pcs", "boxes", "bottles", "sachets"];
 
 function UnitField({ value, onChange }) {
-  const usesCustomUnit = !UNIT_OPTIONS.includes(value);
+  const usesCustomUnit = value && !UNIT_OPTIONS.includes(value);
 
   return (
     <Field label="Unit *">
@@ -74,6 +76,10 @@ function UnitField({ value, onChange }) {
 }
 
 function InventoryPage() {
+  const { can } = useAuth();
+  const canCreate = can(SUBSYSTEMS.INVENTORY, "create");
+  const canEdit = can(SUBSYSTEMS.INVENTORY, "edit");
+
   const {
     inventory,
     addItem: onAddItem,
@@ -96,6 +102,82 @@ function InventoryPage() {
   const [stockInItem, setStockInItem] = useState(null);
   const [disableTarget, setDisableTarget] = useState(null);
   const [form, setForm] = useState(CREATE_FORM_DEFAULTS);
+
+  // History filtering and sorting states
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyItemFilter, setHistoryItemFilter] = useState("ALL");
+  const [historyBranchFilter, setHistoryBranchFilter] = useState("ALL");
+  const [historyDateFilter, setHistoryDateFilter] = useState("ALL");
+  const [historySort, setHistorySort] = useState("DATE_DESC");
+
+  const uniqueBranches = useMemo(() => {
+    const set = new Set();
+    movements.forEach((m) => {
+      if (m.intakeBranchOrStation && m.intakeBranchOrStation !== "—") set.add(m.intakeBranchOrStation);
+    });
+    return Array.from(set).sort();
+  }, [movements]);
+
+  const uniqueItems = useMemo(() => {
+    const map = new Map();
+    movements.forEach((m) => {
+      if (m.itemId && m.itemName) map.set(m.itemId, m.itemName);
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [movements]);
+
+  const filteredAndSortedMovements = useMemo(() => {
+    let result = [...movements];
+
+    const term = historySearch.trim().toLowerCase();
+    if (term) {
+      result = result.filter((m) => {
+        const text = `${m.itemName || ""} ${m.reference || ""} ${m.intakeBranchOrStation || ""} ${m.actor || ""}`.toLowerCase();
+        return text.includes(term);
+      });
+    }
+
+    if (historyItemFilter !== "ALL") {
+      result = result.filter((m) => m.itemId === historyItemFilter);
+    }
+
+    if (historyBranchFilter !== "ALL") {
+      result = result.filter((m) => m.intakeBranchOrStation === historyBranchFilter);
+    }
+
+    if (historyDateFilter !== "ALL") {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (historyDateFilter === "TODAY") {
+        result = result.filter((m) => m.movementDate === todayStr);
+      } else if (historyDateFilter === "7DAYS") {
+        const limit = new Date(Date.now() - 7 * 86400000);
+        result = result.filter((m) => new Date(m.movementDate) >= limit);
+      } else if (historyDateFilter === "30DAYS") {
+        const limit = new Date(Date.now() - 30 * 86400000);
+        result = result.filter((m) => new Date(m.movementDate) >= limit);
+      }
+    }
+
+    result.sort((a, b) => {
+      if (historySort === "DATE_ASC") return new Date(a.movementDate) - new Date(b.movementDate);
+      if (historySort === "COST_DESC") return (b.totalCost || 0) - (a.totalCost || 0);
+      if (historySort === "COST_ASC") return (a.totalCost || 0) - (b.totalCost || 0);
+      if (historySort === "AMOUNT_DESC") return (b.amount || 0) - (a.amount || 0);
+      if (historySort === "AMOUNT_ASC") return (a.amount || 0) - (b.amount || 0);
+      if (historySort === "NAME_ASC") return (a.itemName || "").localeCompare(b.itemName || "");
+      return new Date(b.movementDate) - new Date(a.movementDate);
+    });
+
+    return result;
+  }, [movements, historySearch, historyItemFilter, historyBranchFilter, historyDateFilter, historySort]);
+
+  const totalCapitalSpent = useMemo(() => {
+    return filteredAndSortedMovements.reduce((sum, m) => sum + (m.totalCost || 0), 0);
+  }, [filteredAndSortedMovements]);
+
+  const totalUnitsReceived = useMemo(() => {
+    return filteredAndSortedMovements.reduce((sum, m) => sum + (m.amount || 0), 0);
+  }, [filteredAndSortedMovements]);
 
   useEffect(() => {
     if (tab === "history") refreshMovements();
@@ -448,51 +530,145 @@ function InventoryPage() {
 
       {tab === "history" && (
         <div style={{ ...card, padding: 0, overflow: "hidden" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr 0.9fr 1.2fr 1fr", gap: "0.75rem", padding: "1rem 1.25rem", background: "#fafafa", fontWeight: 700, color: "#374151" }}>
-            <span>Date</span>
-            <span>Item</span>
-            <span>Amount</span>
-            <span>Reference</span>
-            <span>Recorded By</span>
+          {/* Filtering and Sorting Toolbar */}
+          <div style={{ ...card, padding: "1rem 1.25rem", marginBottom: "1.25rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "0.85rem" }}>
+              <Field label="Search Logs">
+                <input
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  placeholder="Item, PO#, branch, actor…"
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Filter by Item">
+                <select value={historyItemFilter} onChange={(e) => setHistoryItemFilter(e.target.value)} style={inputStyle}>
+                  <option value="ALL">All Items</option>
+                  {uniqueItems.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Branch / Station">
+                <select value={historyBranchFilter} onChange={(e) => setHistoryBranchFilter(e.target.value)} style={inputStyle}>
+                  <option value="ALL">All Stations / Branches</option>
+                  {uniqueBranches.map((br) => (
+                    <option key={br} value={br}>
+                      {br}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Date Range">
+                <select value={historyDateFilter} onChange={(e) => setHistoryDateFilter(e.target.value)} style={inputStyle}>
+                  <option value="ALL">All Time</option>
+                  <option value="TODAY">Today</option>
+                  <option value="7DAYS">Last 7 Days</option>
+                  <option value="30DAYS">Last 30 Days</option>
+                </select>
+              </Field>
+
+              <Field label="Sort By">
+                <select value={historySort} onChange={(e) => setHistorySort(e.target.value)} style={inputStyle}>
+                  <option value="DATE_DESC">Date (Newest First)</option>
+                  <option value="DATE_ASC">Date (Oldest First)</option>
+                  <option value="COST_DESC">Capital Spent (Highest First)</option>
+                  <option value="COST_ASC">Capital Spent (Lowest First)</option>
+                  <option value="AMOUNT_DESC">Amount (Highest First)</option>
+                  <option value="AMOUNT_ASC">Amount (Lowest First)</option>
+                  <option value="NAME_ASC">Item Name (A to Z)</option>
+                </select>
+              </Field>
+            </div>
           </div>
 
-          {movementsError && (
-            <div style={{ padding: "1.25rem", color: "#b91c1c", background: "#fef2f2" }}>
-              Could not load history — {movementsError}
-            </div>
-          )}
-
-          {!movementsError && movementsLoading && (
-            <div style={{ padding: "1.25rem", color: "#6b7280" }}>Loading history…</div>
-          )}
-
-          {!movementsError && !movementsLoading && movements.length === 0 && (
-            <div style={{ padding: "1.25rem", color: "#6b7280" }}>
-              No Stock In records yet. They'll show up here once you add stock to an item.
-            </div>
-          )}
-
-          {movements.map((movement) => (
-            <div
-              key={movement.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1.6fr 0.9fr 1.2fr 1fr",
-                gap: "0.75rem",
-                padding: "1rem 1.25rem",
-                borderTop: "1px solid #f1f1f1",
-                alignItems: "center",
-              }}
-            >
-              <div style={{ color: "#374151" }}>{new Date(movement.movementDate).toLocaleDateString()}</div>
-              <div style={{ fontWeight: 700, color: "#111827" }}>{movement.itemName}</div>
-              <div style={{ fontWeight: 700, color: "#166534" }}>
-                +{movement.amount}
+          {/* Records Table */}
+          <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+            <div style={{ overflowX: "auto" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "110px 1.4fr 100px 110px 130px 1.1fr 1.1fr 1fr",
+                  minWidth: "920px",
+                  gap: "0.75rem",
+                  padding: "1rem 1.25rem",
+                  background: "#fafafa",
+                  fontWeight: 700,
+                  color: "#374151",
+                  fontSize: "0.85rem",
+                }}
+              >
+                <span>Date</span>
+                <span>Item Name</span>
+                <span>Amount</span>
+                <span>Unit Cost</span>
+                <span>Total Spent</span>
+                <span>PO / Reference</span>
+                <span>Branch / Origin</span>
+                <span>Recorded By</span>
               </div>
-              <div style={{ color: "#6b7280" }}>{movement.reference || "—"}</div>
-              <div style={{ color: "#6b7280" }}>{movement.actor || "—"}</div>
+              {movementsError && (
+                <div style={{ padding: "1.25rem", color: "#b91c1c", background: "#fef2f2" }}>
+                  Could not load history — {movementsError}
+                </div>
+              )}
+
+              {!movementsError && movementsLoading && (
+                <div style={{ padding: "1.25rem", color: "#6b7280" }}>Loading history…</div>
+              )}
+
+              {!movementsError && !movementsLoading && filteredAndSortedMovements.length === 0 && (
+                <div style={{ padding: "1.75rem", textAlign: "center", color: "#6b7280" }}>
+                  No Stock In records match the current filters.
+                </div>
+              )}
+
+              {filteredAndSortedMovements.map((movement) => (
+                <div
+                  key={movement.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "110px 1.4fr 100px 110px 130px 1.1fr 1.1fr 1fr",
+                    minWidth: "920px",
+                    gap: "0.75rem",
+                    padding: "0.95rem 1.25rem",
+                    borderTop: "1px solid #f1f1f1",
+                    alignItems: "center",
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  <div style={{ color: "#374151" }}>{new Date(movement.movementDate).toLocaleDateString()}</div>
+                  <div>
+                    <div style={{ fontWeight: 700, color: "#111827" }}>{movement.itemName}</div>
+                    {movement.itemUnit && <div style={{ fontSize: "0.76rem", color: "#6b7280" }}>Unit: {movement.itemUnit}</div>}
+                  </div>
+                  <div style={{ fontWeight: 700, color: "#166534" }}>
+                    +{movement.amount}
+                  </div>
+                  <div style={{ color: "#475569" }}>
+                    ₱{(movement.unitCost || 0).toFixed(2)}
+                  </div>
+                  <div style={{ fontWeight: 700, color: "#047857" }}>
+                    ₱{(movement.totalCost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ color: "#1e293b", fontWeight: 600 }}>
+                    {movement.reference || "—"}
+                  </div>
+                  <div style={{ color: "#475569" }}>
+                    {movement.intakeBranchOrStation || "—"}
+                  </div>
+                  <div style={{ color: "#64748b" }}>
+                    {movement.actor || "—"}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
       )}
 
@@ -722,9 +898,10 @@ function EditItemModal({ item, onClose, onSave }) {
 
 function StockInModal({ item, onClose, onSubmit }) {
   const [amount, setAmount] = useState("");
+  const [unitCost, setUnitCost] = useState(item.cost !== undefined && item.cost !== null ? item.cost : "");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [reference, setReference] = useState("");
-  const [intakeBranchOrStation, setIntakeBranchOrStation] = useState("");
+  const [intakeBranchOrStation, setIntakeBranchOrStation] = useState(item.intakeBranchOrStation || "");
   const [idempotencyKey] = useState(() =>
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -732,14 +909,19 @@ function StockInModal({ item, onClose, onSubmit }) {
   );
   const [saving, setSaving] = useState(false);
 
+  const numericAmount = Number(amount) || 0;
+  const numericCost = Number(unitCost) || 0;
+  const totalCapitalSpent = numericAmount * numericCost;
+
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const numericAmount = Number(amount);
-    if (!Number.isInteger(numericAmount) || numericAmount <= 0 || !date) return;
-    setSaving(true);
+    const parsedAmount = Number(amount);
+    if (!Number.isInteger(parsedAmount) || parsedAmount <= 0 || !date) return;
     if (!reference.trim() || !intakeBranchOrStation.trim()) return;
+    setSaving(true);
     await onSubmit({
-      amount: numericAmount,
+      amount: parsedAmount,
+      unitCost: Number(unitCost) || 0,
       date,
       reference: reference.trim(),
       intakeBranchOrStation: intakeBranchOrStation.trim(),
@@ -752,20 +934,69 @@ function StockInModal({ item, onClose, onSubmit }) {
     <ModalShell onClose={onClose} title={`Stock In — ${item.name}`}>
       <form onSubmit={handleSubmit}>
         <p style={{ margin: "0 0 1.25rem", color: "#6b7280", fontSize: "0.85rem" }}>
-          Current stock: <strong>{item.quantity} {item.unit}</strong>. This adds to it and writes a Stock Movement Log entry.
+          Current stock: <strong>{item.quantity} {item.unit}</strong>. Record received delivery and purchase costs.
         </p>
         <div style={{ display: "grid", gap: "1rem" }}>
           <Field label={`Amount (${item.unit}) *`}>
-            <input type="number" min="1" step="1" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} style={inputStyle} placeholder="0" required autoFocus />
+            <input
+              type="number"
+              min="1"
+              step="1"
+              inputMode="numeric"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              style={inputStyle}
+              placeholder="0"
+              required
+              autoFocus
+            />
           </Field>
+
+          <Field label={`Purchase Cost per Unit (₱) *`} hint="Unit price paid for this delivery batch">
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={unitCost}
+              onChange={(e) => setUnitCost(e.target.value)}
+              style={inputStyle}
+              placeholder="0.00"
+              required
+            />
+          </Field>
+
+          <div
+            style={{
+              padding: "0.85rem 1.1rem",
+              background: "#f0fdf4",
+              borderRadius: "10px",
+              border: "1px solid #bbf7d0",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <div>
+              <div style={{ color: "#166534", fontSize: "0.78rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Total Capital Spent
+              </div>
+              <div style={{ color: "#15803d", fontSize: "0.8rem", marginTop: "0.15rem" }}>
+                {numericAmount} {item.unit} × ₱{numericCost.toFixed(2)}
+              </div>
+            </div>
+            <div style={{ color: "#14532d", fontSize: "1.35rem", fontWeight: 800 }}>
+              ₱{totalCapitalSpent.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+          </div>
+
           <Field label="Date *">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} required />
           </Field>
-          <Field label="PO / Supplier Invoice Reference *">
-            <input value={reference} onChange={(e) => setReference(e.target.value)} style={inputStyle} placeholder="PO number, delivery note, or invoice" required />
+          <Field label="PO / Supplier Invoice Reference *" hint="Enter the Purchase Order (PO) or invoice number">
+            <input value={reference} onChange={(e) => setReference(e.target.value)} style={inputStyle} placeholder="PO-1001, Invoice #, delivery note" required />
           </Field>
-          <Field label="Intake Branch / Station *">
-            <input value={intakeBranchOrStation} onChange={(e) => setIntakeBranchOrStation(e.target.value)} style={inputStyle} placeholder="e.g. Main Warehouse" required />
+          <Field label="Intake Branch / Station *" hint="Station or warehouse where items were received">
+            <input value={intakeBranchOrStation} onChange={(e) => setIntakeBranchOrStation(e.target.value)} style={inputStyle} placeholder="e.g. Main Warehouse, Pasig Station" required />
           </Field>
         </div>
 
@@ -774,7 +1005,7 @@ function StockInModal({ item, onClose, onSubmit }) {
             Cancel
           </button>
           <button type="submit" disabled={saving} style={buttonWhen(saving, successButton)}>
-            {saving ? "Saving…" : "Add Stock"}
+            {saving ? "Recording…" : "Add Stock & Record Cost"}
           </button>
         </div>
       </form>

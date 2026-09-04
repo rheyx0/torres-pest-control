@@ -58,6 +58,19 @@ export function validatePassword(password) {
   return null;
 }
 
+const PHILIPPINE_MOBILE_PATTERN = /^09\d{9}$/;
+
+export function validatePhilippinePhone(phone, { required = false } = {}) {
+  const trimmed = String(phone || "").trim();
+  if (!trimmed) {
+    return required ? "Phone number is required." : null;
+  }
+  if (!PHILIPPINE_MOBILE_PATTERN.test(trimmed)) {
+    return "Phone number must be exactly 11 digits and begin with '09' (e.g., 09171234567).";
+  }
+  return null;
+}
+
 /** Create / edit account form. */
 export function validateAccount(form, { accounts = [], ignoreId = null, requirePassword = true } = {}) {
   const errors = {};
@@ -69,6 +82,9 @@ export function validateAccount(form, { accounts = [], ignoreId = null, requireP
   } else if (isUsernameTaken(form.username, accounts, ignoreId)) {
     errors.username = "That username is already used by another account.";
   }
+
+  const phoneError = validatePhilippinePhone(form.phone);
+  if (phoneError) errors.phone = phoneError;
 
   const emailError = validateEmailFormat(form.email);
   if (emailError) {
@@ -120,6 +136,9 @@ export function validateClient(form) {
 
   if (isBlank(form.phone) && isBlank(form.email)) {
     errors.phone = "Provide at least one contact method (phone or email).";
+  } else if (!isBlank(form.phone)) {
+    const phoneError = validatePhilippinePhone(form.phone);
+    if (phoneError) errors.phone = phoneError;
   }
 
   if (!isBlank(form.email)) {

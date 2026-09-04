@@ -87,10 +87,13 @@ function ClientForm({ initialValues, onSubmit, submitLabel = "Save Client", foot
           />
         </Field>
 
-        <Field label="Phone" error={errors.phone}>
+        <Field label="Phone" error={errors.phone} hint="Philippine standard format (11 digits, starts with 09)">
           <input
             aria-label="Phone"
             name="phone"
+            type="tel"
+            maxLength={11}
+            placeholder="09XXXXXXXXX"
             value={form.phone}
             onChange={handleFieldChange}
             style={styleFor("phone")}

@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, CircleDollarSign, Clock3, Plus, Settings, Search, TrendingUp } from "lucide-react";
+import { CalendarDays, CheckCircle2, CircleDollarSign, Clock3, Plus, Search, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
 import useAuth from "../../hooks/useAuth";
 import { card, colors, pageShell } from "../../styles/theme";
@@ -41,7 +41,7 @@ function DashboardOverview() {
           Overview
         </div>
         <h1 style={{ margin: "0.35rem 0 0", color: colors.ink, fontSize: "2rem", lineHeight: 1.15 }}>
-          Welcome back, {currentUser?.name || "there"}
+          Welcome back, {currentUser?.username || currentUser?.name || "there"}
         </h1>
       </div>
 
@@ -114,7 +114,6 @@ function DashboardOverview() {
         <span style={{ color: colors.ink, fontWeight: 800, marginRight: "0.25rem" }}>Quick actions</span>
         <DashboardAction to="/clients/new" Icon={Plus}>Create Client Profile</DashboardAction>
         <DashboardAction to="/clients" Icon={Search}>View Clients</DashboardAction>
-        <DashboardAction to="/settings" Icon={Settings}>Settings</DashboardAction>
       </div>
     </div>
   );

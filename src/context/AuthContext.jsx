@@ -52,13 +52,8 @@ export function AuthProvider({ children }) {
 
     verify();
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") verify();
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       active = false;
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [session?.token]);
 

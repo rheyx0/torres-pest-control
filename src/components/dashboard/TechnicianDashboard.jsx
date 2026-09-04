@@ -20,7 +20,7 @@ function TechnicianDashboard() {
 
   return (
     <div style={pageShell}>
-      <PageHeader eyebrow="Overview" title={`Welcome back, ${currentUser?.name || "there"}`} />
+      <PageHeader eyebrow="Overview" title={`Welcome back, ${currentUser?.username || currentUser?.name || "there"}`} />
 
       <div
         style={{
@@ -50,9 +50,6 @@ function TechnicianDashboard() {
           You have view access to client profiles and inventory. Job scheduling arrives in a later
           sprint.
         </p>
-        <Link to="/settings" style={{ ...primaryButton, textDecoration: "none", display: "inline-block" }}>
-          Change Password
-        </Link>
       </div>
     </div>
   );

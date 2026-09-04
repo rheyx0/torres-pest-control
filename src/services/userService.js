@@ -6,7 +6,7 @@
 // That is why changing a role is not a normal update — see updateAccount().
 
 import { supabase } from "./supabaseClient";
-import { ACCOUNT_STATUS, ROLES, TABLE_BY_ROLE } from "../utils/constants";
+import { ACCOUNT_STATUS, ROLES } from "../utils/constants";
 
 // Fields the account tables actually accept on write.
 //
@@ -15,36 +15,26 @@ import { ACCOUNT_STATUS, ROLES, TABLE_BY_ROLE } from "../utils/constants";
 // anyway, so a role edit appeared to succeed and silently reverted on
 // refresh. updateAccount() now rejects the attempt instead of losing it.
 const WRITABLE_FIELDS = ["name", "phone", "email", "status", "password"];
+const TABLE_BY_ROLE = { ADMIN: "admins", STAFF: "staff", TECHNICIAN: "technicians" };
+const ACCOUNT_COLUMNS = "id, name, username, phone, email, status, created_at, updated_at, last_login_at";
 
 // Explicit column lists rather than select("*"): the database revokes
 // blanket select and grants only these columns, so "*" is rejected even
 // though every column in it is allowed. `password` is intentionally absent.
-const ADMIN_COLUMNS = "id, name, phone, email, status, is_primary, created_at, updated_at";
-const STAFF_COLUMNS = "id, name, phone, email, status, created_at, updated_at";
-
 export function mapAccountRow(row, role) {
   return {
     id: row.id,
     name: row.name,
     phone: row.phone,
     email: row.email,
-    username: row.email, // no separate username column yet — display email
+    username: row.username || row.email,
     role,
     status: row.status,
     isPrimary: row.is_primary || false,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    lastLoginAt: row.last_login_at || null, // no column yet; renders as "Never"
+    lastLoginAt: row.last_login_at || null,
   };
-}
-
-function buildPayload(updatedFields) {
-  const payload = {};
-  WRITABLE_FIELDS.forEach((key) => {
-    if (updatedFields[key] !== undefined) payload[key] = updatedFields[key];
-  });
-  payload.updated_at = new Date().toISOString();
-  return payload;
 }
 
 function describeError(error) {
@@ -57,34 +47,24 @@ function describeError(error) {
   ].join("");
 }
 
-/** Loads accounts from the v2 users table. */
+function describeAccountRpcError(error, operation) {
+  if (error?.code === "PGRST202" || error?.code === "42883") {
+    return `${operation} is not available in Supabase. Run supabase/schema-v2.sql and supabase/migrations/009-user-editing-and-stock-cost.sql, then reload the schema.`;
+  }
+  return describeError(error);
+}
+
+/** Loads accounts from the role-specific account tables. */
 export async function fetchAllAccounts() {
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, name, username, email, phone, role, status, is_primary, created_at, updated_at, last_login_at")
-    .order("created_at", { ascending: true });
-
-  if (error && error.code !== "PGRST205") {
-    return { error: describeError(error), admins: [], staff: [], technicians: [] };
-  }
-
-  if (error?.code === "PGRST205") {
-    const [adminsRes, staffRes, techRes] = await Promise.all([
-      supabase.from("admins").select(ADMIN_COLUMNS),
-      supabase.from("staff").select(STAFF_COLUMNS),
-      supabase.from("technicians").select(STAFF_COLUMNS),
-    ]);
-    const firstError = adminsRes.error || staffRes.error || techRes.error;
-    if (firstError) return { error: describeError(firstError), admins: [], staff: [], technicians: [] };
-    return {
-      error: null,
-      admins: (adminsRes.data || []).map((row) => mapAccountRow(row, ROLES.ADMIN)),
-      staff: (staffRes.data || []).map((row) => mapAccountRow(row, ROLES.STAFF)),
-      technicians: (techRes.data || []).map((row) => mapAccountRow(row, ROLES.TECHNICIAN)),
-    };
-  }
-
-  const accounts = (data || []).map((row) => mapAccountRow(row, row.role));
+  const results = await Promise.all(
+    Object.entries(TABLE_BY_ROLE).map(async ([role, table]) => {
+      const { data, error } = await supabase.from(table).select(ACCOUNT_COLUMNS).order("created_at", { ascending: true });
+      return { role, data, error };
+    })
+  );
+  const failed = results.find((result) => result.error);
+  if (failed) return { error: describeError(failed.error), admins: [], staff: [], technicians: [] };
+  const accounts = results.flatMap(({ role, data }) => (data || []).map((row) => mapAccountRow(row, role)));
   return {
     error: null,
     admins: accounts.filter((account) => account.role === ROLES.ADMIN),
@@ -95,15 +75,16 @@ export async function fetchAllAccounts() {
 
 /** Returns { account } on success, { error } on failure. */
 export async function createAccount(sessionToken, role, fields) {
-  const { data, error } = await supabase.rpc("create_user", {
-    session_token: sessionToken,
-    new_name: fields.name,
-    new_username: fields.username || fields.email,
-    new_email: fields.email,
-    new_phone: fields.phone || null,
-    new_password: fields.password,
-    new_role: role,
-  });
+  const table = TABLE_BY_ROLE[role];
+  if (!table) return { error: "Unsupported account role." };
+  const { data, error } = await supabase.from(table).insert({
+    name: fields.name,
+    username: fields.username || fields.email,
+    email: fields.email,
+    phone: fields.phone || null,
+    password: fields.password,
+    status: ACCOUNT_STATUS.ACTIVE,
+  }).select(ACCOUNT_COLUMNS).single();
 
   if (error) {
     // Surface the duplicate-email case in plain language rather than raw
@@ -114,7 +95,7 @@ export async function createAccount(sessionToken, role, fields) {
     return { error: describeError(error) };
   }
 
-  return { account: mapAccountRow(data, data.role) };
+  return { account: mapAccountRow(data, role) };
 }
 
 /**
@@ -127,17 +108,19 @@ export async function createAccount(sessionToken, role, fields) {
  * collapses the three tables into one `users` table.
  */
 export async function updateAccount(sessionToken, account, updatedFields) {
-  const { data, error } = await supabase.rpc("update_user", {
-    session_token: sessionToken,
-    target_id: account.id,
-    new_name: updatedFields.name ?? null,
-    new_email: updatedFields.email ?? null,
-    new_phone: updatedFields.phone ?? null,
-    new_role: updatedFields.role ?? account.role,
-  });
+  const table = TABLE_BY_ROLE[account.role];
+  if (!table) return { error: "Unsupported account role." };
+  if (updatedFields.role && updatedFields.role !== account.role) return { error: "Role changes are not supported between separate account tables." };
+  const { data, error } = await supabase.from(table).update({
+    name: updatedFields.name,
+    username: updatedFields.username,
+    email: updatedFields.email,
+    phone: updatedFields.phone,
+    updated_at: new Date().toISOString(),
+  }).eq("id", account.id).select(ACCOUNT_COLUMNS).single();
   if (error) return { error: describeError(error) };
-
-  return { account: mapAccountRow(data, data.role), updatedAt: data.updated_at };
+  const mapped = mapAccountRow(data, account.role);
+  return { account: mapped, updatedAt: data.updated_at };
 }
 
 /**
@@ -147,14 +130,12 @@ export async function updateAccount(sessionToken, account, updatedFields) {
  * not delete the row, so the account stays in the records for audit.
  */
 export async function setAccountStatus(sessionToken, account, nextStatus) {
-  const { data, error } = await supabase.rpc("set_user_status", {
-    session_token: sessionToken,
-    target_id: account.id,
-    new_status: nextStatus,
-  });
+  const table = TABLE_BY_ROLE[account.role];
+  if (!table) return { error: "Unsupported account role." };
+  const { data, error } = await supabase.from(table).update({ status: nextStatus, updated_at: new Date().toISOString() }).eq("id", account.id).select(ACCOUNT_COLUMNS).single();
 
   if (error) return { error: describeError(error) };
-  return { account: mapAccountRow(data, data.role), updatedAt: data.updated_at };
+  return { account: mapAccountRow(data, account.role), updatedAt: data.updated_at };
 }
 
 /** Admin-initiated password reset, and the write half of a self-service change. */
