@@ -1,6 +1,6 @@
 // Single client profile route (/clients/:id).
 
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import ClientDetails from "../components/clients/ClientDetails";
 import PageHeader from "../components/common/PageHeader";
 import useAuth from "../hooks/useAuth";
@@ -12,9 +12,8 @@ import { card, colors, pageShell } from "../styles/theme";
 function ClientDetailPage() {
   const { id } = useParams();
   const { can } = useAuth();
-  const { getClient, updateClient, archiveClient, addDocument, removeDocument, getDocumentUrl, loading } =
+  const { getClient, updateClient, addDocument, removeDocument, getDocumentUrl, loading } =
     useClients();
-  const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
 
   const client = getClient(id);
@@ -53,17 +52,6 @@ function ClientDetailPage() {
 
   const handleUpload = (file) => addDocument(client.id, file);
   const handleRemove = (document) => removeDocument(client.id, document);
-  const handleArchive = async () => {
-    if (!window.confirm(`Archive ${client.name}? Its appointments and documents will be preserved.`)) return;
-    const result = await archiveClient(client.id);
-    if (result === true) {
-      showSuccess("Client profile archived.");
-      navigate("/clients");
-    } else {
-      showError(result);
-    }
-  };
-
   return (
     <ClientDetails
       client={client}
@@ -71,8 +59,6 @@ function ClientDetailPage() {
       canUploadDocuments={can(SUBSYSTEMS.CLIENT_DOCUMENTS, "create")}
       canRemoveDocuments={can(SUBSYSTEMS.CLIENT_DOCUMENTS, "delete")}
       onSave={handleSave}
-      canArchive={can(SUBSYSTEMS.CLIENTS, "delete") && client.status === "ACTIVE"}
-      onArchive={handleArchive}
       onUploadDocument={handleUpload}
       onRemoveDocument={handleRemove}
       onResolveDocumentUrl={getDocumentUrl}

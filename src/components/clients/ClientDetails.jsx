@@ -20,9 +20,7 @@ function ClientDetails({
   canEdit,
   canUploadDocuments,
   canRemoveDocuments,
-  canArchive,
   onSave,
-  onArchive,
   onUploadDocument,
   onRemoveDocument,
   onResolveDocumentUrl,
@@ -57,11 +55,6 @@ function ClientDetails({
             <p style={{ margin: 0, color: colors.brandInk, fontSize: "0.72rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Client record</p>
             <h2 style={{ margin: "0.25rem 0 0", color: colors.ink, fontSize: "1.25rem" }}>Profile overview</h2>
           </div>
-          {canArchive && (
-            <button type="button" onClick={onArchive} style={{ border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", borderRadius: "10px", padding: "0.65rem 0.85rem", fontWeight: 700 }}>
-              Archive Client
-            </button>
-          )}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0.75rem" }}>
           <InfoRow

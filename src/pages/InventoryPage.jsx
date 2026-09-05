@@ -40,9 +40,6 @@ const CREATE_FORM_DEFAULTS = {
   model: "",
   materialCategory: "SUPPLIES",
   description: "",
-  purchaseUnit: "",
-  usageUnit: "",
-  conversionMultiplier: "1",
 };
 
 const UNIT_OPTIONS = ["L", "mL", "kg", "g", "pcs", "boxes", "bottles", "sachets"];
@@ -103,7 +100,11 @@ function InventoryPage() {
   const [disableTarget, setDisableTarget] = useState(null);
   const [form, setForm] = useState(CREATE_FORM_DEFAULTS);
 
-  // History filtering and sorting states
+  // Inventory and history filtering states
+  const [itemSearch, setItemSearch] = useState("");
+  const [itemTypeFilter, setItemTypeFilter] = useState("ALL");
+  const [itemStatusFilter, setItemStatusFilter] = useState("ALL");
+  const [itemStockFilter, setItemStockFilter] = useState("ALL");
   const [historySearch, setHistorySearch] = useState("");
   const [historyItemFilter, setHistoryItemFilter] = useState("ALL");
   const [historyBranchFilter, setHistoryBranchFilter] = useState("ALL");
@@ -125,6 +126,36 @@ function InventoryPage() {
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [movements]);
+
+  const filteredInventory = useMemo(() => {
+    const terms = itemSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+    return inventory.filter((item) => {
+      const typeLabel = item.type === "CHEMICAL" ? "chemical" : item.type === "EQUIPMENT" ? "equipment" : "material";
+      const isDisabled = item.status === INVENTORY_STATUS.DISABLED;
+      const isOutOfStock = Number(item.quantity) <= 0;
+      const isLowStock = isOutOfStock || (item.reorderLevel !== null && item.reorderLevel !== undefined && item.quantity <= item.reorderLevel);
+      const text = `${item.name || ""} ${item.supplier || ""} ${item.unit || ""} ${item.storageLocation || ""} ${typeLabel} ${isDisabled ? "disabled inactive" : "active enabled"} ${isOutOfStock ? "out of stock empty" : isLowStock ? "low stock" : "healthy"}`.toLowerCase();
+
+      if (terms.length > 0 && !terms.every((term) => text.includes(term))) return false;
+      if (itemTypeFilter !== "ALL" && item.type !== itemTypeFilter) return false;
+      if (itemStatusFilter === "ACTIVE" && isDisabled) return false;
+      if (itemStatusFilter === "DISABLED" && !isDisabled) return false;
+      if (itemStockFilter === "OUT" && !isOutOfStock) return false;
+      if (itemStockFilter === "LOW" && !isLowStock) return false;
+      if (itemStockFilter === "HEALTHY" && isLowStock) return false;
+      return true;
+    });
+  }, [inventory, itemSearch, itemTypeFilter, itemStatusFilter, itemStockFilter]);
+
+  const hasItemFilters = itemSearch || itemTypeFilter !== "ALL" || itemStatusFilter !== "ALL" || itemStockFilter !== "ALL";
+
+  const clearItemFilters = () => {
+    setItemSearch("");
+    setItemTypeFilter("ALL");
+    setItemStatusFilter("ALL");
+    setItemStockFilter("ALL");
+  };
 
   const filteredAndSortedMovements = useMemo(() => {
     let result = [...movements];
@@ -294,15 +325,6 @@ function InventoryPage() {
                   <Field label="Item Name *">
                     <input name="name" value={form.name} onChange={handleChange} style={inputStyle} placeholder="Enter item name" required />
                   </Field>
-                  <Field label="Purchase Unit">
-                    <input name="purchaseUnit" value={form.purchaseUnit} onChange={handleChange} style={inputStyle} placeholder="e.g. 5-gallon jug" />
-                  </Field>
-                  <Field label="Usage Unit">
-                    <input name="usageUnit" value={form.usageUnit} onChange={handleChange} style={inputStyle} placeholder="e.g. mL" />
-                  </Field>
-                  <Field label="Usage Units per Purchase Unit">
-                    <input name="conversionMultiplier" type="number" min="0.000001" step="any" value={form.conversionMultiplier} onChange={handleChange} style={inputStyle} required />
-                  </Field>
                   <Field label="Type *">
                     <select name="type" value={form.type} onChange={handleTypeChange} style={inputStyle} required>
                       <option value="CHEMICAL">Chemical</option>
@@ -343,8 +365,13 @@ function InventoryPage() {
                     <Field label="Expiration Date">
                       <input name="expirationDate" type="date" value={form.expirationDate} onChange={handleChange} style={inputStyle} />
                     </Field>
-                    <Field label="Safety Level">
-                      <input name="safetyLevel" value={form.safetyLevel} onChange={handleChange} style={inputStyle} placeholder="Low, Medium, High" />
+                    <Field label="Safety Level *">
+                      <select name="safetyLevel" value={form.safetyLevel} onChange={handleChange} style={inputStyle} required>
+                        <option value="">Select safety level</option>
+                        <option value="Low">Low</option>
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                      </select>
                     </Field>
                     <Field label="Hazard Rating">
                       <input name="hazardRating" value={form.hazardRating} onChange={handleChange} style={inputStyle} placeholder="Hazard description" />
@@ -419,6 +446,48 @@ function InventoryPage() {
             </form>
           )}
 
+          <div style={{ ...card, marginBottom: "1rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 2fr) repeat(3, minmax(150px, 1fr)) auto", gap: "0.85rem", alignItems: "end" }}>
+              <Field label="Search Items">
+                <input
+                  value={itemSearch}
+                  onChange={(e) => setItemSearch(e.target.value)}
+                  placeholder="Name, supplier, type, status, or stock…"
+                  style={inputStyle}
+                />
+              </Field>
+              <Field label="Type">
+                <select value={itemTypeFilter} onChange={(e) => setItemTypeFilter(e.target.value)} style={inputStyle}>
+                  <option value="ALL">All Types</option>
+                  <option value="CHEMICAL">Chemical</option>
+                  <option value="EQUIPMENT">Equipment</option>
+                  <option value="MATERIAL">Material</option>
+                </select>
+              </Field>
+              <Field label="Status">
+                <select value={itemStatusFilter} onChange={(e) => setItemStatusFilter(e.target.value)} style={inputStyle}>
+                  <option value="ALL">All Statuses</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="DISABLED">Disabled</option>
+                </select>
+              </Field>
+              <Field label="Stock Level">
+                <select value={itemStockFilter} onChange={(e) => setItemStockFilter(e.target.value)} style={inputStyle}>
+                  <option value="ALL">All Stock Levels</option>
+                  <option value="OUT">Out of Stock</option>
+                  <option value="LOW">Low Stock</option>
+                  <option value="HEALTHY">Healthy Stock</option>
+                </select>
+              </Field>
+              <button type="button" onClick={clearItemFilters} disabled={!hasItemFilters} style={buttonWhen(!hasItemFilters, secondaryButton)}>
+                Clear
+              </button>
+            </div>
+            <div style={{ marginTop: "0.75rem", color: "#6b7280", fontSize: "0.82rem" }}>
+              Showing {filteredInventory.length} of {inventory.length} items
+            </div>
+          </div>
+
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1.1fr 0.7fr 0.9fr 1fr 1.6fr", gap: "0.75rem", padding: "1rem 1.25rem", background: "#fafafa", fontWeight: 700, color: "#374151" }}>
               <span>Item Name</span>
@@ -445,8 +514,14 @@ function InventoryPage() {
               </div>
             )}
 
-            {inventory.map((item) => {
-              const isLowStock = item.reorderLevel && item.quantity <= item.reorderLevel;
+            {!error && !loading && inventory.length > 0 && filteredInventory.length === 0 && (
+              <div style={{ padding: "1.25rem", color: "#6b7280" }}>
+                No inventory items match the current filters.
+              </div>
+            )}
+
+            {filteredInventory.map((item) => {
+              const isLowStock = Number(item.quantity) <= 0 || (item.reorderLevel !== null && item.reorderLevel !== undefined && item.quantity <= item.reorderLevel);
               const isDisabled = item.status === INVENTORY_STATUS.DISABLED;
               const typeLabel = item.type === "CHEMICAL" ? "Chemical" : item.type === "EQUIPMENT" ? "Equipment" : "Material";
 
@@ -853,7 +928,14 @@ function EditItemModal({ item, onClose, onSave }) {
                 </select>
               </Field>
               <Field label="Expiration Date"><input name="expirationDate" type="date" value={values.expirationDate} onChange={handleChange} style={inputStyle} /></Field>
-              <Field label="Safety Level"><input name="safetyLevel" value={values.safetyLevel} onChange={handleChange} style={inputStyle} /></Field>
+              <Field label="Safety Level *">
+                <select name="safetyLevel" value={values.safetyLevel} onChange={handleChange} style={inputStyle} required>
+                  <option value="">Select safety level</option>
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                </select>
+              </Field>
               <Field label="Hazard Rating"><input name="hazardRating" value={values.hazardRating} onChange={handleChange} style={inputStyle} /></Field>
               <Field label="Date Received"><input name="dateReceived" type="date" value={values.dateReceived} onChange={handleChange} style={inputStyle} /></Field>
             </div>

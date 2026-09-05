@@ -42,26 +42,26 @@ export function InventoryProvider({ children }) {
 
   const addItem = useCallback(
     async (form) => {
-      const { item, error: createError } = await inventoryService.createItem(form, currentUser?.id);
+      const { item, error: createError } = await inventoryService.createItem(form, currentUser?.id, inventory);
       if (createError) return createError;
 
       setInventory((previous) => [item, ...previous]);
       addLog(actor, `Added "${item.name}" to inventory.`, LOG_TYPES.INVENTORY);
       return true;
     },
-    [actor, currentUser?.id]
+    [actor, currentUser?.id, inventory]
   );
 
   const updateItem = useCallback(
     async (itemId, form) => {
-      const { item, error: updateError } = await inventoryService.updateItem(itemId, form);
+      const { item, error: updateError } = await inventoryService.updateItem(itemId, form, inventory);
       if (updateError) return updateError;
 
       setInventory((previous) => previous.map((entry) => (entry.id === itemId ? item : entry)));
       addLog(actor, `Updated "${item.name}".`, LOG_TYPES.INVENTORY);
       return true;
     },
-    [actor]
+    [actor, inventory]
   );
 
   const removeItem = useCallback(

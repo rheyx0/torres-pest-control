@@ -27,7 +27,7 @@ const COLUMNS = `
 `;
 
 const MOVEMENT_COLUMNS = `
-  id, item_id, amount, movement_date, reference, actor, created_at,
+  id, item_id, amount, movement_date, reference, actor, intake_branch_or_station, created_at,
   inventory ( name, unit, cost )
 `;
 
@@ -88,6 +88,25 @@ export function mapInventoryRow(row) {
 const nullIfBlank = (value) =>
   value === undefined || value === null || value === "" ? null : value;
 
+const normalizeIdentityValue = (value) => String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+
+export function hasDuplicateInventoryItem(item, inventory) {
+  const matches = (existing, field) => normalizeIdentityValue(existing[field]) === normalizeIdentityValue(item[field]);
+  const sharedMatch = (existing) =>
+    matches(existing, "name") && matches(existing, "type") && matches(existing, "unit");
+
+  return (inventory || []).some((existing) => {
+    if (!sharedMatch(existing) || existing.id === item.id) return false;
+    if (item.type === "CHEMICAL") {
+      return matches(existing, "chemicalType") && matches(existing, "safetyLevel") && matches(existing, "hazardRating");
+    }
+    if (item.type === "EQUIPMENT") {
+      return matches(existing, "manufacturer") && matches(existing, "model") && matches(existing, "serialNumber");
+    }
+    return matches(existing, "materialCategory");
+  });
+}
+
 // Quantity is intentionally absent here. It's no longer settable through
 // the Item Profile form — new items start at 0 (the column default), and
 // after that the only path that can change it is stock_in() below. That
@@ -102,9 +121,6 @@ function buildPayload(item) {
     supplier: nullIfBlank(item.supplier),
     storage_location: nullIfBlank(item.storageLocation),
     reorder_level: item.reorderLevel === null || item.reorderLevel === "" ? null : Number(item.reorderLevel),
-    purchase_unit: nullIfBlank(item.purchaseUnit),
-    usage_unit: nullIfBlank(item.usageUnit || item.unit),
-    conversion_multiplier: item.conversionMultiplier === "" ? null : Number(item.conversionMultiplier || 1),
     intake_branch_or_station: nullIfBlank(item.intakeBranchOrStation),
   };
 
@@ -145,7 +161,18 @@ export async function fetchInventory() {
   return { error: null, inventory: (data || []).map(mapInventoryRow) };
 }
 
-export async function createItem(item, actorId) {
+export async function createItem(item, actorId, inventory) {
+  const { data: currentRows, error: inventoryError } = await supabase
+    .from("inventory")
+    .select(COLUMNS);
+
+  if (inventoryError) return { error: describeError(inventoryError) };
+
+  const currentInventory = (currentRows || []).map(mapInventoryRow);
+  if (hasDuplicateInventoryItem(item, currentInventory) || hasDuplicateInventoryItem(item, inventory)) {
+    return { error: "This item already exists. Use Stock In to add quantity instead." };
+  }
+
   const { data, error } = await supabase
     .from("inventory")
     // Quantity starts at zero by design. It is never supplied by the form;
@@ -158,7 +185,18 @@ export async function createItem(item, actorId) {
   return { item: mapInventoryRow(data) };
 }
 
-export async function updateItem(itemId, item) {
+export async function updateItem(itemId, item, inventory) {
+  const { data: currentRows, error: inventoryError } = await supabase
+    .from("inventory")
+    .select(COLUMNS);
+
+  if (inventoryError) return { error: describeError(inventoryError) };
+
+  const currentInventory = (currentRows || []).map(mapInventoryRow);
+  if (hasDuplicateInventoryItem({ ...item, id: itemId }, currentInventory) || hasDuplicateInventoryItem({ ...item, id: itemId }, inventory)) {
+    return { error: "Another item with the same identity already exists." };
+  }
+
   const { data, error } = await supabase
     .from("inventory")
     .update(buildPayload(item))
@@ -224,6 +262,9 @@ export async function stockIn(
     p_movement_date: date,
     p_reference: nullIfBlank(reference),
     p_actor: actor || null,
+    p_idempotency_key: idempotencyKey || null,
+    p_actor_id: actorId || null,
+    p_intake_branch_or_station: nullIfBlank(intakeBranchOrStation),
   });
 
   if (error) return { error: describeError(error) };
