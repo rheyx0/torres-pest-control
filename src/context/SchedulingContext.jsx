@@ -51,13 +51,34 @@ export function SchedulingProvider({ children }) {
     return result.report;
   }, []);
 
+  const addAttachment = useCallback(async (appointmentId, file) => {
+    const result = await appointmentService.uploadAttachment(appointmentId, file);
+    if (result.error) return result.error;
+    setAppointments((current) => current.map((entry) => entry.id === appointmentId
+      ? { ...entry, attachments: [result.attachment, ...(entry.attachments || [])] }
+      : entry));
+    return true;
+  }, []);
+
+  const removeAttachment = useCallback(async (attachment) => {
+    const result = await appointmentService.deleteAttachment(attachment);
+    if (result.error) return result.error;
+    setAppointments((current) => current.map((entry) => entry.id === attachment.appointmentId
+      ? { ...entry, attachments: (entry.attachments || []).filter((item) => item.id !== attachment.id) }
+      : entry));
+    return true;
+  }, []);
+
   const addStockUsed = useCallback((appointmentId, entry) => {
     setAppointments((current) => current.map((appointment) => appointment.id === appointmentId
       ? { ...appointment, stockUsed: [...(appointment.stockUsed || []), entry] }
       : appointment));
   }, []);
 
-  const value = useMemo(() => ({ appointments, loading, error, refresh, createAppointment, updateAppointment, submitReport, addStockUsed }), [appointments, loading, error, refresh, createAppointment, updateAppointment, submitReport, addStockUsed]);
+  const value = useMemo(
+    () => ({ appointments, loading, error, refresh, createAppointment, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl }),
+    [appointments, loading, error, refresh, createAppointment, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment]
+  );
   return <SchedulingContext.Provider value={value}>{children}</SchedulingContext.Provider>;
 }
 

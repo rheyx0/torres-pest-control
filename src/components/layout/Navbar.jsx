@@ -5,9 +5,11 @@
 // navigation.
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, UserCog, ShieldCheck, LogOut } from "lucide-react";
+import { Bell, ChevronDown, UserCog, ShieldCheck, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import useAuth from "../../hooks/useAuth";
+import { useNotifications } from "../../context/NotificationsContext";
+import { formatDateTime } from "../../utils/formatters";
 
 const ROLE_LABELS = {
   ADMIN: "ADMIN",
@@ -23,14 +25,17 @@ const roleBadgeColors = {
 
 function Navbar() {
   const { currentUser, logout: logoutUser } = useAuth();
+  const { notifications, unreadCount, markAllRead } = useNotifications();
   const navigate = useNavigate();
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [bellOpen, setBellOpen] = useState(false);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setMenuOpen(false);
+        setBellOpen(false);
       }
     };
 
@@ -64,6 +69,19 @@ function Navbar() {
     }
   };
 
+  const toggleBell = () => {
+    setMenuOpen(false);
+    setBellOpen((open) => {
+      if (!open && unreadCount > 0) markAllRead();
+      return !open;
+    });
+  };
+
+  const openNotification = (notification) => {
+    setBellOpen(false);
+    if (notification.appointmentId) navigate("/scheduling");
+  };
+
   return (
     <header
       ref={menuRef}
@@ -79,6 +97,102 @@ function Navbar() {
         position: "relative",
       }}
     >
+      <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+        <button
+          type="button"
+          onClick={toggleBell}
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+          style={{
+            position: "relative",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "2.4rem",
+            height: "2.4rem",
+            borderRadius: "999px",
+            border: "1px solid rgba(148, 163, 184, 0.28)",
+            background: "#fff",
+            boxShadow: "0 1px 3px rgba(15, 23, 42, 0.08)",
+            cursor: "pointer",
+            color: "#0f172a",
+          }}
+        >
+          <Bell size={16} />
+          {unreadCount > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: "-0.25rem",
+                right: "-0.25rem",
+                minWidth: "1.1rem",
+                height: "1.1rem",
+                padding: "0 0.25rem",
+                borderRadius: "999px",
+                background: "#b91c1c",
+                color: "#fff",
+                fontSize: "0.62rem",
+                fontWeight: 800,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </button>
+
+        {bellOpen && (
+          <div
+            style={{
+              position: "absolute",
+              top: "calc(100% + 0.7rem)",
+              right: 0,
+              width: "20rem",
+              maxHeight: "22rem",
+              overflowY: "auto",
+              background: "#ffffff",
+              borderRadius: "1rem",
+              border: "1px solid rgba(148, 163, 184, 0.28)",
+              boxShadow: "0 18px 36px rgba(15, 23, 42, 0.12)",
+              padding: "0.7rem",
+              zIndex: 50,
+            }}
+          >
+            <div style={{ padding: "0.2rem 0.4rem 0.6rem", borderBottom: "1px solid rgba(148,163,184,0.2)", fontWeight: 800, fontSize: "0.8rem", color: "#0f172a" }}>
+              Notifications
+            </div>
+            {notifications.length === 0 ? (
+              <div style={{ padding: "1rem 0.4rem", color: "#64748b", fontSize: "0.82rem" }}>Nothing yet.</div>
+            ) : (
+              <div style={{ display: "grid", gap: "0.35rem", marginTop: "0.5rem" }}>
+                {notifications.map((notification) => (
+                  <button
+                    type="button"
+                    key={notification.id}
+                    onClick={() => openNotification(notification)}
+                    style={{
+                      display: "grid",
+                      gap: "0.2rem",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "0.6rem 0.65rem",
+                      borderRadius: "0.6rem",
+                      border: "1px solid rgba(148, 163, 184, 0.2)",
+                      background: notification.readAt ? "#fff" : "#fff7f7",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ color: "#0f172a", fontSize: "0.82rem", fontWeight: 600 }}>{notification.message}</span>
+                    <span style={{ color: "#64748b", fontSize: "0.7rem" }}>{formatDateTime(notification.createdAt)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <div
         style={{
           position: "relative",
@@ -89,7 +203,7 @@ function Navbar() {
       >
         <button
           type="button"
-          onClick={() => setMenuOpen((value) => !value)}
+          onClick={() => { setBellOpen(false); setMenuOpen((value) => !value); }}
           style={{
             display: "inline-flex",
             alignItems: "center",

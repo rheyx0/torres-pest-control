@@ -10,6 +10,7 @@ import { ToastProvider } from "./context/ToastContext";
 import { ClientsProvider } from "./context/ClientsContext";
 import { InventoryProvider } from "./context/InventoryContext";
 import { SchedulingProvider } from "./context/SchedulingContext";
+import { NotificationsProvider } from "./context/NotificationsContext";
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import RoleBasedRoute from "./components/auth/RoleBasedRoute";
@@ -71,6 +72,7 @@ function App() {
           <ClientsProvider>
             <InventoryProvider>
               <SchedulingProvider>
+                <NotificationsProvider>
                 <Routes>
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/forgot-password" element={<ForgotPasswordPage />} />
@@ -109,6 +111,7 @@ function App() {
                 />
                 <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
+                </NotificationsProvider>
               </SchedulingProvider>
             </InventoryProvider>
           </ClientsProvider>

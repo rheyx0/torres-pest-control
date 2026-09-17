@@ -5,8 +5,11 @@
 // { fieldName: "message" }. Callers do `if (Object.keys(errors).length)`.
 
 import {
+  ALLOWED_ATTACHMENT_EXTENSIONS,
+  ALLOWED_ATTACHMENT_TYPES,
   ALLOWED_DOCUMENT_EXTENSIONS,
   ALLOWED_DOCUMENT_TYPES,
+  MAX_ATTACHMENT_BYTES,
   MAX_DOCUMENT_BYTES,
   MIN_PASSWORD_LENGTH,
 } from "./constants";
@@ -167,6 +170,21 @@ export function validateDocument(file) {
 
   if (!typeAllowed) return "Only PDF, DOC, DOCX, JPG, and PNG files are allowed.";
   if (file.size > MAX_DOCUMENT_BYTES) return "File exceeds the 2MB upload limit.";
+
+  return null;
+}
+
+/** Same contract as validateDocument, for before/after photos on a service report. */
+export function validateAttachment(file) {
+  if (!file) return "No file selected.";
+
+  const name = file.name.toLowerCase();
+  const typeAllowed =
+    ALLOWED_ATTACHMENT_TYPES.includes(file.type) ||
+    ALLOWED_ATTACHMENT_EXTENSIONS.some((extension) => name.endsWith(extension));
+
+  if (!typeAllowed) return "Only JPG, PNG, and PDF files are allowed.";
+  if (file.size > MAX_ATTACHMENT_BYTES) return "File exceeds the 5MB upload limit.";
 
   return null;
 }

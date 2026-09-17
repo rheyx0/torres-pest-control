@@ -8,10 +8,16 @@ directly (its SQL schema + the `@supabase/supabase-js` client). Account creation
 and login use the v2 `users` and `sessions` tables plus their security-definer
 RPCs.
 
-Run `schema-v2.sql` first, then all migrations in order, especially
+Run `schema-v2.sql` first, then all migrations in **numeric order**, especially
 `008-workflow-integrity.sql` and `009-user-editing-and-stock-cost.sql`.
 After running SQL, refresh PostgREST's schema cache if the app reports that an
 RPC is missing.
+
+Order matters more than it looks: `024-scheduling-function-compatibility.sql`
+replaces the `create_appointment` / `update_appointment` that
+`022-appointment-duration.sql` defines, and 024's versions dropped 022's
+per-technician overlap check. `027-appointment-integrity.sql` is the current
+source of truth for both functions and must be applied last.
 
 ## Folder structure once connected
 

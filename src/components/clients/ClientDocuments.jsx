@@ -19,7 +19,19 @@ import { validateDocument } from "../../utils/validators";
 import { formatDate, formatFileSize } from "../../utils/formatters";
 import { colors } from "../../styles/theme";
 
-function ClientDocuments({ documents = [], canUpload = false, canRemove = false, onUpload, onRemove, onResolveUrl }) {
+function ClientDocuments({
+  documents = [],
+  canUpload = false,
+  canRemove = false,
+  onUpload,
+  onRemove,
+  onResolveUrl,
+  title = "Attached Documents",
+  hint = "PDF, DOCX, PNG up to 2MB",
+  accept = ".pdf,.doc,.docx,.png,.jpg,.jpeg",
+  validate = validateDocument,
+  emptyMessage = "No documents attached yet.",
+}) {
   const [message, setMessage] = useState(null); // { text, tone }
   const [busyId, setBusyId] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -31,7 +43,7 @@ function ClientDocuments({ documents = [], canUpload = false, canRemove = false,
 
     // Client-side gate. Storage also enforces size and MIME type server-side,
     // so bypassing this doesn't get a bad file into the bucket.
-    const validationError = validateDocument(file);
+    const validationError = validate(file);
     if (validationError) {
       setMessage({ text: validationError, tone: "error" });
       return;
@@ -107,7 +119,7 @@ function ClientDocuments({ documents = [], canUpload = false, canRemove = false,
 
   return (
     <div>
-      <h2 style={{ marginTop: 0, marginBottom: "1rem", color: colors.body, fontSize: "1.05rem" }}>Attached Documents</h2>
+      <h2 style={{ marginTop: 0, marginBottom: "1rem", color: colors.body, fontSize: "1.05rem" }}>{title}</h2>
 
       {canUpload && (
         <div style={{ marginBottom: "1rem" }}>
@@ -148,12 +160,12 @@ function ClientDocuments({ documents = [], canUpload = false, canRemove = false,
             <UploadCloud size={26} color="#64748b" />
             <div>
               <div style={{ fontWeight: 700, color: "#0f172a" }}>Click to upload or drag and drop</div>
-              <div style={{ marginTop: "0.2rem", fontSize: "0.75rem", color: "#64748b" }}>PDF, DOCX, PNG up to 2MB</div>
+              <div style={{ marginTop: "0.2rem", fontSize: "0.75rem", color: "#64748b" }}>{hint}</div>
             </div>
             <input
               ref={inputRef}
               type="file"
-              accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+              accept={accept}
               onChange={handleFileUpload}
               disabled={uploading}
               style={{ display: "none" }}
@@ -176,7 +188,7 @@ function ClientDocuments({ documents = [], canUpload = false, canRemove = false,
       )}
 
       {documents.length === 0 ? (
-        <EmptyState message="No documents attached yet." />
+        <EmptyState message={emptyMessage} />
       ) : (
         <div style={{ display: "grid", gap: "0.75rem" }}>
           {documents.map((document) => {

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   ChevronLeft,
@@ -18,11 +18,12 @@ import useInventory from "../hooks/useInventory";
 import useUsers from "../hooks/useUsers";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
-import { ACCOUNT_STATUS, PEST_CONCERN_SUGGESTIONS } from "../utils/constants";
+import { ACCOUNT_STATUS, APPOINTMENT_STATUSES, PEST_CONCERN_SUGGESTIONS, SERVICE_TYPES } from "../utils/constants";
+import { allowedNextStatuses, busyTechnicianIds, canTransition, findTechnicianConflicts } from "../utils/scheduling";
+import { validateAttachment } from "../utils/validators";
 import { card, colors, inputStyle, pageShell, primaryButton, secondaryButton } from "../styles/theme";
 
 const HOURS = Array.from({ length: 10 }, (_, index) => index + 8);
-const STATUSES = ["Pending", "Scheduled", "Confirmed", "Reschedule", "Completed", "Cancelled"];
 const TAB_LABELS = ["Overview", "Documents", "Report", "Stock-Out"];
 const STOCK_CATEGORIES = ["CHEMICAL", "MATERIAL", "EQUIPMENT"];
 function formatDuration(minutes) {
@@ -35,15 +36,6 @@ function readDuration(values) {
   const hours = Number(values.get("durationHours")) || 0;
   const minutes = Number(values.get("durationMinutes")) || 0;
   return hours * 60 + minutes;
-}
-
-function appointmentOverlaps(candidate, existing) {
-  if (existing.id === candidate.id || existing.status === "Cancelled") return false;
-  const candidateStart = new Date(candidate.scheduledAt).getTime();
-  const candidateEnd = candidateStart + (candidate.durationMinutes || 60) * 60000;
-  const existingStart = new Date(existing.scheduledAt).getTime();
-  const existingEnd = existingStart + (existing.durationMinutes || 60) * 60000;
-  return candidateStart < existingEnd && candidateEnd > existingStart;
 }
 
 function localDateKey(date) {
@@ -100,7 +92,7 @@ function SchedulingPage() {
   const { clients, addDocument, removeDocument, getDocumentUrl } = useClients();
   const { inventory, stockOutMany } = useInventory();
   const { staff, technicians } = useUsers();
-  const { appointments, createAppointment, updateAppointment, submitReport, addStockUsed, loading, error } = useScheduling();
+  const { appointments, createAppointment, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, loading, error } = useScheduling();
   const [selectedId, setSelectedId] = useState(null);
   const [view, setView] = useState("week");
   const [anchorDate, setAnchorDate] = useState(new Date());
@@ -116,6 +108,8 @@ function SchedulingPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [clientFilter, setClientFilter] = useState("ALL");
   const [pestConcernFilter, setPestConcernFilter] = useState("ALL");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const draggedCardRef = useRef(false);
 
   const selected = appointments.find((appointment) => appointment.id === selectedId) || null;
@@ -141,9 +135,13 @@ function SchedulingPage() {
         && (technicianFilter === "ALL" || appointment.technicianId === technicianFilter)
         && (statusFilter === "ALL" || appointment.status === statusFilter)
         && (clientFilter === "ALL" || appointment.clientId === clientFilter)
-        && (pestConcernFilter === "ALL" || appointment.pestConcern === pestConcernFilter);
+        && (pestConcernFilter === "ALL" || appointment.pestConcern === pestConcernFilter)
+        // Compared as local date keys so a boundary date includes the whole day
+        // regardless of the appointment's time.
+        && (!dateFrom || localDateKey(new Date(appointment.scheduledAt)) >= dateFrom)
+        && (!dateTo || localDateKey(new Date(appointment.scheduledAt)) <= dateTo);
     });
-  }, [appointments, appointmentSearch, clients, activeAccounts, technicianFilter, statusFilter, clientFilter, pestConcernFilter]);
+  }, [appointments, appointmentSearch, clients, activeAccounts, technicianFilter, statusFilter, clientFilter, pestConcernFilter, dateFrom, dateTo]);
 
   const pestConcernOptions = useMemo(
     () => Array.from(new Set(appointments.map((appointment) => appointment.pestConcern).filter(Boolean))).sort(),
@@ -187,9 +185,18 @@ function SchedulingPage() {
     }
     const nextScheduledAt = `${dateKey}T${time}:00`;
     const movedAppointment = { ...current, scheduledAt: nextScheduledAt, status: "Confirmed" };
-    if (appointments.some((appointment) => appointmentOverlaps(movedAppointment, appointment))) {
+    // Moving requires the Reschedule status first, so an appointment that cannot
+    // reach Reschedule cannot be dragged at all.
+    if (!canTransition(current.status, "Reschedule")) {
       setDraggedId(null);
-      const conflictMessage = "Schedule conflict: another appointment is already booked during this time.";
+      const blockedMessage = `A ${current.status.toLowerCase()} appointment cannot be moved.`;
+      showError(blockedMessage);
+      setMessage(blockedMessage);
+      return;
+    }
+    if (findTechnicianConflicts(appointments, movedAppointment).length > 0) {
+      setDraggedId(null);
+      const conflictMessage = "Schedule conflict: that technician is already booked during this time.";
       showError(conflictMessage);
       setMessage(conflictMessage);
       return;
@@ -225,9 +232,12 @@ function SchedulingPage() {
       scheduledAt: new Date(nextValue).toISOString(),
       durationMinutes: readDuration(form),
       pestConcern: form.get("pestConcern"),
+      serviceType: form.get("serviceType") || "",
+      serviceLocation: form.get("serviceLocation") || "",
       technicianId: form.get("technicianId"),
       status: form.get("status"),
       notes: form.get("notes"),
+      cancellationReason: form.get("cancellationReason") || "",
     });
     if (typeof result === "string") showError(result);
     setMessage(typeof result === "string" ? result : "Appointment details updated.");
@@ -357,7 +367,7 @@ function SchedulingPage() {
       <div style={{ display: "grid", gridTemplateColumns: selected ? "minmax(0, 1.25fr) minmax(360px, 0.75fr)" : "1fr", gap: "1.25rem", alignItems: "start" }}>
         <section style={card}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}><div style={{ display: "flex", gap: "0.35rem", background: "#f8fafc", padding: "0.25rem", borderRadius: "10px" }}>{["calendar", "list", "technicians"].map((option) => <button key={option} type="button" onClick={() => setScheduleTab(option)} style={{ ...secondaryButton, border: "none", background: scheduleTab === option ? colors.brand : "transparent", color: scheduleTab === option ? "#fff" : colors.body, padding: "0.5rem 0.8rem" }}>{option === "calendar" ? "Calendar" : option === "list" ? "List" : "Technicians"}</button>)}</div>{scheduleTab === "calendar" && <div style={{ display: "flex", gap: "0.4rem", background: "#f8fafc", padding: "0.25rem", borderRadius: "10px" }}>{['week', 'month'].map((option) => <button key={option} type="button" onClick={() => setView(option)} style={{ ...secondaryButton, border: "none", background: view === option ? colors.brand : "transparent", color: view === option ? "#fff" : colors.body, padding: "0.55rem 0.8rem" }}>{option === "week" ? "Week" : "Month"}</button>)}</div>}</div>
-          {scheduleTab === "list" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0.65rem", alignItems: "end", marginBottom: "1rem", padding: "0.85rem", background: "#fffafa", border: "1px solid #eadede", borderRadius: "10px" }}><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800, gridColumn: "span 2" }}>Search appointments<input value={appointmentSearch} onChange={(event) => setAppointmentSearch(event.target.value)} placeholder="Client, address, technician, pest concern, ID" style={inputStyle} /></label><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800 }}>Technician<select value={technicianFilter} onChange={(event) => setTechnicianFilter(event.target.value)} style={inputStyle}><option value="ALL">All technicians</option>{technicians.map((account) => <option key={account.id} value={account.id}>{account.name || account.username}</option>)}</select></label><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800 }}>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} style={inputStyle}><option value="ALL">All statuses</option>{STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800 }}>Client<select value={clientFilter} onChange={(event) => setClientFilter(event.target.value)} style={inputStyle}><option value="ALL">All clients</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800 }}>Pest concern<select value={pestConcernFilter} onChange={(event) => setPestConcernFilter(event.target.value)} style={inputStyle}><option value="ALL">All pest concerns</option>{pestConcernOptions.map((concern) => <option key={concern} value={concern}>{concern}</option>)}</select></label></div>}
+          {scheduleTab === "list" && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0.65rem", alignItems: "end", marginBottom: "1rem", padding: "0.85rem", background: "#fffafa", border: "1px solid #eadede", borderRadius: "10px" }}><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800, gridColumn: "span 2" }}>Search appointments<input value={appointmentSearch} onChange={(event) => setAppointmentSearch(event.target.value)} placeholder="Client, address, technician, pest concern, ID" style={inputStyle} /></label><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800 }}>Technician<select value={technicianFilter} onChange={(event) => setTechnicianFilter(event.target.value)} style={inputStyle}><option value="ALL">All technicians</option>{technicians.map((account) => <option key={account.id} value={account.id}>{account.name || account.username}</option>)}</select></label><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800 }}>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} style={inputStyle}><option value="ALL">All statuses</option>{APPOINTMENT_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800 }}>Client<select value={clientFilter} onChange={(event) => setClientFilter(event.target.value)} style={inputStyle}><option value="ALL">All clients</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800 }}>Pest concern<select value={pestConcernFilter} onChange={(event) => setPestConcernFilter(event.target.value)} style={inputStyle}><option value="ALL">All pest concerns</option>{pestConcernOptions.map((concern) => <option key={concern} value={concern}>{concern}</option>)}</select></label><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800 }}>Date from<input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} style={inputStyle} /></label><label style={{ display: "grid", gap: "0.3rem", color: colors.muted, fontSize: "0.68rem", fontWeight: 800 }}>Date to<input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} style={inputStyle} /></label>{(dateFrom || dateTo) && <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }} style={{ ...secondaryButton, alignSelf: "end" }}>Clear dates</button>}</div>}
           {scheduleTab !== "list" && <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "center", flexWrap: "wrap", marginBottom: "1rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
               <button type="button" aria-label="Previous period" onClick={() => navigateCalendar(-1)} style={secondaryButton}><ChevronLeft size={16} /></button>
@@ -386,7 +396,7 @@ function SchedulingPage() {
           {appointmentSearch && visibleAppointments.length === 0 && <div style={{ padding: "1rem", textAlign: "center", color: colors.muted }}>No appointments match this search.</div>}
         </section>
 
-        {selected && selectedClient && <AppointmentPanel key={`${selected.id}-${selected.status}-${selected.updatedAt || ""}`} appointment={selected} client={selectedClient} tab={tab} setTab={setTab} activeAccounts={technicians} appointments={appointments} canUpload={can("clientDocuments", "create")} canRemove={can("clientDocuments", "delete")} addDocument={addDocument} removeDocument={removeDocument} getDocumentUrl={getDocumentUrl} onSave={handleManualSave} onTimingSave={handleTimingSave} onReportSubmit={handleReportSubmit} onStockSubmit={handleStockSubmit} onScheduleFollowUp={scheduleFollowUp} inventory={inventory} stockRows={stockRows} setStockRows={setStockRows} onClose={() => setSelectedId(null)} />}
+        {selected && selectedClient && <AppointmentPanel key={`${selected.id}-${selected.status}-${selected.updatedAt || ""}`} appointment={selected} client={selectedClient} tab={tab} setTab={setTab} activeAccounts={technicians} appointments={appointments} canUpload={can("clientDocuments", "create")} canRemove={can("clientDocuments", "delete")} addDocument={addDocument} removeDocument={removeDocument} getDocumentUrl={getDocumentUrl} addAttachment={addAttachment} removeAttachment={removeAttachment} getAttachmentUrl={getAttachmentUrl} onSave={handleManualSave} onTimingSave={handleTimingSave} onReportSubmit={handleReportSubmit} onStockSubmit={handleStockSubmit} onScheduleFollowUp={scheduleFollowUp} inventory={inventory} stockRows={stockRows} setStockRows={setStockRows} onClose={() => setSelectedId(null)} />}
       </div>
       {createOpen && <CreateAppointmentModalV2 clients={clients} activeAccounts={technicians} initialClientId={createClientId} onClose={() => { setCreateOpen(false); setCreateClientId(""); }} onCreate={handleCreate} />}
     </div>
@@ -396,25 +406,27 @@ function SchedulingPage() {
 function AppointmentOverviewForm({ appointment, client, activeAccounts, busyTechnicians, appointments, onSave }) {
   const hours = Math.floor((appointment.durationMinutes || 60) / 60);
   const minutes = (appointment.durationMinutes || 60) % 60;
-  const start = new Date(appointment.scheduledAt).getTime();
-  const end = start + (appointment.durationMinutes || 60) * 60000;
-  const conflicts = appointments.filter((entry) => {
-       if (entry.id === appointment.id || entry.status === "Cancelled") return false;
-    const entryStart = new Date(entry.scheduledAt).getTime();
-    const entryEnd = entryStart + (entry.durationMinutes || 60) * 60000;
-    return start < entryEnd && end > entryStart;
-  });
+  const [technicianId, setTechnicianId] = useState(appointment.technicianId || "");
+  const [status, setStatus] = useState(appointment.status);
+  const conflicts = findTechnicianConflicts(appointments, { ...appointment, technicianId });
+  const statusOptions = allowedNextStatuses(appointment.status);
+  const labelStyle = { fontSize: "0.76rem", color: colors.muted };
+  const hintStyle = { color: colors.muted, fontSize: "0.7rem" };
+  const isBusy = (accountId) => busyTechnicians.has(accountId) && accountId !== appointment.technicianId;
 
   return <form onSubmit={onSave} style={{ display: "grid", gap: "1rem" }}>
     <InfoRow icon={<UserRound size={15} />} label="Client contact" value={`${client.phone || "No phone"} ${client.email ? `• ${client.email}` : ""}`} />
-    <InfoRow icon={<MapPin size={15} />} label="Service address" value={client.address || "No address"} />
+    <InfoRow icon={<MapPin size={15} />} label="Service address" value={appointment.serviceLocation || client.address || "No address"} />
     <InfoRow icon={<UserRound size={15} />} label="Classification" value={client.classificationOther || client.classification || "Not classified"} />
-    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={{ fontSize: "0.76rem", color: colors.muted }}>Date and time</strong><input name="scheduledAt" type="datetime-local" defaultValue={toDateTimeLocal(appointment.scheduledAt)} style={inputStyle} /></div>
+    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Date and time</strong><input name="scheduledAt" type="datetime-local" defaultValue={toDateTimeLocal(appointment.scheduledAt)} style={inputStyle} />{appointment.status !== "Reschedule" && <span style={hintStyle}>Set the status to Reschedule before changing the date, time, or duration.</span>}</div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}><label style={{ display: "grid", gap: "0.25rem", color: colors.muted, fontSize: "0.72rem", fontWeight: 700 }}>Hours<input name="durationHours" type="number" min="0" max="24" defaultValue={hours} style={{ ...inputStyle, padding: "0.55rem" }} required /></label><label style={{ display: "grid", gap: "0.25rem", color: colors.muted, fontSize: "0.72rem", fontWeight: 700 }}>Minutes<input name="durationMinutes" type="number" min="0" max="59" defaultValue={minutes} style={{ ...inputStyle, padding: "0.55rem" }} required /></label></div>
-    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={{ fontSize: "0.76rem", color: colors.muted }}>Technician</strong><select name="technicianId" defaultValue={appointment.technicianId} style={inputStyle}><option value="">Unassigned</option>{activeAccounts.map((account) => <option key={account.id} value={account.id} disabled={busyTechnicians.has(account.id)}>{account.name || account.username}{busyTechnicians.has(account.id) ? " - busy at this time" : ""}</option>)}</select>{conflicts.length > 0 && <span style={{ color: colors.danger, fontSize: "0.72rem", fontWeight: 700 }}>Conflict: this technician overlaps another appointment.</span>}</div>
-    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={{ fontSize: "0.76rem", color: colors.muted }}>Pest concern</strong><select name="pestConcern" defaultValue={appointment.pestConcern || ""} style={inputStyle}><option value="">Select a pest concern</option>{PEST_CONCERN_SUGGESTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
-    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={{ fontSize: "0.76rem", color: colors.muted }}>Status</strong><select name="status" defaultValue={appointment.status} style={inputStyle}>{STATUSES.map((status) => <option key={status}>{status}</option>)}</select></div>
-    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={{ fontSize: "0.76rem", color: colors.muted }}>Visit notes</strong><textarea name="notes" defaultValue={appointment.notes} rows={3} style={{ ...inputStyle, resize: "vertical" }} /></div>
+    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Technician</strong><select name="technicianId" value={technicianId} onChange={(event) => setTechnicianId(event.target.value)} style={inputStyle}><option value="">Unassigned</option>{activeAccounts.map((account) => <option key={account.id} value={account.id} disabled={isBusy(account.id)}>{account.name || account.username}{isBusy(account.id) ? " - busy at this time" : ""}</option>)}</select>{conflicts.length > 0 && <span style={{ color: colors.danger, fontSize: "0.72rem", fontWeight: 700 }}>Conflict: this technician overlaps another appointment.</span>}</div>
+    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Service type</strong><select name="serviceType" defaultValue={appointment.serviceType || ""} style={inputStyle}><option value="">Select a service type</option>{SERVICE_TYPES.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
+    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Service location</strong><input name="serviceLocation" defaultValue={appointment.serviceLocation || ""} placeholder={client.address || "Client address"} style={inputStyle} /><span style={hintStyle}>Leave blank to use the client's address.</span></div>
+    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Pest concern</strong><select name="pestConcern" defaultValue={appointment.pestConcern || ""} style={inputStyle}><option value="">Select a pest concern</option>{PEST_CONCERN_SUGGESTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
+    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Status</strong><select name="status" value={status} onChange={(event) => setStatus(event.target.value)} style={inputStyle}>{statusOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select>{statusOptions.length === 1 && <span style={hintStyle}>A {appointment.status.toLowerCase()} appointment cannot change status.</span>}</div>
+    {status === "Cancelled" && <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Cancellation reason (optional)</strong><textarea name="cancellationReason" defaultValue={appointment.cancellationReason || ""} rows={2} placeholder="Why is this appointment being cancelled?" style={{ ...inputStyle, resize: "vertical" }} /></div>}
+    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Visit notes</strong><textarea name="notes" defaultValue={appointment.notes} rows={3} style={{ ...inputStyle, resize: "vertical" }} /></div>
     <button type="submit" style={primaryButton}><Check size={15} /> Save appointment</button>
   </form>;
 }
@@ -439,13 +451,13 @@ function AppointmentListView({ appointments, clients, accounts, onSelect }) {
   </div>;
 }
 
-function AppointmentPanel({ appointment, client, tab, setTab, activeAccounts, appointments, canUpload, canRemove, addDocument, removeDocument, getDocumentUrl, onSave, onTimingSave, onReportSubmit, onStockSubmit, onScheduleFollowUp, inventory, stockRows, setStockRows, onClose }) {
-  const busyTechnicians = new Set(appointments.filter((entry) => entry.id !== appointment.id && entry.technicianId && entry.scheduledAt === appointment.scheduledAt).map((entry) => entry.technicianId));
+function AppointmentPanel({ appointment, client, tab, setTab, activeAccounts, appointments, canUpload, canRemove, addDocument, removeDocument, getDocumentUrl, addAttachment, removeAttachment, getAttachmentUrl, onSave, onTimingSave, onReportSubmit, onStockSubmit, onScheduleFollowUp, inventory, stockRows, setStockRows, onClose }) {
+  const busyTechnicians = busyTechnicianIds(appointments, appointment);
   if (tab === "Overview") {
     return <aside style={{ ...card, padding: 0, overflowY: "auto", maxHeight: "calc(100vh - 2rem)", position: "sticky", top: "1rem", border: "1px solid #eadede", boxShadow: "0 14px 34px rgba(75, 18, 18, 0.12)" }}>
       <div style={{ padding: "1.25rem 1.25rem 1rem", background: "linear-gradient(135deg, #7f1111, #b43d3d)", color: "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}><div><div style={{ fontSize: "0.68rem", opacity: 0.8, textTransform: "uppercase", letterSpacing: "0.1em" }}>Appointment detail</div><h2 style={{ margin: "0.3rem 0", fontSize: "1.35rem" }}>{client.name}</h2><div style={{ opacity: 0.85, fontSize: "0.78rem" }}>{formatDateTime(appointment.scheduledAt)}</div></div><button type="button" aria-label="Close appointment detail" onClick={onClose} style={{ border: 0, background: "transparent", color: "#fff", cursor: "pointer" }}><X size={18} /></button></div></div>
       <div style={{ display: "flex", overflowX: "auto", borderBottom: "1px solid #eadede" }}>{TAB_LABELS.map((label) => <button type="button" key={label} onClick={() => setTab(label)} style={{ flex: 1, minWidth: "88px", border: 0, borderBottom: tab === label ? `3px solid ${colors.brand}` : "3px solid transparent", padding: "0.8rem 0.35rem", background: "#fff", color: tab === label ? colors.brand : colors.muted, fontWeight: 800, fontSize: "0.72rem", cursor: "pointer" }}>{label}</button>)}</div>
-      <div style={{ padding: "1.25rem", background: "#fffdfd" }}><AppointmentOverviewForm appointment={appointment} client={client} activeAccounts={activeAccounts} busyTechnicians={busyTechnicians} appointments={appointments} onSave={onSave} /></div>
+      <div style={{ padding: "1.25rem", background: "#fffdfd" }}><AppointmentOverviewForm key={appointment.id} appointment={appointment} client={client} activeAccounts={activeAccounts} busyTechnicians={busyTechnicians} appointments={appointments} onSave={onSave} /></div>
     </aside>;
   }
   return (
@@ -453,9 +465,9 @@ function AppointmentPanel({ appointment, client, tab, setTab, activeAccounts, ap
       <div style={{ padding: "1.25rem 1.25rem 1rem", background: "linear-gradient(135deg, #7f1111, #b43d3d)", color: "#fff" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}><div><div style={{ fontSize: "0.68rem", opacity: 0.8, textTransform: "uppercase", letterSpacing: "0.1em" }}>Appointment detail</div><h2 style={{ margin: "0.3rem 0", fontSize: "1.35rem" }}>{client.name}</h2><div style={{ opacity: 0.85, fontSize: "0.78rem" }}>{formatDateTime(appointment.scheduledAt)}</div></div><button type="button" aria-label="Close appointment detail" onClick={onClose} style={{ border: 0, background: "transparent", color: "#fff", cursor: "pointer" }}><X size={18} /></button></div></div>
       <div style={{ display: "flex", overflowX: "auto", borderBottom: "1px solid #eadede" }}>{TAB_LABELS.map((label) => <button type="button" key={label} onClick={() => setTab(label)} style={{ flex: 1, minWidth: "88px", border: 0, borderBottom: tab === label ? `3px solid ${colors.brand}` : "3px solid transparent", padding: "0.8rem 0.35rem", background: "#fff", color: tab === label ? colors.brand : colors.muted, fontWeight: 800, fontSize: "0.72rem", cursor: "pointer" }}>{label}</button>)}</div>
       <div style={{ padding: "1.25rem", maxHeight: "calc(100vh - 230px)", overflowY: "auto", background: "#fffdfd" }}>
-        {tab === "Overview" && <form onSubmit={onSave} style={{ display: "grid", gap: "1rem" }}><InfoRow icon={<UserRound size={15} />} label="Client contact" value={`${client.phone || "No phone"} ${client.email ? `• ${client.email}` : ""}`} /><InfoRow icon={<MapPin size={15} />} label="Service address" value={client.address || "No address"} /><InfoRow icon={<UserRound size={15} />} label="Classification" value={client.classificationOther || client.classification || "Not classified"} /><div style={{ display: "grid", gap: "0.4rem" }}><strong style={{ fontSize: "0.76rem", color: colors.muted }}>Date and time</strong><input name="scheduledAt" type="datetime-local" defaultValue={toDateTimeLocal(appointment.scheduledAt)} style={inputStyle} /></div><div style={{ display: "grid", gap: "0.4rem" }}><strong style={{ fontSize: "0.76rem", color: colors.muted }}>Assign technician</strong><select name="technicianId" defaultValue={appointment.technicianId} style={inputStyle}><option value="">Unassigned</option>{activeAccounts.map((account) => <option key={account.id} value={account.id} disabled={busyTechnicians.has(account.id)}>{account.name || account.username}{busyTechnicians.has(account.id) ? " - busy at this time" : ""}</option>)}</select><span style={{ color: colors.muted, fontSize: "0.7rem" }}>Availability is checked against the current appointment board.</span></div><div style={{ display: "grid", gap: "0.4rem" }}><strong style={{ fontSize: "0.76rem", color: colors.muted }}>Status</strong><select name="status" defaultValue={appointment.status} style={inputStyle}>{STATUSES.map((status) => <option key={status}>{status}</option>)}</select></div><div style={{ display: "grid", gap: "0.4rem" }}><strong style={{ fontSize: "0.76rem", color: colors.muted }}>Visit notes</strong><textarea name="notes" defaultValue={appointment.notes} rows={3} style={{ ...inputStyle, resize: "vertical" }} /></div><button type="submit" style={primaryButton}><Check size={15} /> Save appointment</button></form>}
         {tab === "Documents" && <ClientDocuments documents={client.documents || []} canUpload={canUpload} canRemove={canRemove} onUpload={(file) => addDocument(client.id, file)} onRemove={(document) => removeDocument(client.id, document)} onResolveUrl={getDocumentUrl} />}
         {tab === "Report" && <form onSubmit={onReportSubmit} style={{ display: "grid", gap: "1rem" }}><div style={{ padding: "0.85rem", borderRadius: "10px", background: "#f8fafc", color: colors.muted, fontSize: "0.78rem" }}><FileText size={15} style={{ verticalAlign: "middle", marginRight: "0.35rem" }} /> Required fields finalize this service. Recommendations and follow-up scheduling are optional.</div><label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem" }}>Inspection findings<textarea name="findings" defaultValue={appointment.report} rows={5} placeholder="What did the technician observe?" style={{ ...inputStyle, resize: "vertical", whiteSpace: "pre-wrap" }} required /></label><label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem" }}>Treatment performed<textarea name="treatmentPerformed" defaultValue={appointment.treatmentPerformed} rows={5} placeholder="What treatment or work was completed?" style={{ ...inputStyle, resize: "vertical", whiteSpace: "pre-wrap" }} required /></label><label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem" }}>Recommendations / follow-up notes<textarea name="recommendations" defaultValue={appointment.recommendations} rows={3} placeholder="Optional recommendations" style={{ ...inputStyle, resize: "vertical" }} /></label><label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem" }}>Follow-up date<input name="followUpDate" type="date" defaultValue={appointment.followUpDate} style={inputStyle} /></label><div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap" }}><button type="submit" style={primaryButton}><Check size={15} /> {appointment.reportSubmitted ? "Update report" : "Submit report"}</button>{appointment.followUpDate && <button type="button" onClick={onScheduleFollowUp} style={secondaryButton}>Schedule follow-up</button>}</div>{appointment.reportSubmitted && <div style={{ color: colors.success, fontWeight: 700, fontSize: "0.8rem" }}>Saved{appointment.reportSubmittedAt ? ` on ${formatDateTime(appointment.reportSubmittedAt)}` : ""}. Service is Completed.</div>}</form>}
+        {tab === "Report" && <div style={{ marginTop: "1.5rem", paddingTop: "1.25rem", borderTop: "1px solid #eadede" }}><ClientDocuments documents={appointment.attachments || []} canUpload={canUpload} canRemove={canRemove && !appointment.reportSubmitted} onUpload={(file) => addAttachment(appointment.id, file)} onRemove={(attachment) => removeAttachment(attachment)} onResolveUrl={getAttachmentUrl} title="Report attachments" hint="Before/after photos or signed documents — JPG, PNG, PDF up to 5MB" accept=".jpg,.jpeg,.png,.pdf" validate={validateAttachment} emptyMessage="No photos or documents attached to this report yet." />{appointment.reportSubmitted && <div style={{ marginTop: "0.6rem", color: colors.muted, fontSize: "0.72rem" }}>The report is finalized, so existing attachments can no longer be removed.</div>}</div>}
         {tab === "Stock-Out" && <StockOutForm appointment={appointment} inventory={inventory} stockRows={stockRows} setStockRows={setStockRows} onSubmit={onStockSubmit} />}
       </div>
     </aside>
@@ -535,9 +547,59 @@ function StockOutForm({ appointment, inventory, stockRows, setStockRows, onSubmi
 function CreateAppointmentModalV2({ clients, activeAccounts, initialClientId = "", onClose, onCreate }) {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [clientId, setClientId] = useState(initialClientId);
+  const [clientSearch, setClientSearch] = useState(
+    () => clients.find((client) => client.id === initialClientId)?.name || ""
+  );
+  const [listOpen, setListOpen] = useState(false);
+  const clientFieldRef = useRef(null);
+
+  const selectedClient = clients.find((client) => client.id === clientId) || null;
+
+  const matchingClients = useMemo(() => {
+    const term = clientSearch.trim().toLowerCase();
+    if (!term) return clients;
+    return clients.filter((client) =>
+      [client.name, client.phone, client.email, client.address]
+        .filter(Boolean).join(" ").toLowerCase().includes(term));
+  }, [clients, clientSearch]);
+
+  useEffect(() => {
+    if (!listOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (clientFieldRef.current && !clientFieldRef.current.contains(event.target)) setListOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [listOpen]);
+
+  // Typing invalidates the current pick, so the box can never show one client's
+  // name while a different id is submitted.
+  const handleClientSearch = (value) => {
+    setClientSearch(value);
+    setClientId("");
+    setListOpen(true);
+  };
+
+  const chooseClient = (client) => {
+    setClientId(client.id);
+    setClientSearch(client.name);
+    setListOpen(false);
+  };
+
+  const clearClient = () => {
+    setClientId("");
+    setClientSearch("");
+    setListOpen(true);
+    clientFieldRef.current?.querySelector("input")?.focus();
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (!clientId) {
+      setFormError("Select a client from the list.");
+      return;
+    }
     setSaving(true);
     setFormError("");
     const values = new FormData(event.currentTarget);
@@ -546,6 +608,8 @@ function CreateAppointmentModalV2({ clients, activeAccounts, initialClientId = "
       scheduledAt: values.get("scheduledAt"),
       durationMinutes: readDuration(values),
       pestConcern: values.get("pestConcern"),
+      serviceType: values.get("serviceType") || "",
+      serviceLocation: values.get("serviceLocation") || "",
       technicianId: values.get("technicianId"),
       notes: values.get("notes"),
     });
@@ -557,10 +621,51 @@ function CreateAppointmentModalV2({ clients, activeAccounts, initialClientId = "
     <form onSubmit={handleSubmit} style={{ ...card, width: "min(100%, 520px)", maxHeight: "90vh", overflowY: "auto" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}><div><div style={{ color: colors.brand, fontSize: "0.7rem", fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" }}>Scheduling</div><h2 style={{ margin: "0.25rem 0 0", color: colors.ink }}>New appointment</h2></div><button type="button" aria-label="Close new appointment" onClick={onClose} style={{ border: 0, background: "transparent", cursor: "pointer", color: colors.muted }}><X size={18} /></button></div>
       <div style={{ display: "grid", gap: "0.9rem" }}>
-        <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem" }}>Client<select name="clientId" defaultValue={initialClientId} style={inputStyle} required><option value="">Select client</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
+        <div ref={clientFieldRef} style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem", position: "relative" }}>
+          <label htmlFor="client-search">Client</label>
+          <input type="hidden" name="clientId" value={clientId} />
+          <div style={{ position: "relative" }}>
+            <input
+              id="client-search"
+              value={clientSearch}
+              onChange={(event) => handleClientSearch(event.target.value)}
+              onFocus={(event) => { setListOpen(true); if (selectedClient) event.target.select(); }}
+              onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setListOpen(false); } }}
+              placeholder="Search by name, phone, email, or address"
+              autoComplete="off"
+              role="combobox"
+              aria-expanded={listOpen}
+              aria-controls="client-options"
+              style={{ ...inputStyle, paddingRight: selectedClient ? "2rem" : undefined, borderColor: selectedClient ? colors.success : undefined }}
+            />
+            {selectedClient && <button type="button" onClick={clearClient} aria-label={`Clear selected client ${selectedClient.name}`} style={{ position: "absolute", right: "0.5rem", top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", color: colors.muted, cursor: "pointer", display: "inline-flex", padding: 0 }}><X size={15} /></button>}
+          </div>
+
+          {listOpen && <div id="client-options" role="listbox" style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 5, marginTop: "0.25rem", maxHeight: "11rem", overflowY: "auto", background: "#fff", border: "1px solid #eadede", borderRadius: "10px", boxShadow: "0 12px 26px rgba(75, 18, 18, 0.14)" }}>
+            {matchingClients.length === 0
+              ? <div style={{ padding: "0.7rem 0.75rem", color: colors.muted, fontWeight: 600, fontSize: "0.78rem" }}>No clients match that search.</div>
+              : matchingClients.map((client) => (
+                <button
+                  type="button"
+                  key={client.id}
+                  role="option"
+                  aria-selected={client.id === clientId}
+                  onClick={() => chooseClient(client)}
+                  style={{ display: "block", width: "100%", textAlign: "left", border: 0, borderBottom: "1px solid #f4ecec", background: client.id === clientId ? "#fff5f5" : "transparent", padding: "0.55rem 0.75rem", cursor: "pointer", font: "inherit" }}
+                >
+                  <span style={{ display: "block", color: colors.ink, fontWeight: 700, fontSize: "0.82rem" }}>{client.name}</span>
+                  {client.address && <span style={{ display: "block", color: colors.muted, fontWeight: 500, fontSize: "0.72rem" }}>{client.address}</span>}
+                </button>
+              ))}
+          </div>}
+
+          {!selectedClient && !listOpen && <span style={{ color: colors.muted, fontWeight: 600, fontSize: "0.72rem" }}>No client selected yet.</span>}
+        </div>
         <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem" }}>Date and time<input name="scheduledAt" type="datetime-local" defaultValue={new Date(Date.now() + 3600000).toISOString().slice(0, 16)} style={inputStyle} required /></label>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}><label style={{ display: "grid", gap: "0.25rem", color: colors.muted, fontWeight: 700, fontSize: "0.72rem" }}>Hours<input name="durationHours" type="number" min="0" max="24" defaultValue="1" style={{ ...inputStyle, padding: "0.55rem" }} required /></label><label style={{ display: "grid", gap: "0.25rem", color: colors.muted, fontWeight: 700, fontSize: "0.72rem" }}>Minutes<input name="durationMinutes" type="number" min="0" max="59" defaultValue="0" style={{ ...inputStyle, padding: "0.55rem" }} required /></label></div>
         <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem" }}>Technician<select name="technicianId" defaultValue="" style={inputStyle}><option value="">Unassigned</option>{activeAccounts.map((account) => <option key={account.id} value={account.id}>{account.name || account.username}</option>)}</select></label>
+        <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem" }}>Service type<select name="serviceType" style={inputStyle}><option value="">Select a service type</option>{SERVICE_TYPES.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
+        <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem" }}>Service location<input name="serviceLocation" placeholder="Defaults to the client's address" style={inputStyle} /></label>
         <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem" }}>Pest concern<select name="pestConcern" style={inputStyle}><option value="">Select a pest concern</option>{PEST_CONCERN_SUGGESTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
         <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 700, fontSize: "0.82rem" }}>Notes<textarea name="notes" rows={3} style={{ ...inputStyle, resize: "vertical" }} /></label>
       </div>

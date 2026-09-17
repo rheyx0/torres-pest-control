@@ -52,6 +52,38 @@ export const PEST_CONCERN_SUGGESTIONS = [
   "General Pest Control",
 ];
 
+export const SERVICE_TYPES = [
+  "Inspection",
+  "General Treatment",
+  "Termite Control",
+  "Rodent Control",
+  "Fumigation",
+  "Soil Poisoning",
+  "Follow-up Visit",
+  "Maintenance Contract",
+];
+
+export const APPOINTMENT_STATUSES = [
+  "Pending",
+  "Scheduled",
+  "Confirmed",
+  "Reschedule",
+  "Completed",
+  "Cancelled",
+];
+
+// Mirrors the appointments_enforce_status_transition trigger in
+// supabase/migrations/027-appointment-integrity.sql. Completed is final and
+// Cancelled only reopens as Reschedule; keep both in sync.
+export const APPOINTMENT_STATUS_TRANSITIONS = {
+  Pending: ["Scheduled", "Confirmed", "Reschedule", "Completed", "Cancelled"],
+  Scheduled: ["Pending", "Confirmed", "Reschedule", "Completed", "Cancelled"],
+  Confirmed: ["Pending", "Scheduled", "Reschedule", "Completed", "Cancelled"],
+  Reschedule: ["Pending", "Scheduled", "Confirmed", "Completed", "Cancelled"],
+  Completed: [],
+  Cancelled: ["Reschedule"],
+};
+
 export const clientClassificationOptions = [
   "RESIDENTIAL",
   "COMMERCIAL",
@@ -83,6 +115,12 @@ export const ALLOWED_DOCUMENT_TYPES = [
 export const ALLOWED_DOCUMENT_EXTENSIONS = [".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg"];
 
 export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024; // 2MB
+
+// Report attachments are mostly phone photos, which routinely exceed the 2MB
+// document cap. Mirrored by the report-attachments bucket in migration 028.
+export const ALLOWED_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "application/pdf"];
+export const ALLOWED_ATTACHMENT_EXTENSIONS = [".jpg", ".jpeg", ".png", ".pdf"];
+export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5MB
 
 export const MIN_PASSWORD_LENGTH = 6;
 
