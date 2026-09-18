@@ -311,3 +311,123 @@ a {
     animation: none !important;
   }
 }
+/* ---------------------------------------------------------------------------
+   Printable service form
+   ---------------------------------------------------------------------------
+   The document is rendered into the app but parked off-screen; printing hides
+   everything else and brings it back. Doing it this way instead of opening a
+   new window avoids popup blockers and keeps the app's data in scope.
+--------------------------------------------------------------------------- */
+
+.service-form-host {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 794px; /* A4 at 96dpi, so the on-screen layout matches the page */
+}
+
+.service-form {
+  background: #fff;
+  color: #111827;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 26px 30px;
+}
+
+.sf-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #7f1111;
+}
+
+.sf-logo { width: 62px; height: auto; flex: none; }
+.sf-org { flex: 1; }
+.sf-org-name { font-size: 17px; font-weight: 800; color: #7f1111; letter-spacing: -0.01em; }
+.sf-org-line { font-size: 10.5px; color: #4b5563; }
+
+.sf-doc { text-align: right; flex: none; }
+.sf-doc-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #111827; }
+.sf-doc-ref { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: #6b7280; margin-top: 2px; }
+
+.sf-meta { width: 100%; border-collapse: collapse; margin-top: 14px; }
+.sf-meta tr { border-bottom: 1px solid #f1f5f9; }
+.sf-key {
+  text-align: left; width: 150px; padding: 5px 0;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #6b7280; vertical-align: top;
+}
+.sf-val { padding: 5px 0; font-size: 11.5px; color: #111827; }
+
+.sf-block { margin-top: 15px; break-inside: avoid; }
+.sf-h2 {
+  margin: 0 0 5px; font-size: 10px; font-weight: 800;
+  letter-spacing: 0.08em; text-transform: uppercase; color: #7f1111;
+  border-bottom: 1px solid #e5e7eb; padding-bottom: 3px;
+}
+.sf-prose { font-size: 11.5px; white-space: pre-wrap; }
+
+.sf-materials { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.sf-materials th {
+  text-align: left; padding: 4px 0; font-size: 9.5px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
+}
+.sf-materials td { padding: 4px 0; border-bottom: 1px solid #f1f5f9; }
+.sf-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.sf-photos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.sf-photo { margin: 0; break-inside: avoid; }
+.sf-photo img {
+  display: block; width: 100%; height: 150px; object-fit: cover;
+  border: 1px solid #e5e7eb; border-radius: 4px;
+}
+.sf-photo figcaption { font-size: 9.5px; color: #6b7280; margin-top: 3px; }
+
+.sf-sign { margin-top: 20px; break-inside: avoid; }
+.sf-sign-grid { display: flex; gap: 20px; align-items: flex-end; }
+.sf-sign-box { width: 260px; flex: none; }
+.sf-sign-box img { display: block; max-width: 100%; max-height: 80px; }
+.sf-sign-blank { padding-top: 80px; }
+.sf-sign-missing {
+  height: 56px; display: flex; align-items: flex-end;
+  font-size: 10px; color: #9ca3af; font-style: italic;
+}
+.sf-sign-rule { border-bottom: 1px solid #111827; margin-top: 2px; }
+.sf-sign-name { font-size: 11.5px; font-weight: 700; margin-top: 3px; }
+.sf-sign-cap { font-size: 9.5px; color: #6b7280; }
+.sf-sign-when { font-size: 10.5px; color: #4b5563; padding-bottom: 4px; }
+.sf-sign-note { margin-top: 3px; max-width: 34ch; }
+
+.sf-foot {
+  margin-top: 22px; padding-top: 8px; border-top: 1px solid #e5e7eb;
+  font-size: 9.5px; color: #9ca3af; text-align: center;
+}
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+
+  /* Hide the app, show only the form. The host is portalled straight onto
+     <body>, so it survives this rule while #root does not. */
+  body > *:not(.service-form-host) { display: none !important; }
+
+  .service-form-host {
+    position: static !important;
+    left: auto !important;
+    width: auto !important;
+  }
+
+  .service-form { padding: 0; font-size: 11px; }
+
+  /* Keep a photo or a signature from being sliced across a page break. */
+  .sf-block, .sf-photo, .sf-sign { break-inside: avoid; page-break-inside: avoid; }
+  .sf-photos-block { break-before: auto; }
+
+  a[href]::after { content: ""; }
+}
+
+.sf-methods { margin: 0; padding-left: 16px; font-size: 11.5px; }
+.sf-methods li { margin-bottom: 1px; }
+
+.sf-batch { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: #4b5563; }

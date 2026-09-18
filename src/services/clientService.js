@@ -19,9 +19,9 @@ const BUCKET = "client-documents";
 const SIGNED_URL_TTL_SECONDS = 60;
 
 const CLIENT_COLUMNS =
-  "id, name, email, phone, address, classification, classification_other, pest_concern, source, status, version, archived_at, created_at, updated_at";
+  "id, reference, name, email, phone, address, classification, classification_other, pest_concern, source, status, version, archived_at, created_at, updated_at";
 
-const DOCUMENT_COLUMNS = "id, client_id, name, mime_type, size_bytes, storage_path, uploaded_at";
+const DOCUMENT_COLUMNS = "id, client_id, name, mime_type, size_bytes, storage_path, category, uploaded_at";
 
 function describeError(error) {
   if (!error) return "Unknown error";
@@ -39,6 +39,7 @@ function describeError(error) {
 export function mapClientRow(row, documents = []) {
   return {
     id: row.id,
+    reference: row.reference || "",
     name: row.name,
     email: row.email || "",
     phone: row.phone || "",
@@ -67,6 +68,7 @@ export function mapDocumentRow(row) {
     type: row.mime_type,
     size: row.size_bytes,
     storagePath: row.storage_path,
+    category: row.category || "OTHER",
     uploadedAt: row.uploaded_at,
   };
 }
@@ -226,7 +228,7 @@ function safeFileName(name) {
  * lists a document whose bytes aren't there. The reverse order could strand a
  * row pointing at nothing.
  */
-export async function uploadDocument(clientId, file) {
+export async function uploadDocument(clientId, file, category = "OTHER") {
   const objectId =
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -248,6 +250,7 @@ export async function uploadDocument(clientId, file) {
       mime_type: file.type || null,
       size_bytes: file.size,
       storage_path: storagePath,
+      category,
     })
     .select(DOCUMENT_COLUMNS)
     .single();
@@ -313,6 +316,7 @@ export function filterClients(clients, { searchTerm = "", classification = "ALL"
     // Pest concern is searchable too, so staff can pull up "all the termite
     // jobs" without a dedicated filter control.
     const searchable = [
+      client.reference,
       client.name,
       client.phone,
       client.email,

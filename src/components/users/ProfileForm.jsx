@@ -188,6 +188,20 @@ function ProfileForm({ user, onSubmit, onAvatarChange, activeTab, onTabChange })
           >
             {user?.role === "ADMIN" ? "ADMIN" : user?.role || "USER"}
           </div>
+          {user?.reference && <div
+            title="Your employee number"
+            style={{
+              marginTop: "0.45rem",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontSize: "0.82rem",
+              fontWeight: 700,
+              color: "#475569",
+              background: "#f1f5f9",
+              border: "1px solid #e2e8f0",
+              borderRadius: "6px",
+              padding: "0.2rem 0.5rem",
+            }}
+          >{user.reference}</div>}
         </div>
 
         <div

@@ -124,9 +124,9 @@ export function ClientsProvider({ children }) {
   );
 
   const addDocument = useCallback(
-    async (clientId, file) => {
+    async (clientId, file, category) => {
       if (!allowed(SUBSYSTEMS.CLIENT_DOCUMENTS, "create")) return "You do not have permission to upload documents.";
-      const { document, error: uploadError } = await clientService.uploadDocument(clientId, file);
+      const { document, error: uploadError } = await clientService.uploadDocument(clientId, file, category);
       if (uploadError) return uploadError;
 
       setClients((previous) =>

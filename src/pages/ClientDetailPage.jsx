@@ -51,7 +51,7 @@ function ClientDetailPage() {
     else showError(result);
   };
 
-  const handleUpload = (file) => addDocument(client.id, file);
+  const handleUpload = (file, category) => addDocument(client.id, file, category);
   const handleRemove = (document) => removeDocument(client.id, document);
 
   const handleDelete = async () => {

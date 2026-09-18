@@ -3,11 +3,11 @@ import { supabase } from "./supabaseClient";
 // File bytes for report attachments live here; the table holds only metadata.
 // Same arrangement as client-documents — see clientService.js.
 const ATTACHMENT_BUCKET = "report-attachments";
-const ATTACHMENT_COLUMNS = "id, appointment_id, name, mime_type, size_bytes, storage_path, uploaded_at";
+const ATTACHMENT_COLUMNS = "id, appointment_id, name, mime_type, size_bytes, storage_path, category, uploaded_at";
 const SIGNED_URL_TTL_SECONDS = 60;
 
 const APPOINTMENT_COLUMNS = "id, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, created_at, updated_at";
-const REPORT_COLUMNS = "appointment_id, findings, treatment_performed, recommendations, follow_up_date, submitted_by, submitted_at";
+const REPORT_COLUMNS = "appointment_id, findings, treatment_performed, recommendations, follow_up_date, submitted_by, submitted_at, customer_name, signature_path, signed_at, completion_note, treatment_methods";
 
 function describeError(error) {
   if (!error) return "Unknown error";
@@ -29,10 +29,15 @@ export function mapAppointmentRow(row, report = null) {
     notes: row.notes || "",
     report: report?.findings || "",
     treatmentPerformed: report?.treatment_performed || "",
+    treatmentMethods: report?.treatment_methods || [],
     recommendations: report?.recommendations || "",
     followUpDate: report?.follow_up_date || "",
     reportSubmitted: Boolean(report),
     reportSubmittedAt: report?.submitted_at || "",
+    customerName: report?.customer_name || "",
+    signaturePath: report?.signature_path || "",
+    signedAt: report?.signed_at || "",
+    completionNote: report?.completion_note || "",
     attachments: row.attachments || [],
     stockUsed: row.stockUsed || [],
     createdAt: row.created_at,
@@ -44,7 +49,7 @@ export async function fetchAppointments() {
   const [appointmentsResult, reportsResult, stockResult, attachmentsResult] = await Promise.all([
     supabase.from("appointments").select(APPOINTMENT_COLUMNS).order("scheduled_at", { ascending: true }),
     supabase.from("appointment_reports").select(REPORT_COLUMNS),
-    supabase.from("inventory_movements").select("item_id, appointment_id, amount, movement_date, inventory(name, unit)").eq("movement_type", "OUT").not("appointment_id", "is", null),
+    supabase.from("inventory_movements").select("item_id, appointment_id, amount, movement_date, batch_number, inventory(name, unit)").eq("movement_type", "OUT").not("appointment_id", "is", null),
     supabase.from("appointment_report_attachments").select(ATTACHMENT_COLUMNS).order("uploaded_at", { ascending: false }),
   ]);
   const error = appointmentsResult.error || reportsResult.error || stockResult.error || attachmentsResult.error;
@@ -53,7 +58,7 @@ export async function fetchAppointments() {
   const stockByAppointment = new Map();
   (stockResult.data || []).forEach((movement) => {
     const entries = stockByAppointment.get(movement.appointment_id) || [];
-    entries.push({ itemId: movement.item_id, name: movement.inventory?.name || "Inventory item", amount: Number(movement.amount), unit: movement.inventory?.unit || "", date: movement.movement_date });
+    entries.push({ itemId: movement.item_id, name: movement.inventory?.name || "Inventory item", amount: Number(movement.amount), unit: movement.inventory?.unit || "", batchNumber: movement.batch_number || "", date: movement.movement_date });
     stockByAppointment.set(movement.appointment_id, entries);
   });
   const attachmentsByAppointment = new Map();
@@ -104,13 +109,48 @@ export async function updateAppointment(appointment) {
   return { appointment: mapAppointmentRow(Array.isArray(data) ? data[0] : data) };
 }
 
-export async function submitReport(appointmentId, { findings, treatmentPerformed, recommendations, followUpDate }) {
+/**
+ * Uploads the customer's signature and returns its object key.
+ *
+ * Deliberately no appointment_report_attachments row: that table has no UPDATE
+ * grant and technicians cannot delete, so a mis-signed signature filed there
+ * could never be replaced. The key lives on appointment_reports instead, which
+ * the report upsert can overwrite.
+ */
+export async function uploadSignature(appointmentId, file) {
+  const objectId = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const storagePath = `${appointmentId}/signature-${objectId}.png`;
+
+  const { error } = await supabase.storage
+    .from(ATTACHMENT_BUCKET)
+    .upload(storagePath, file, { contentType: "image/png", upsert: false });
+  if (error) return { error: describeError(error) };
+
+  return { storagePath };
+}
+
+/** Short-lived link for a stored signature, same contract as getAttachmentUrl. */
+export async function getSignatureUrl(storagePath) {
+  const { data, error } = await supabase.storage
+    .from(ATTACHMENT_BUCKET)
+    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
+  if (error) return { error: describeError(error) };
+  return { url: data.signedUrl };
+}
+
+export async function submitReport(appointmentId, { findings, treatmentPerformed, treatmentMethods, recommendations, followUpDate, customerName, signaturePath, completionNote }) {
   const { data, error } = await supabase.rpc("submit_appointment_report", {
     p_appointment_id: appointmentId,
     p_findings: findings,
     p_treatment_performed: treatmentPerformed,
     p_recommendations: recommendations || null,
     p_follow_up_date: followUpDate || null,
+    p_customer_name: customerName || null,
+    p_signature_path: signaturePath || null,
+    p_completion_note: completionNote || null,
+    p_treatment_methods: treatmentMethods || [],
   });
   if (error) return { error: describeError(error) };
   return { report: Array.isArray(data) ? data[0] : data };
@@ -128,6 +168,7 @@ export function mapAttachmentRow(row) {
     type: row.mime_type,
     size: row.size_bytes,
     storagePath: row.storage_path,
+    category: row.category || "OTHER",
     uploadedAt: row.uploaded_at,
   };
 }
@@ -141,7 +182,7 @@ function safeFileName(name) {
  * Bytes first, metadata row second — a failed upload leaves no row, so the UI
  * never lists an attachment whose file isn't there.
  */
-export async function uploadAttachment(appointmentId, file) {
+export async function uploadAttachment(appointmentId, file, category = "OTHER") {
   const objectId = typeof crypto !== "undefined" && crypto.randomUUID
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -160,6 +201,7 @@ export async function uploadAttachment(appointmentId, file) {
       mime_type: file.type || null,
       size_bytes: file.size,
       storage_path: storagePath,
+      category,
     })
     .select(ATTACHMENT_COLUMNS)
     .single();
@@ -206,7 +248,7 @@ export async function stockOut(itemId, appointmentId, amount, date = new Date().
 export async function stockOutBatch(appointmentId, items, date = new Date().toISOString().slice(0, 10)) {
   const { data, error } = await supabase.rpc("stock_out_batch", {
     p_appointment_id: appointmentId,
-    p_items: items.map((item) => ({ item_id: item.itemId, amount: Number(item.amount) })),
+    p_items: items.map((item) => ({ item_id: item.itemId, amount: Number(item.amount), batch_number: item.batchNumber || null })),
     p_movement_date: date,
   });
   if (error) return { error: describeError(error) };

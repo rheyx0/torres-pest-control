@@ -4,6 +4,15 @@ import { useAuthContext } from "./AuthContext";
 
 const SchedulingContext = createContext(null);
 
+// Fields that belong to the report, the stock-out or the attachments rather
+// than to the appointment row itself. update_appointment knows nothing about
+// them, so they must never be overwritten from its response.
+const REPORT_OWNED = [
+  "report", "treatmentPerformed", "treatmentMethods", "recommendations", "followUpDate",
+  "reportSubmitted", "reportSubmittedAt", "customerName", "signaturePath",
+  "signedAt", "completionNote", "stockUsed", "attachments",
+];
+
 export function SchedulingProvider({ children }) {
   const { session, sessionVerified } = useAuthContext();
   const [appointments, setAppointments] = useState([]);
@@ -36,23 +45,53 @@ export function SchedulingProvider({ children }) {
     return result.appointment;
   }, []);
 
+  // update_appointment returns the appointment row alone, so mapAppointmentRow
+  // builds it with report = null and every report-derived field comes back
+  // blank. Spreading that over local state wiped the treatment, follow-up,
+  // signature and attachments — the report looked half-erased until a refresh.
+  // Only appointment-owned fields are merged; everything the report owns is
+  // kept from the entry we already have.
   const updateAppointment = useCallback(async (appointment) => {
     const result = await appointmentService.updateAppointment(appointment);
     if (result.error) return result.error;
     if (!result.appointment?.status) return "Appointment update returned no saved status. Apply migration 020 and try again.";
-    setAppointments((current) => current.map((entry) => entry.id === appointment.id ? { ...entry, ...result.appointment, report: entry.report, reportSubmitted: entry.reportSubmitted, stockUsed: entry.stockUsed } : entry));
+
+    const appointmentFields = { ...result.appointment };
+    REPORT_OWNED.forEach((field) => delete appointmentFields[field]);
+
+    setAppointments((current) => current.map((entry) => entry.id === appointment.id
+      ? { ...entry, ...appointmentFields }
+      : entry));
     return result.appointment;
   }, []);
 
   const submitReport = useCallback(async (appointmentId, reportFields) => {
     const result = await appointmentService.submitReport(appointmentId, reportFields);
     if (result.error) return result.error;
-    setAppointments((current) => current.map((entry) => entry.id === appointmentId ? { ...entry, report: result.report.findings, treatmentPerformed: result.report.treatment_performed, recommendations: result.report.recommendations || "", followUpDate: result.report.follow_up_date || "", reportSubmitted: true, reportSubmittedAt: result.report.submitted_at, status: "Completed" } : entry));
+    // Completion is now conditional on the server: a signature or a written
+    // override completes the visit, an unsigned report is only a draft. So the
+    // status is derived from what came back, not assumed to be "Completed".
+    const confirmed = Boolean(result.report.signature_path || result.report.completion_note);
+    setAppointments((current) => current.map((entry) => entry.id === appointmentId ? {
+      ...entry,
+      report: result.report.findings,
+      treatmentPerformed: result.report.treatment_performed || "",
+      treatmentMethods: result.report.treatment_methods || [],
+      recommendations: result.report.recommendations || "",
+      followUpDate: result.report.follow_up_date || "",
+      reportSubmitted: true,
+      reportSubmittedAt: result.report.submitted_at,
+      customerName: result.report.customer_name || "",
+      signaturePath: result.report.signature_path || "",
+      signedAt: result.report.signed_at || "",
+      completionNote: result.report.completion_note || "",
+      status: confirmed ? "Completed" : entry.status,
+    } : entry));
     return result.report;
   }, []);
 
-  const addAttachment = useCallback(async (appointmentId, file) => {
-    const result = await appointmentService.uploadAttachment(appointmentId, file);
+  const addAttachment = useCallback(async (appointmentId, file, category) => {
+    const result = await appointmentService.uploadAttachment(appointmentId, file, category);
     if (result.error) return result.error;
     setAppointments((current) => current.map((entry) => entry.id === appointmentId
       ? { ...entry, attachments: [result.attachment, ...(entry.attachments || [])] }
@@ -76,7 +115,7 @@ export function SchedulingProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ appointments, loading, error, refresh, createAppointment, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl }),
+    () => ({ appointments, loading, error, refresh, createAppointment, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl, uploadSignature: appointmentService.uploadSignature, getSignatureUrl: appointmentService.getSignatureUrl }),
     [appointments, loading, error, refresh, createAppointment, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment]
   );
   return <SchedulingContext.Provider value={value}>{children}</SchedulingContext.Provider>;

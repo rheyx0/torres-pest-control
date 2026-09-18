@@ -6,15 +6,17 @@
 // navigation was missing entirely — the old page imported only useParams,
 // with no Link anywhere.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, PencilLine, Trash2, X } from "lucide-react";
+import { ArrowLeft, PencilLine, Printer, Trash2, X } from "lucide-react";
 import ClientForm from "./ClientForm";
-import ClientDocuments from "./ClientDocuments";
+import ClientDocuments, { CategoryTag } from "./ClientDocuments";
+import ServiceReportPrinter from "../scheduling/ServiceReportPrinter";
 import PageHeader from "../common/PageHeader";
 import { useScheduling } from "../../context/SchedulingContext";
 import useUsers from "../../hooks/useUsers";
 import { formatDateTime, humanizeEnum } from "../../utils/formatters";
+import { DOCUMENT_CATEGORIES } from "../../utils/constants";
 import { colors, dangerButton, pageShell, primaryButton, secondaryButton } from "../../styles/theme";
 
 function InfoBlock({ label, value }) {
@@ -30,6 +32,25 @@ function ServiceReportSummary({ appointment }) {
     <InfoBlock label="Recommendations" value={appointment.recommendations || "No recommendations recorded."} />
     <InfoBlock label="Follow-up date" value={appointment.followUpDate || "No follow-up scheduled."} />
     <InfoBlock label="Report submitted" value={appointment.reportSubmittedAt ? formatDateTime(appointment.reportSubmittedAt) : "Not submitted."} />
+  </div>;
+}
+
+function HistoryFileList({ files, onOpen, emptyMessage }) {
+  if (files.length === 0) {
+    return <div style={{ marginTop: "0.3rem", color: colors.body, fontSize: "0.84rem" }}>{emptyMessage}</div>;
+  }
+
+  return <div style={{ display: "grid", gap: "0.45rem", marginTop: "0.5rem" }}>
+    {files.map((file) => <div key={file.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", padding: "0.55rem 0.65rem", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "7px" }}>
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap", color: colors.body, fontSize: "0.8rem", fontWeight: 700 }}><CategoryTag category={file.category} />{file.name}</div>
+        <div style={{ color: colors.muted, fontSize: "0.68rem" }}>{formatDateTime(file.uploadedAt)}</div>
+      </div>
+      <div style={{ display: "flex", gap: "0.35rem" }}>
+        <button type="button" onClick={() => onOpen(file)} style={{ ...secondaryButton, padding: "0.35rem 0.5rem", fontSize: "0.7rem" }}>Preview</button>
+        <button type="button" onClick={() => onOpen(file, true)} style={{ ...secondaryButton, padding: "0.35rem 0.5rem", fontSize: "0.7rem" }}>Download</button>
+      </div>
+    </div>)}
   </div>;
 }
 
@@ -54,18 +75,34 @@ function ClientDetails({
 }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState(null);
-  const { appointments } = useScheduling();
+  const { appointments, getAttachmentUrl, getSignatureUrl } = useScheduling();
   const { staff, technicians } = useUsers();
   const accounts = [...staff, ...technicians];
   const serviceHistory = appointments
     .filter((appointment) => appointment.clientId === client.id && appointment.status === "Completed")
     .sort((a, b) => new Date(b.scheduledAt) - new Date(a.scheduledAt));
+  const [printRequest, setPrintRequest] = useState(null);
+  const [signatureUrl, setSignatureUrl] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedHistory?.signaturePath) { setSignatureUrl(""); return undefined; }
+    getSignatureUrl(selectedHistory.signaturePath).then((result) => {
+      if (!cancelled && result?.url) setSignatureUrl(result.url);
+    });
+    return () => { cancelled = true; };
+  }, [selectedHistory?.signaturePath, getSignatureUrl]);
+
   const openHistoryDocument = async (document, download = false) => {
     const result = await onResolveDocumentUrl(document, { download });
     if (result?.url) window.open(result.url, download ? "_self" : "_blank", "noopener,noreferrer");
   };
+  const openHistoryAttachment = async (attachment, download = false) => {
+    const result = await getAttachmentUrl(attachment, { download });
+    if (result?.url) window.open(result.url, download ? "_self" : "_blank", "noopener,noreferrer");
+  };
   const overviewFields = useMemo(
     () => [
+      { label: "Client No.", value: client.reference || "—" },
       { label: "Classification", value: client.classification === "OTHER" && client.classificationOther ? client.classificationOther : humanizeEnum(client.classification) },
       { label: "Pest Concern", value: client.pestConcern || "—" },
       { label: "Source", value: client.source || "—" },
@@ -79,7 +116,7 @@ function ClientDetails({
   return (
     <div style={pageShell}>
       <PageHeader
-        eyebrow="Client Profile"
+        eyebrow={client.reference ? `Client Profile · ${client.reference}` : "Client Profile"}
         title={client.name}
         actions={
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.9rem" }}>
@@ -186,7 +223,7 @@ function ClientDetails({
                   {(appointment.serviceType || appointment.serviceLocation) && <p style={{ margin: "0.4rem 0 0", color: colors.muted, fontSize: "0.76rem" }}>{[appointment.serviceType, appointment.serviceLocation].filter(Boolean).join(" • ")}</p>}
                   {appointment.notes && <p style={{ margin: "0.55rem 0 0", color: colors.body, fontSize: "0.84rem" }}>{appointment.notes}</p>}
                   {appointment.report && <div style={{ marginTop: "0.65rem", paddingTop: "0.65rem", borderTop: "1px solid #f1f5f9" }}><div style={{ color: colors.muted, fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase" }}>Inspection and treatment report</div><div style={{ marginTop: "0.25rem", color: colors.body, fontSize: "0.84rem", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{appointment.report}</div>{appointment.reportSubmittedAt && <div style={{ marginTop: "0.35rem", color: colors.muted, fontSize: "0.7rem" }}>Submitted {formatDateTime(appointment.reportSubmittedAt)}</div>}</div>}
-                  {(appointment.attachments || []).length > 0 && <div style={{ marginTop: "0.65rem", paddingTop: "0.65rem", borderTop: "1px solid #f1f5f9" }}><div style={{ color: colors.muted, fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase" }}>Report attachments</div><div style={{ marginTop: "0.35rem", color: colors.body, fontSize: "0.78rem" }}>{appointment.attachments.length} file{appointment.attachments.length === 1 ? "" : "s"} — open the appointment's Report tab to view or download.</div></div>}
+                  {(appointment.attachments || []).length > 0 && <div style={{ marginTop: "0.65rem", paddingTop: "0.65rem", borderTop: "1px solid #f1f5f9" }}><div style={{ color: colors.muted, fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase" }}>Report attachments</div><div style={{ marginTop: "0.35rem", color: colors.body, fontSize: "0.78rem" }}>{appointment.attachments.length} file{appointment.attachments.length === 1 ? "" : "s"} — click this visit to view or download them.</div></div>}
                   {(appointment.stockUsed || []).length > 0 && <div style={{ marginTop: "0.65rem", paddingTop: "0.65rem", borderTop: "1px solid #f1f5f9" }}><div style={{ color: colors.muted, fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase" }}>Materials used</div><div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.35rem" }}>{appointment.stockUsed.map((entry, index) => <span key={`${entry.itemId}-${index}`} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "0.3rem 0.45rem", color: colors.body, fontSize: "0.75rem" }}>{entry.name}: {entry.amount} {entry.unit}</span>)}</div></div>}
                 </button>
               ))}
@@ -194,22 +231,33 @@ function ClientDetails({
           )}
         </section>
         <div style={{ ...neutralCard, padding: "1rem 1.25rem" }}>
-          <ClientDocuments
-            documents={client.documents || []}
-            canUpload={canUploadDocuments}
-            canRemove={canRemoveDocuments}
-            onUpload={onUploadDocument}
-            onRemove={onRemoveDocument}
-            onResolveUrl={onResolveDocumentUrl}
-          />
+          <h2 style={{ marginTop: 0, marginBottom: "0.3rem", color: colors.body, fontSize: "1.05rem" }}>Client documents</h2>
+          <p style={{ margin: "0 0 1rem", color: colors.muted, fontSize: "0.76rem" }}>Paperwork that belongs to the client, not to one visit. Photos and signed forms for a service go in that appointment's Report tab.</p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "0.7rem", alignItems: "start" }}>
+            {DOCUMENT_CATEGORIES.map((category) => <ClientDocuments
+              key={category.value}
+              compact
+              title={category.label}
+              uploadLabel={category.uploadLabel}
+              documents={(client.documents || []).filter((document) => (document.category || "OTHER") === category.value)}
+              canUpload={canUploadDocuments}
+              canRemove={canRemoveDocuments}
+              onUpload={(file) => onUploadDocument(file, category.value)}
+              onRemove={onRemoveDocument}
+              onResolveUrl={onResolveDocumentUrl}
+              emptyMessage="None uploaded yet."
+            />)}
+          </div>
         </div>
       </div>
+
+      <ServiceReportPrinter request={printRequest} onDone={() => setPrintRequest(null)} onProblem={(text) => window.alert(text)} getAttachmentUrl={getAttachmentUrl} getSignatureUrl={getSignatureUrl} />
 
       {selectedHistory && <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, zIndex: 30, display: "grid", placeItems: "center", padding: "1rem", background: "rgba(15, 23, 42, 0.42)" }} onClick={() => setSelectedHistory(null)}>
         <section style={{ ...neutralCard, width: "min(100%, 680px)", maxHeight: "88vh", overflowY: "auto" }} onClick={(event) => event.stopPropagation()}>
           <ServiceReportSummary appointment={selectedHistory} />
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "start" }}><div><div style={{ color: colors.brand, fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>Service record</div><h2 style={{ margin: "0.3rem 0", color: colors.ink }}>{client.name}</h2><div style={{ color: colors.body, fontSize: "0.88rem", fontWeight: 700 }}>{formatDateTime(selectedHistory.scheduledAt)}</div><div style={{ color: colors.muted, fontSize: "0.82rem", marginTop: "0.2rem" }}>{selectedHistory.status} · {selectedHistory.pestConcern || client.pestConcern || "Pest concern not recorded"} · {selectedHistory.durationMinutes || 60} minutes</div></div><button type="button" aria-label="Close service record" onClick={() => setSelectedHistory(null)} style={{ ...secondaryButton, padding: "0.45rem 0.65rem" }}><X size={16} /></button></div>
-          <div style={{ display: "grid", gap: "0.9rem", marginTop: "1.25rem" }}><InfoBlock label="Client and service address" value={`${client.name}\n${client.address || "No address recorded."}`} /><InfoBlock label="Technician" value={accounts.find((account) => account.id === selectedHistory.technicianId)?.name || accounts.find((account) => account.id === selectedHistory.technicianId)?.username || "Unassigned"} /><InfoBlock label="Pest concern" value={selectedHistory.pestConcern || client.pestConcern || "Pest concern not recorded."} /><InfoBlock label="Appointment notes" value={selectedHistory.notes || "No notes recorded."} /><InfoBlock label="Inspection and treatment report" value={selectedHistory.report || "No report recorded."} /><InfoBlock label="Materials used" value={(selectedHistory.stockUsed || []).length ? selectedHistory.stockUsed.map((entry) => `${entry.name}: ${entry.amount} ${entry.unit}`).join("\n") : "No materials recorded."} /><div style={{ padding: "0.8rem", background: "#f8fafc", borderRadius: "8px" }}><div style={{ color: colors.muted, fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase" }}>Client documents and pictures</div>{(client.documents || []).length === 0 ? <div style={{ marginTop: "0.3rem", color: colors.body, fontSize: "0.84rem" }}>No documents or pictures attached.</div> : <div style={{ display: "grid", gap: "0.45rem", marginTop: "0.5rem" }}>{client.documents.map((document) => <div key={document.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", padding: "0.55rem 0.65rem", background: "#fff", border: "1px solid #e2e8f0", borderRadius: "7px" }}><div><div style={{ color: colors.body, fontSize: "0.8rem", fontWeight: 700 }}>{document.name}</div><div style={{ color: colors.muted, fontSize: "0.68rem" }}>{formatDateTime(document.uploadedAt)}</div></div><div style={{ display: "flex", gap: "0.35rem" }}><button type="button" onClick={() => openHistoryDocument(document)} style={{ ...secondaryButton, padding: "0.35rem 0.5rem", fontSize: "0.7rem" }}>Preview</button><button type="button" onClick={() => openHistoryDocument(document, true)} style={{ ...secondaryButton, padding: "0.35rem 0.5rem", fontSize: "0.7rem" }}>Download</button></div></div>)}</div>}</div></div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", alignItems: "start" }}><div><div style={{ color: colors.brand, fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>Service record</div><h2 style={{ margin: "0.3rem 0", color: colors.ink }}>{client.name}</h2><div style={{ color: colors.body, fontSize: "0.88rem", fontWeight: 700 }}>{formatDateTime(selectedHistory.scheduledAt)}</div><div style={{ color: colors.muted, fontSize: "0.82rem", marginTop: "0.2rem" }}>{selectedHistory.status} · {selectedHistory.pestConcern || client.pestConcern || "Pest concern not recorded"} · {selectedHistory.durationMinutes || 60} minutes</div></div><div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}><button type="button" onClick={() => setPrintRequest({ appointment: selectedHistory, client, technician: accounts.find((account) => account.id === selectedHistory.technicianId) || null })} style={{ ...secondaryButton, padding: "0.45rem 0.6rem", fontSize: "0.74rem" }}><Printer size={14} /> Service form PDF</button><button type="button" aria-label="Close service record" onClick={() => setSelectedHistory(null)} style={{ ...secondaryButton, padding: "0.45rem 0.65rem" }}><X size={16} /></button></div></div>
+          <div style={{ display: "grid", gap: "0.9rem", marginTop: "1.25rem" }}><InfoBlock label="Client and service address" value={`${client.name}\n${client.address || "No address recorded."}`} /><InfoBlock label="Technician" value={accounts.find((account) => account.id === selectedHistory.technicianId)?.name || accounts.find((account) => account.id === selectedHistory.technicianId)?.username || "Unassigned"} /><InfoBlock label="Pest concern" value={selectedHistory.pestConcern || client.pestConcern || "Pest concern not recorded."} /><InfoBlock label="Appointment notes" value={selectedHistory.notes || "No notes recorded."} /><InfoBlock label="Inspection and treatment report" value={selectedHistory.report || "No report recorded."} /><InfoBlock label="Materials used" value={(selectedHistory.stockUsed || []).length ? selectedHistory.stockUsed.map((entry) => `${entry.name}: ${entry.amount} ${entry.unit}${entry.batchNumber ? ` (lot ${entry.batchNumber})` : ""}`).join("\n") : "No materials recorded."} />{(selectedHistory.signaturePath || selectedHistory.completionNote) && <div style={{ padding: "0.8rem", background: selectedHistory.signaturePath ? "#f0fdf4" : "#fff7ed", border: `1px solid ${selectedHistory.signaturePath ? "#bbf7d0" : "#fed7aa"}`, borderRadius: "8px" }}><div style={{ color: colors.muted, fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase" }}>Completion confirmation</div>{selectedHistory.signaturePath ? <><div style={{ marginTop: "0.5rem", background: "#fff", borderRadius: "6px", padding: "0.4rem" }}>{signatureUrl ? <img src={signatureUrl} alt="Customer signature" style={{ display: "block", maxWidth: "100%", maxHeight: "120px" }} /> : <span style={{ color: colors.muted, fontSize: "0.76rem" }}>Loading signature…</span>}</div><div style={{ marginTop: "0.4rem", color: "#166534", fontWeight: 700, fontSize: "0.8rem" }}>Signed by {selectedHistory.customerName || "the customer"}</div>{selectedHistory.signedAt && <div style={{ color: colors.muted, fontSize: "0.7rem" }}>{formatDateTime(selectedHistory.signedAt)}</div>}</> : <><div style={{ marginTop: "0.3rem", color: "#9a3412", fontWeight: 700, fontSize: "0.8rem" }}>Completed without a customer signature</div><div style={{ marginTop: "0.2rem", color: colors.body, fontSize: "0.8rem", whiteSpace: "pre-wrap" }}>{selectedHistory.completionNote}</div></>}</div>}<div style={{ padding: "0.8rem", background: "#fffaf6", border: "1px solid #f3e0d2", borderRadius: "8px" }}><div style={{ color: colors.muted, fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase" }}>This visit&apos;s photos and documents{(selectedHistory.attachments || []).length > 0 && ` (${selectedHistory.attachments.length})`}</div><HistoryFileList files={selectedHistory.attachments || []} onOpen={openHistoryAttachment} emptyMessage="No photos or documents were attached to this visit." /></div><div style={{ padding: "0.8rem", background: "#f8fafc", borderRadius: "8px" }}><div style={{ color: colors.muted, fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase" }}>General client documents{(client.documents || []).length > 0 && ` (${client.documents.length})`}</div><div style={{ marginTop: "0.2rem", color: colors.muted, fontSize: "0.7rem" }}>Client ID, contracts, and permits — not tied to this visit.</div><HistoryFileList files={client.documents || []} onOpen={openHistoryDocument} emptyMessage="No general client documents on file." /></div></div>
         </section>
       </div>}
 

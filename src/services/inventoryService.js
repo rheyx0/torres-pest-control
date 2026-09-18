@@ -22,6 +22,7 @@ const COLUMNS = `
   purchase_unit, usage_unit, conversion_multiplier, created_by, intake_branch_or_station,
   created_at, updated_at,
   chemical_type, expiration_date, safety_level, hazard_rating, date_received,
+  standard_rate, rate_unit, rate_note,
   serial_number, condition, last_maintenance_date, next_maintenance_date, manufacturer, model,
   material_category, description
 `;
@@ -65,6 +66,9 @@ export function mapInventoryRow(row) {
     updatedAt: row.updated_at,
 
     chemicalType: row.chemical_type,
+    standardRate: row.standard_rate === null || row.standard_rate === undefined ? "" : Number(row.standard_rate),
+    rateUnit: row.rate_unit || "",
+    rateNote: row.rate_note || "",
     expirationDate: row.expiration_date,
     safetyLevel: row.safety_level,
     hazardRating: row.hazard_rating,
@@ -132,6 +136,12 @@ function buildPayload(item) {
     payload.safety_level = nullIfBlank(item.safetyLevel);
     payload.hazard_rating = nullIfBlank(item.hazardRating);
     payload.date_received = nullIfBlank(item.dateReceived);
+    // Advisory dosage shown to the technician at stock-out; never enforced.
+    payload.standard_rate = item.standardRate === null || item.standardRate === "" || item.standardRate === undefined
+      ? null
+      : Number(item.standardRate);
+    payload.rate_unit = nullIfBlank(item.rateUnit);
+    payload.rate_note = nullIfBlank(item.rateNote);
   } else if (item.type === "EQUIPMENT") {
     payload.serial_number = nullIfBlank(item.serialNumber);
     payload.condition = nullIfBlank(item.condition);

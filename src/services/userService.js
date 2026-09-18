@@ -13,8 +13,8 @@
 import { supabase } from "./supabaseClient";
 import { ACCOUNT_STATUS, ROLES } from "../utils/constants";
 
-const ADMIN_COLUMNS = "id, name, username, phone, email, status, is_primary, created_at, updated_at, last_login_at, avatar_url";
-const ROLE_COLUMNS = "id, name, username, phone, email, status, created_at, updated_at, last_login_at, avatar_url";
+const ADMIN_COLUMNS = "id, name, username, reference, phone, email, status, is_primary, created_at, updated_at, last_login_at, avatar_url";
+const ROLE_COLUMNS = "id, name, username, reference, phone, email, status, created_at, updated_at, last_login_at, avatar_url";
 const AVATAR_BUCKET = "profile-avatars";
 
 export function mapAccountRow(row, role = row.role) {
@@ -24,6 +24,7 @@ export function mapAccountRow(row, role = row.role) {
     phone: row.phone,
     email: row.email,
     username: row.username || row.name || row.email,
+    reference: row.reference || "",
     role,
     status: row.status,
     isPrimary: row.is_primary || false,

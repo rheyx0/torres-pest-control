@@ -62,7 +62,7 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
       if (statusFilter !== "ALL" && user.status !== statusFilter) return false;
       if (!term) return true;
 
-      const searchable = `${user.username || ""} ${user.name || ""} ${user.email || ""} ${user.phone || ""} ${user.role || ""} ${user.status || ""}`;
+      const searchable = `${user.reference || ""} ${user.username || ""} ${user.name || ""} ${user.email || ""} ${user.phone || ""} ${user.role || ""} ${user.status || ""}`;
       return searchable.toLowerCase().includes(term);
     });
   }, [users, searchTerm, roleFilter, statusFilter]);
@@ -212,6 +212,7 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
               <tr style={{ borderBottom: "1px solid #e2e8f0" }}>
                 {[
                   "User",
+                  "Employee No.",
                   "Role",
                   "Status",
                   "Phone Number",
@@ -300,6 +301,9 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
                           <div style={{ color: "#64748b", fontSize: "0.78rem", marginTop: "0.1rem" }}>{user.email}</div>
                         </div>
                       </div>
+                    </td>
+                    <td style={{ padding: "0.95rem 1rem", verticalAlign: "middle" }}>
+                      <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.82rem", fontWeight: 700, color: "#475569", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "0.2rem 0.45rem", whiteSpace: "nowrap" }}>{user.reference || "—"}</span>
                     </td>
 
                     <td style={{ padding: "0.95rem 1rem", verticalAlign: "middle" }}>

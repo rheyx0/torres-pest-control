@@ -35,7 +35,10 @@ function ClientList({ clients, emptyMessage = "No client matches your search." }
           }}
         >
           <div>
-            <div style={{ fontWeight: 700 }}>{client.name || "(unnamed client)"}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+              {client.reference && <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.72rem", fontWeight: 700, color: "#475569", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "6px", padding: "0.1rem 0.4rem", whiteSpace: "nowrap" }}>{client.reference}</span>}
+              <span style={{ fontWeight: 700 }}>{client.name || "(unnamed client)"}</span>
+            </div>
             <div style={{ fontSize: "0.85rem", color: colors.muted, marginTop: "0.15rem" }}>
               {client.phone || "No phone"} • {client.email || "No email"}
             </div>
