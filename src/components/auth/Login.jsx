@@ -141,7 +141,6 @@ function Login({ onLogin }) {
         <div className="hero">
           <div className="bar" aria-hidden="true" />
           <h2>Good to see you again</h2>
-          <p>Everything you saved, tracked and set up is exactly where you left it. Sign in to keep going.</p>
         </div>
       </aside>
 
@@ -149,7 +148,6 @@ function Login({ onLogin }) {
         <div className="hero">
           <div className="bar" aria-hidden="true" />
           <h2>Good to see you again</h2>
-          <p>Everything you saved, tracked and set up is exactly where you left it. Sign in to keep going.</p>
         </div>
       </div>
     </main>

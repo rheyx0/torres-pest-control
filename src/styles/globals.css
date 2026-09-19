@@ -467,20 +467,17 @@ a {
 }
 
 .hero h2 {
-  margin: 0 0 16px;
+  margin: 0;
   max-width: 14ch;
   font-family: "Fraunces", Georgia, "Times New Roman", serif;
   font-weight: 600;
-  font-size: 1.925rem;
-  line-height: 1.15;
+  font-size: 2.6rem;
+  line-height: 1.1;
   color: inherit;
 }
 
 .hero p {
-  margin: 0;
-  color: rgba(255, 214, 206, 0.78);
-  font-size: 1.166rem;
-  line-height: 1.65;
+  display: none;
 }
 
 .on-cream .hero {
