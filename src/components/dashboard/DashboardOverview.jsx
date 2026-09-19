@@ -1,38 +1,64 @@
-import { CalendarDays, CheckCircle2, CircleDollarSign, Clock3, Plus, Search, TrendingUp } from "lucide-react";
-import { Link } from "react-router-dom";
+import { CalendarDays, CheckCircle2, CircleDollarSign, Clock3, TrendingUp } from "lucide-react";
 import useAuth from "../../hooks/useAuth";
+import useClients from "../../hooks/useClients";
+import { useScheduling } from "../../context/SchedulingContext";
 import { card, colors, pageShell } from "../../styles/theme";
 
+// Mirrors APPOINTMENT_STATUS_TRANSITIONS in utils/constants.js — keep the
+// two in sync if a status is ever added or renamed.
 const statusColors = {
   Pending: { background: "#fff2cc", color: "#9a6700" },
-  "In Progress": { background: "#dce9ff", color: "#2454a6" },
+  Scheduled: { background: "#e6e9ff", color: "#3d3fa6" },
+  Confirmed: { background: "#dce9ff", color: "#2454a6" },
+  Reschedule: { background: "#ffe7d6", color: "#b45309" },
   Completed: { background: "#d7f6e7", color: "#087443" },
   Cancelled: { background: "#f9dddd", color: "#a52b2b" },
 };
 
 const serviceColors = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#8b5cf6"];
 
-function formatDate(date) {
+function formatDate(isoTimestamp) {
+  if (!isoTimestamp) return "—";
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(
-    new Date(`${date}T00:00:00`)
+    new Date(isoTimestamp)
   );
+}
+
+// Client classification is stored as an upper-snake constant (e.g.
+// "WAREHOUSE_STORAGE") — this is display formatting only, not a new field.
+function formatClassification(classification, classificationOther) {
+  if (classification === "OTHER" && classificationOther) return classificationOther;
+  if (!classification) return "—";
+  return classification
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function DashboardOverview() {
   const { currentUser } = useAuth();
-  const appointments = [];
-  const totalAppointments = appointments.length || null;
-  const pendingAppointments = appointments.length
-    ? appointments.filter((appointment) => appointment.status === "Pending").length
-    : null;
-  const completedAppointments = appointments.length
-    ? appointments.filter((appointment) => appointment.status === "Completed").length
-    : null;
+  const { appointments, loading: appointmentsLoading, error: appointmentsError } = useScheduling();
+  const { clients, loading: clientsLoading } = useClients();
+
+  const clientsById = new Map(clients.map((client) => [client.id, client]));
+
+  const totalAppointments = appointments.length;
+  const pendingAppointments = appointments.filter((appointment) => appointment.status === "Pending").length;
+  const completedAppointments = appointments.filter((appointment) => appointment.status === "Completed").length;
+
+  const recentAppointments = [...appointments]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 5);
+
   const serviceCounts = appointments.reduce((counts, appointment) => {
-    counts[appointment.pestType] = (counts[appointment.pestType] || 0) + 1;
+    const label = appointment.pestConcern || "Unspecified";
+    counts[label] = (counts[label] || 0) + 1;
     return counts;
   }, {});
   const topServices = Object.entries(serviceCounts).sort(([, first], [, second]) => second - first);
+
+  const isLoading = appointmentsLoading || clientsLoading;
 
   return (
     <div style={pageShell}>
@@ -45,10 +71,16 @@ function DashboardOverview() {
         </h1>
       </div>
 
+      {appointmentsError && (
+        <div role="alert" style={{ ...card, marginBottom: "1rem", borderColor: "#f0b4b4", background: "#fdf2f2", color: colors.danger, fontWeight: 700, fontSize: "0.85rem" }}>
+          Couldn't load appointments: {appointmentsError}
+        </div>
+      )}
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "1rem", marginBottom: "1.25rem" }}>
-        <SummaryCard title="Total Appointments" value={totalAppointments} detail="All records in system" Icon={CalendarDays} accent="#2563eb" />
-        <SummaryCard title="Pending" value={pendingAppointments} detail="Awaiting service" Icon={Clock3} accent="#d97706" />
-        <SummaryCard title="Completed" value={completedAppointments} detail="Successfully done" Icon={CheckCircle2} accent="#16a34a" />
+        <SummaryCard title="Total Appointments" value={isLoading ? null : totalAppointments} detail="All records in system" Icon={CalendarDays} accent="#2563eb" />
+        <SummaryCard title="Pending" value={isLoading ? null : pendingAppointments} detail="Awaiting service" Icon={Clock3} accent="#d97706" />
+        <SummaryCard title="Completed" value={isLoading ? null : completedAppointments} detail="Successfully done" Icon={CheckCircle2} accent="#16a34a" />
         <div style={{ ...card, background: `linear-gradient(135deg, ${colors.brand} 0%, #b83227 100%)`, color: "#fff", borderColor: "transparent", minHeight: "128px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
             <span style={{ fontSize: "0.8rem", fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", opacity: 0.86 }}>Business Wealth</span>
@@ -66,17 +98,19 @@ function DashboardOverview() {
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "620px" }}>
               <thead><tr>{["Client", "Service", "Type", "Date", "Status"].map((heading) => <th key={heading} style={tableHeading}>{heading}</th>)}</tr></thead>
               <tbody>
-                {appointments.slice(0, 5).map((appointment) => {
+                {recentAppointments.map((appointment) => {
+                  const client = clientsById.get(appointment.clientId);
                   const status = statusColors[appointment.status] || statusColors.Pending;
                   return <tr key={appointment.id}>
-                    <td style={tableCell}><strong>{appointment.clientName}</strong></td>
-                    <td style={tableCell}>{appointment.pestType}</td>
-                    <td style={tableCell}>{appointment.clientType.split(" (")[0]}</td>
-                    <td style={tableCell}>{formatDate(appointment.date)}</td>
+                    <td style={tableCell}><strong>{client?.name || "Unknown client"}</strong></td>
+                    <td style={tableCell}>{appointment.pestConcern || "—"}</td>
+                    <td style={tableCell}>{formatClassification(client?.classification, client?.classificationOther)}</td>
+                    <td style={tableCell}>{formatDate(appointment.scheduledAt)}</td>
                     <td style={tableCell}><span style={{ ...status, borderRadius: "999px", display: "inline-block", fontSize: "0.76rem", fontWeight: 800, padding: "0.35rem 0.65rem" }}>{appointment.status}</span></td>
                   </tr>;
                 })}
-                {appointments.length === 0 && <tr><td colSpan="5" style={{ ...tableCell, textAlign: "center", color: colors.muted }}>No appointment data available.</td></tr>}
+                {!isLoading && recentAppointments.length === 0 && <tr><td colSpan="5" style={{ ...tableCell, textAlign: "center", color: colors.muted }}>No appointment data available.</td></tr>}
+                {isLoading && recentAppointments.length === 0 && <tr><td colSpan="5" style={{ ...tableCell, textAlign: "center", color: colors.muted }}>Loading…</td></tr>}
               </tbody>
             </table>
           </div>
@@ -109,38 +143,7 @@ function DashboardOverview() {
           <WealthStat label="Active pipeline" value={null} />
         </div>
       </section>
-
-      <div style={{ ...card, marginTop: "1rem", padding: "1rem 1.25rem", display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-        <span style={{ color: colors.ink, fontWeight: 800, marginRight: "0.25rem" }}>Quick actions</span>
-        <DashboardAction to="/clients/new" Icon={Plus}>Create Client Profile</DashboardAction>
-        <DashboardAction to="/clients" Icon={Search}>View Clients</DashboardAction>
-      </div>
     </div>
-  );
-}
-
-function DashboardAction({ to, Icon, children }) {
-  return (
-    <Link
-      to={to}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.45rem",
-        border: "1px solid rgba(127, 17, 17, 0.22)",
-        borderRadius: "10px",
-        background: "#fff8f8",
-        color: colors.brandInk,
-        padding: "0.65rem 0.85rem",
-        fontSize: "0.84rem",
-        fontWeight: 700,
-        textDecoration: "none",
-        WebkitTapHighlightColor: "transparent",
-      }}
-    >
-      <Icon size={16} />
-      {children}
-    </Link>
   );
 }
 
