@@ -2,221 +2,158 @@
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import Field from "../common/Field";
-import { colors } from "../../styles/theme";
 
 function Login({ onLogin }) {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
-  const [passwordToggleHover, setPasswordToggleHover] = useState(false);
   const [error, setError] = useState("");
+  const [status, setStatus] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    setStatus("");
+
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier.trim());
+    const passOk = password.length >= 8;
+
+    if (!emailOk) {
+      setError("Enter a valid email address, like you@example.com.");
+      return;
+    }
+
+    if (!passOk) {
+      setError("Your password needs at least 8 characters.");
+      return;
+    }
+
     setError("");
     setSubmitting(true);
-    const result = await onLogin?.(identifier, password);
-    setSubmitting(false);
 
-    // Sprint AC: the message must not reveal which field was wrong, so both
-    // the "no such account" and "wrong password" cases land here identically.
-    if (result !== true) {
-      setError(typeof result === "string" ? result : "Invalid email/username or password.");
+    try {
+      const result = await onLogin?.(identifier.trim(), password);
+
+      if (result !== true) {
+        setError(typeof result === "string" ? result : "Invalid email or password.");
+        return;
+      }
+
+      setStatus("Signed in. This is a demo, so there is nowhere to redirect to.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="login-card">
-      <div className="login-heading" style={{ textAlign: "center" }}>
-        <img
-          src="/login-logo.png"
-          alt="Torres Pest Control"
-          style={{
-            display: "block",
-            height: "44px",
-            width: "auto",
-            margin: "0 auto 0.8rem",
-            objectFit: "contain",
-          }}
-        />
-        <h1
-          style={{
-            margin: 0,
-            color: colors.ink,
-            fontSize: "2rem",
-            fontWeight: 800,
-            lineHeight: 1.1,
-            letterSpacing: "-0.04em",
-            textShadow: "none",
-            WebkitTextStroke: "0 transparent",
-            textRendering: "geometricPrecision",
-          }}
-        >
-          Welcome!
-        </h1>
-        <p style={{ margin: "0.45rem 0 0", fontSize: "0.9rem", color: colors.muted, fontWeight: 500 }}>
-          Access your Torres Pest Control System dashboard
-        </p>
-      </div>
+    <main className="standalone-login-card">
+      <section className="standalone-form-panel" aria-labelledby="title">
+        <span className="accent-bar" aria-hidden="true" />
 
-      <div style={{ display: "grid", gap: "1rem" }}>
-        <Field label="Email or username" style={{ fontWeight: 700, color: "#1f2937" }}>
-          <input
-            aria-label="Email or username"
-            type="text"
-            value={identifier}
-            onChange={(event) => setIdentifier(event.target.value)}
-            style={loginInputStyle}
-            placeholder="Email or username"
-            autoFocus
-          />
-        </Field>
-
-        <Field label="Password" style={{ fontWeight: 700, color: "#1f2937" }}>
-          <div style={passwordFieldWrapStyle}>
-            <input
-              aria-label="Password"
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              style={{ ...loginInputStyle, paddingRight: "2.8rem" }}
-              placeholder="Enter your password"
-            />
-            <button
-              type="button"
-              aria-label={showPassword ? "Hide password" : "Show password"}
-              onClick={() => setShowPassword((curr) => !curr)}
-              onMouseEnter={() => setPasswordToggleHover(true)}
-              onMouseLeave={() => setPasswordToggleHover(false)}
-              style={{
-                ...passwordToggleStyle,
-                color: passwordToggleHover ? "#334155" : "#64748b",
-                fontWeight: passwordToggleHover ? 800 : 700,
-              }}
-            >
-              {showPassword ? "Hide" : "Show"}
-            </button>
+        <div className="standalone-form-inner">
+          <div className="tp-logo" aria-label="Torres Pest Control logo" role="img">
+            <img src="/login-logo.png" alt="Torres Pest Control logo" className="tp-logo-image" />
           </div>
-        </Field>
-      </div>
 
-      <div style={metaRowStyle}>
-        <label style={checkboxStyle}>
-          <input
-            type="checkbox"
-            checked={rememberMe}
-            onChange={(event) => setRememberMe(event.target.checked)}
-            style={checkboxInputStyle}
-          />
-          <span>Remember me</span>
-        </label>
+          <h1 id="title">Welcome back</h1>
+          <p className="sub">Sign in to pick up right where you left off.</p>
 
-        <Link to="/forgot-password" style={forgotLinkStyle}>
-          Forgot password?
-        </Link>
-      </div>
+          <form className="standalone-login-form" noValidate onSubmit={handleSubmit}>
+            <div className="field">
+              <label className="lbl" htmlFor="email">Email</label>
+              <input
+                id="email"
+                name="email"
+                className="input"
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={identifier}
+                onChange={(event) => {
+                  setIdentifier(event.target.value);
+                  if (error) setError("");
+                }}
+                aria-invalid={Boolean(error)}
+              />
+            </div>
 
-      {error && (
-        <div role="alert" style={{ marginTop: "1rem", color: colors.danger, fontWeight: 700, fontSize: "0.9rem" }}>
-          {error}
+            <div className="field">
+              <label className="lbl" htmlFor="password">Password</label>
+              <div className="input-wrap">
+                <input
+                  id="password"
+                  name="password"
+                  className="input"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    if (error) setError("");
+                  }}
+                  aria-invalid={Boolean(error)}
+                />
+                <button
+                  className="toggle-pw"
+                  type="button"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  aria-controls="password"
+                  onClick={() => setShowPassword((current) => !current)}
+                >
+                  <svg className="icon-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" hidden={showPassword}>
+                    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                  <svg className="icon-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" hidden={!showPassword}>
+                    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                    <line x1="2" x2="22" y1="2" y2="22" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="row">
+              <label className="check">
+                <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} />
+                <span>Keep me signed in</span>
+              </label>
+              <Link className="link" to="/forgot-password">
+                Forgot password?
+              </Link>
+            </div>
+
+            <button className="btn-primary" type="submit" disabled={submitting}>
+              {submitting ? "Signing in…" : "Sign in"}
+            </button>
+
+            {error && <p className="err" role="alert">{error}</p>}
+            {status && <p className="status" role="status">{status}</p>}
+          </form>
         </div>
-      )}
+      </section>
 
-      <button
-        type="submit"
-        className="login-submit-button"
-        disabled={submitting}
-        style={{ ...loginButtonStyle, opacity: submitting ? 0.7 : 1, cursor: submitting ? "default" : "pointer" }}
-      >
-        {submitting ? "Signing in…" : "Sign In"}
-      </button>
-    </form>
+      <aside className="hero-layer on-red" aria-label="Torres Pest Control welcome message">
+        <div className="hero">
+          <div className="bar" aria-hidden="true" />
+          <h2>Good to see you again</h2>
+          <p>Everything you saved, tracked and set up is exactly where you left it. Sign in to keep going.</p>
+        </div>
+      </aside>
+
+      <div className="hero-layer on-cream" aria-hidden="true">
+        <div className="hero">
+          <div className="bar" aria-hidden="true" />
+          <h2>Good to see you again</h2>
+          <p>Everything you saved, tracked and set up is exactly where you left it. Sign in to keep going.</p>
+        </div>
+      </div>
+    </main>
   );
 }
-
-const loginInputStyle = {
-  width: "100%",
-  border: "1px solid #d7dfe8",
-  borderRadius: "12px",
-  padding: "0.88rem 0.95rem",
-  fontSize: "0.96rem",
-  background: "#ffffff",
-  color: colors.body,
-  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.03)",
-  transition: "border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease",
-  outline: "none",
-};
-
-const passwordFieldWrapStyle = {
-  position: "relative",
-  display: "block",
-};
-
-const passwordToggleStyle = {
-  position: "absolute",
-  right: "0.8rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  border: "none",
-  background: "transparent",
-  color: "#64748b",
-  fontSize: "0.76rem",
-  fontWeight: 800,
-  letterSpacing: "0.02em",
-  cursor: "pointer",
-  padding: 0,
-  transition: "color 0.18s ease, opacity 0.18s ease",
-};
-
-const metaRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  marginTop: "1rem",
-  marginBottom: "0.5rem",
-  fontSize: "0.85rem",
-  color: "#475569",
-  lineHeight: 1.2,
-};
-
-const checkboxStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "0.5rem",
-  fontWeight: 600,
-  color: "#334155",
-  lineHeight: 1,
-};
-
-const checkboxInputStyle = {
-  width: "0.95rem",
-  height: "0.95rem",
-  accentColor: "#b91c1c",
-  verticalAlign: "middle",
-};
-
-const forgotLinkStyle = {
-  color: "#991b1b",
-  textDecoration: "none",
-  fontWeight: 700,
-  fontSize: "0.84rem",
-  lineHeight: 1,
-};
-
-const loginButtonStyle = {
-  marginTop: "1.1rem",
-  width: "100%",
-  border: "none",
-  borderRadius: "12px",
-  background: "linear-gradient(180deg, #9f1d1d 0%, #7f1111 100%)",
-  color: "#fff",
-  padding: "0.9rem 1rem",
-  fontWeight: 700,
-  boxShadow: "0 14px 24px rgba(127, 17, 17, 0.2)",
-};
 
 export default Login;
