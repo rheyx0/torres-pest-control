@@ -57,7 +57,11 @@ export function AuthProvider({ children }) {
 
     verify();
 
-    // Poll session validity every 3 seconds for near-instant deactivation kickoff
+    // Poll session validity every 3 seconds for near-instant deactivation
+    // kickoff. This doubles as the session's heartbeat: each call stamps
+    // sessions.last_seen_at server-side, which is what lets check_login()
+    // tell an abandoned session (safe to replace) from one that's still in
+    // active use (login attempt gets refused instead of silently booting it).
     const intervalId = setInterval(async () => {
       if (session?.token) {
         const result = await authService.validateSession(session.token);

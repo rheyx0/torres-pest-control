@@ -19,6 +19,12 @@ function describeLoginError(error) {
   if (error.code === "PGRST202" || error.code === "42883") {
     return `check_login not found: ${detail}. Run supabase/schema-v2.sql in Supabase SQL Editor.`;
   }
+  // P0001 is a plain `raise exception` from inside check_login (e.g. the
+  // "already signed in on another device" guard) — the message is already
+  // written for the login form, so skip the [code: ...] diagnostic suffix.
+  if (error.code === "P0001" && error.message) {
+    return error.message;
+  }
   return detail || "Login service is unavailable.";
 }
 
