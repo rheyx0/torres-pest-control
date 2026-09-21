@@ -58,6 +58,8 @@ Migration 041 gives an appointment a crew (`appointment_technicians`) and keeps 
 
 Note `013` exists twice (`013-audit-fixes.sql`, `013-user-profile-avatars.sql`), `039` likewise (`039-treatment-methods-admin.sql`, `039-admin-avatar-management.sql` — they create disjoint objects, so the shared number is harmless), and the header of `039-treatment-methods-admin.sql` documents a superseded `038-treatment-methods-admin.sql` draft. Read the header comment of a migration before touching it — they explain the reasoning and the ordering traps.
 
+On Supabase, pgcrypto lives in the `extensions` schema, while the six password functions are `security definer set search_path = public` — so `crypt()` is invisible inside them and every login fails with 42883. Migration 043 appends `extensions` to their search_path. Re-run 043 after re-running any migration that recreates an auth function (011, 013, 015, 016, 018, 019, 037), because `create or replace function` restores the narrow path.
+
 Storage buckets are private; files are read through short-lived signed URLs minted at click time (`SIGNED_URL_TTL_SECONDS`), never stored. Buckets: `client-documents`, `report-attachments`, signatures, avatars.
 
 ## Dead code in the tree
