@@ -12,7 +12,7 @@
 // control would be lying. ResetPasswordDialog covers the admin reset path.
 
 import { useEffect, useMemo, useState } from "react";
-import { MoreHorizontal, Search, X } from "lucide-react";
+import { Download, MoreHorizontal, Search, X } from "lucide-react";
 import Field from "../common/Field";
 import EmptyState from "../common/EmptyState";
 import UserRoleSelector from "./UserRoleSelector";
@@ -43,7 +43,7 @@ function uppercaseLabel(value) {
   return String(value).toUpperCase();
 }
 
-function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
+function UserList({ users, canEdit, onEdit, onAvatarChange, onToggleStatus, onResetPassword }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -53,6 +53,8 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
   const [menuDirection, setMenuDirection] = useState({});
   const [form, setForm] = useState({ name: "", username: "", email: "", phone: "", role: "STAFF" });
   const [errors, setErrors] = useState({});
+  const [avatarUploadId, setAvatarUploadId] = useState(null);
+  const [avatarHoverId, setAvatarHoverId] = useState(null);
 
   const filteredUsers = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -145,6 +147,15 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
     if (result === true) {
       closeEditModal();
     }
+  };
+
+  const handleAvatarChange = async (user, event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !onAvatarChange) return;
+    setAvatarUploadId(user.id);
+    await onAvatarChange(user.id, file);
+    setAvatarUploadId(null);
   };
 
   return (
@@ -255,6 +266,13 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
                     <td style={{ padding: "0.95rem 1rem", verticalAlign: "middle" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
                         <div
+                          onMouseEnter={() => setAvatarHoverId(user.id)}
+                          onMouseLeave={() => setAvatarHoverId(null)}
+                          style={{ position: "relative", width: "2.9rem", height: "2.9rem" }}
+                        >
+                        <label
+                          htmlFor={`user-avatar-${user.id}`}
+                          title={canEdit ? "Change profile picture" : undefined}
                           style={{
                             width: "2.9rem",
                             height: "2.9rem",
@@ -262,13 +280,21 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
                             border: "none",
                             background: "transparent",
                             borderRadius: "999px",
-                            cursor: "default",
+                            cursor: canEdit ? "pointer" : "default",
                             overflow: "hidden",
                             outline: "none",
                             WebkitTapHighlightColor: "transparent",
                             boxShadow: "none",
                           }}
                         >
+                          <input
+                            id={`user-avatar-${user.id}`}
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => handleAvatarChange(user, event)}
+                            disabled={!canEdit || avatarUploadId === user.id}
+                            style={{ display: "none" }}
+                          />
                           <div
                             style={{
                               width: "2.9rem",
@@ -285,7 +311,7 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
                               boxShadow: "inset 0 0 0 1px rgba(148, 163, 184, 0.25)",
                             }}
                           >
-                            {avatarSrc ? (
+                            {avatarUploadId === user.id ? "..." : avatarSrc ? (
                               <img
                                 src={avatarSrc}
                                 alt={user.name}
@@ -295,6 +321,39 @@ function UserList({ users, canEdit, onEdit, onToggleStatus, onResetPassword }) {
                               initials || "U"
                             )}
                           </div>
+                        </label>
+                        {avatarHoverId === user.id && (
+                          <a
+                            href={avatarSrc || undefined}
+                            download={avatarSrc ? `${(user.name || "user").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-profile` : undefined}
+                            aria-label={avatarSrc ? `Download ${user.name || "user"} profile picture` : "No profile picture available"}
+                            title={avatarSrc ? "Download profile picture" : "No profile picture available"}
+                            aria-disabled={!avatarSrc}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (!avatarSrc) event.preventDefault();
+                            }}
+                            style={{
+                              position: "absolute",
+                              right: "-0.35rem",
+                              bottom: "-0.35rem",
+                              width: "1.55rem",
+                              height: "1.55rem",
+                              display: "grid",
+                              placeItems: "center",
+                              borderRadius: "999px",
+                              background: avatarSrc ? "#0f172a" : "#94a3b8",
+                              border: "2px solid #fff",
+                              color: "#fff",
+                              textDecoration: "none",
+                              zIndex: 2,
+                              cursor: avatarSrc ? "pointer" : "not-allowed",
+                              opacity: avatarSrc ? 1 : 0.85,
+                            }}
+                          >
+                            <Download size={12} />
+                          </a>
+                        )}
                         </div>
                         <div>
                           <div style={{ fontWeight: 700, color: "#0f172a", fontSize: "0.96rem" }}>{user.name}</div>

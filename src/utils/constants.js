@@ -159,10 +159,10 @@ export const ATTACHMENT_CATEGORIES = [
 // purpose — a customer must never receive a form with a fake address on it.
 export const COMPANY = {
   name: "Torres Pest Control",
-  address: "[Business address — set COMPANY in src/utils/constants.js]",
-  phone: "[Contact number]",
-  email: "[Email address]",
-  licenseNo: "[License / permit no.]",
+  address: "Purok 13 Brgy, Martylville Subdivision, B11A L65, Ula, Tugbok, Davao City, 8000 Davao del Sur",
+  phone: "0917 139 1908",
+  email: "torresprestcontrol@gmail.com",
+  licenseNo: "LTO-3000001234567",
   logo: "/brand-logo.png",
 };
 

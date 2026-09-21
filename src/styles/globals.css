@@ -625,7 +625,13 @@ a {
 }
 .sf-prose { font-size: 11.5px; white-space: pre-wrap; }
 
-.sf-materials { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.sf-materials { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11.5px; }
+.sf-materials .sf-item { text-align: left; width: 48%; }
+.sf-materials th:nth-child(2), .sf-materials td:nth-child(2) { width: 25%; }
+.sf-materials th:nth-child(3), .sf-materials td:nth-child(3) { width: 27%; }
+.sf-materials th:nth-child(2), .sf-materials th:nth-child(3) { text-align: right; }
+.sf-materials th, .sf-materials td { padding-right: 8px; }
+.sf-materials th:last-child, .sf-materials td:last-child { padding-right: 0; }
 .sf-materials th {
   text-align: left; padding: 4px 0; font-size: 9.5px; font-weight: 800;
   text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280;
@@ -689,4 +695,3 @@ a {
 .sf-methods { margin: 0; padding-left: 16px; font-size: 11.5px; }
 .sf-methods li { margin-bottom: 1px; }
 
-.sf-batch { font-family: ui-monospace, Menlo, monospace; font-size: 10.5px; color: #4b5563; }

@@ -28,7 +28,7 @@ const COLUMNS = `
 `;
 
 const MOVEMENT_COLUMNS = `
-  id, item_id, amount, quantity_delta, movement_date, reference, actor, intake_branch_or_station, movement_type, appointment_id, created_at,
+  id, item_id, amount, quantity_delta, movement_date, reference, actor, intake_branch_or_station, movement_type, appointment_id, unit_cost, total_cost, created_at,
   inventory ( name, unit, cost )
 `;
 
@@ -280,13 +280,16 @@ export async function stockIn(
   if (error) return { error: describeError(error) };
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) return { error: "Stock In did not return a result." };
+  const calculatedTotal = numericCost !== null ? Number(amount) * numericCost : 0;
 
   // Update item catalog cost if a unitCost was explicitly entered
   if (numericCost !== null && !isNaN(numericCost) && numericCost >= 0) {
     await supabase.from("inventory").update({ cost: numericCost }).eq("id", itemId);
+    await supabase.from("inventory_movements").update({
+      unit_cost: numericCost,
+      total_cost: calculatedTotal,
+    }).eq("id", row.movement_id);
   }
-
-  const calculatedTotal = numericCost !== null ? Number(amount) * numericCost : 0;
 
   return {
     movement: {
@@ -319,8 +322,8 @@ export async function stockCorrection(itemId, delta, reason, date = new Date().t
 
 function mapMovementRow(row) {
   const amount = Number(row.amount) || 0;
-  const unitCost = Number(row.unit_cost ?? row.inventory?.cost ?? 0);
-  const totalCost = Number(row.total_cost ?? (amount * unitCost));
+  const unitCost = Number(row.unit_cost) || Number(row.inventory?.cost) || 0;
+  const totalCost = Number(row.total_cost) || (amount * unitCost);
 
   return {
     id: row.id,

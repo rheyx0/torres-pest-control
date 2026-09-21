@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Check,
   ChevronLeft,
@@ -146,6 +147,7 @@ function SchedulingPage() {
   const { inventory, stockOutMany } = useInventory();
   const { staff, technicians } = useUsers();
   const { appointments, createAppointment, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
+  const [searchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState(null);
   const [view, setView] = useState("week");
   const [anchorDate, setAnchorDate] = useState(new Date());
@@ -181,6 +183,13 @@ function SchedulingPage() {
 
   const selected = appointments.find((appointment) => appointment.id === selectedId && ownsAppointment(appointment)) || null;
   const selectedClient = clients.find((client) => client.id === selected?.clientId) || null;
+  useEffect(() => {
+    const requestedId = searchParams.get("appointment");
+    const requestedAppointment = appointments.find((appointment) => appointment.id === requestedId);
+    if (!requestedAppointment || (isTechnician && requestedAppointment.technicianId !== currentUser?.id)) return;
+    setSelectedId(requestedId);
+    if (searchParams.get("tab") === "Report") setTab("Report");
+  }, [appointments, searchParams, isTechnician, currentUser?.id]);
   const activeAccounts = useMemo(
     () => [...staff, ...technicians].filter((account) => account.status !== ACCOUNT_STATUS.INACTIVE),
     [staff, technicians]
@@ -478,6 +487,7 @@ function SchedulingPage() {
       appointment,
       client,
       technician: activeAccounts.find((account) => account.id === appointment.technicianId) || null,
+      inventory,
     });
   };
 
@@ -783,7 +793,7 @@ function AppointmentOverviewForm({ appointment, client, activeAccounts, busyTech
     <InfoRow icon={<UserRound size={15} />} label="Classification" value={client.classificationOther || client.classification || "Not classified"} />
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Date and time</strong><input name="scheduledAt" type="datetime-local" defaultValue={toDateTimeLocal(appointment.scheduledAt)} style={inputStyle} />{appointment.status !== "Reschedule" && <span style={hintStyle}>Set the status to Reschedule before changing the date, time, or duration.</span>}</div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}><label style={{ display: "grid", gap: "0.25rem", color: colors.muted, fontSize: "0.72rem", fontWeight: 700 }}>Hours<input name="durationHours" type="number" min="0" max="24" defaultValue={hours} style={{ ...inputStyle, padding: "0.55rem" }} required /></label><label style={{ display: "grid", gap: "0.25rem", color: colors.muted, fontSize: "0.72rem", fontWeight: 700 }}>Minutes<input name="durationMinutes" type="number" min="0" max="59" defaultValue={minutes} style={{ ...inputStyle, padding: "0.55rem" }} required /></label></div>
-    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Technician</strong><select name="technicianId" value={technicianId} onChange={(event) => setTechnicianId(event.target.value)} style={inputStyle}><option value="">Unassigned</option>{activeAccounts.map((account) => <option key={account.id} value={account.id} disabled={isBusy(account.id)}>{account.reference ? `${account.reference} — ` : ""}{account.name || account.username}{isBusy(account.id) ? " - busy at this time" : ""}</option>)}</select>{conflicts.length > 0 && <span style={{ color: colors.danger, fontSize: "0.72rem", fontWeight: 700 }}>Conflict: this technician overlaps another appointment.</span>}</div>
+    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Technician</strong><select name="technicianId" value={technicianId} onChange={(event) => setTechnicianId(event.target.value)} style={inputStyle}><option value="">Unassigned</option>{activeAccounts.map((account) => <option key={account.id} value={account.id} disabled={isBusy(account.id)}>{account.name || account.username}{isBusy(account.id) ? " - busy at this time" : ""}</option>)}</select>{conflicts.length > 0 && <span style={{ color: colors.danger, fontSize: "0.72rem", fontWeight: 700 }}>Conflict: this technician overlaps another appointment.</span>}</div>
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Service type</strong><select name="serviceType" defaultValue={appointment.serviceType || ""} style={inputStyle}><option value="">Select a service type</option>{SERVICE_TYPES.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Service location</strong><input name="serviceLocation" defaultValue={appointment.serviceLocation || ""} placeholder={client.address || "Client address"} style={inputStyle} /><span style={hintStyle}>Leave blank to use the client's address.</span></div>
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Pest concern</strong><select name="pestConcern" defaultValue={appointment.pestConcern || ""} style={inputStyle}><option value="">Select a pest concern</option>{PEST_CONCERN_SUGGESTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>

@@ -13,6 +13,7 @@ import { colors } from "../../styles/theme";
 export const TONE = {
   plain: { border: "#eadede", surface: "#ffffff", ink: colors.ink, label: colors.muted },
   attn: { border: "#f0c489", surface: "#fdf6ea", ink: "#9a5b0b", label: "#9a5b0b" },
+  warning: { border: "#f4b183", surface: "#fff1e8", ink: "#c2410c", label: "#c2410c" },
   crit: { border: "#eeb0ac", surface: "#fdf0ef", ink: "#b3261e", label: "#b3261e" },
   done: { border: "#b9e0d0", surface: "#f0f9f5", ink: "#1f7a5f", label: "#1f7a5f" },
 };

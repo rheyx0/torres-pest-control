@@ -7,15 +7,19 @@
 
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { ArrowRight, ClipboardCheck, MapPinned, PackageSearch } from "lucide-react";
 import useAuth from "../../hooks/useAuth";
 import useClients from "../../hooks/useClients";
+import useInventory from "../../hooks/useInventory";
 import { useScheduling } from "../../context/SchedulingContext";
 import { colors, pageShell, primaryButton } from "../../styles/theme";
 import {
   appointmentsThisWeek,
   completedToday,
+  lowStockItems,
   remainingToday,
   appointmentsToday,
+  tomorrowsJobs,
 } from "../../utils/dashboardMetrics";
 import { greetingFor } from "../../utils/greetings";
 import { Chip, Empty, JobRow, Panel, StatTile, TileRow, timeLabel } from "./DashboardParts";
@@ -24,6 +28,7 @@ function TechnicianDashboard() {
   const { currentUser } = useAuth();
   const { appointments, loading, error } = useScheduling();
   const { clients } = useClients();
+  const { inventory, loading: inventoryLoading } = useInventory();
 
   const me = currentUser?.id;
   const clientsById = new Map(clients.map((client) => [client.id, client]));
@@ -39,6 +44,14 @@ function TechnicianDashboard() {
   const nextUp = remaining[0];
   const weeklyJobs = appointmentsThisWeek(appointments).filter((entry) => entry.technicianId === me);
   const weeklyFiled = weeklyJobs.filter((entry) => entry.reportSubmitted).length;
+  const tomorrowJobs = tomorrowsJobs(appointments, me, 4);
+  const reportsToFile = weeklyJobs.filter((entry) => !entry.reportSubmitted).sort((first, second) => new Date(first.scheduledAt) - new Date(second.scheduledAt));
+  const signaturesToAdd = weeklyJobs.filter((entry) => entry.reportSubmitted && !entry.technicianSignaturePath).sort((first, second) => new Date(second.scheduledAt) - new Date(first.scheduledAt));
+  const recentCompleted = appointments
+    .filter((entry) => entry.technicianId === me && entry.reportSubmitted)
+    .sort((first, second) => new Date(second.reportSubmittedAt || second.scheduledAt) - new Date(first.reportSubmittedAt || first.scheduledAt))
+    .slice(0, 4);
+  const lowStock = lowStockItems(inventory).slice(0, 4);
   const nextScheduled = appointments
     .filter((entry) => entry.technicianId === me && entry.status !== "Cancelled" && new Date(entry.scheduledAt) >= new Date())
     .sort((first, second) => new Date(first.scheduledAt) - new Date(second.scheduledAt))[0];
@@ -75,13 +88,25 @@ function TechnicianDashboard() {
             label="Remaining today"
             value={loading ? "—" : remaining.length}
             note={nextUp ? `Next at ${timeLabel(nextUp.scheduledAt)}` : "Nothing left to file"}
-            tone={remaining.length > 0 ? "attn" : "done"}
+            tone="plain"
           />
           <StatTile
             label="Completed today"
             value={loading ? "—" : done.length}
             note={done.length > 0 ? "Reports filed" : "None filed yet"}
             tone="done"
+          />
+          <StatTile
+            label="Tomorrow"
+            value={loading ? "—" : tomorrowJobs.length}
+            note={tomorrowJobs.length === 1 ? "Assigned visit" : "Assigned visits"}
+            tone="plain"
+          />
+          <StatTile
+            label="Needs attention"
+            value={loading ? "—" : reportsToFile.length + signaturesToAdd.length}
+            note="Reports or signatures"
+            tone={reportsToFile.length + signaturesToAdd.length > 0 ? "warning" : "done"}
           />
         </TileRow>
 
@@ -101,6 +126,46 @@ function TechnicianDashboard() {
           ) : <Empty>No upcoming visit is scheduled.</Empty>}
         </Panel>
 
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(280px, 1fr)", gap: "1rem", alignItems: "start" }}>
+          <Panel title="Needs attention" action={`${reportsToFile.length + signaturesToAdd.length} open items`}>
+            {reportsToFile.length === 0 && signaturesToAdd.length === 0 && <Empty>Everything assigned this week is up to date.</Empty>}
+            {reportsToFile.map((appointment, index) => (
+              <JobRow
+                key={`report-${appointment.id}`}
+                first={index === 0}
+                when={timeLabel(appointment.scheduledAt)}
+                title={nameOf(appointment)}
+                detail={["Report still to file", appointment.pestConcern].filter(Boolean).join(" · ")}
+                action={<Link to="/scheduling" style={{ ...primaryButton, textDecoration: "none", padding: "0.45rem 0.65rem", fontSize: "0.72rem", whiteSpace: "nowrap" }}>Open report</Link>}
+              />
+            ))}
+            {signaturesToAdd.map((appointment, index) => (
+              <JobRow
+                key={`signature-${appointment.id}`}
+                first={reportsToFile.length === 0 && index === 0}
+                when={timeLabel(appointment.scheduledAt)}
+                title={nameOf(appointment)}
+                detail="Technician signature still needed"
+                action={<Link to={`/scheduling?appointment=${encodeURIComponent(appointment.id)}&tab=Report`} style={{ ...primaryButton, textDecoration: "none", padding: "0.45rem 0.65rem", fontSize: "0.72rem", whiteSpace: "nowrap" }}>Sign report</Link>}
+              />
+            ))}
+          </Panel>
+
+          <Panel title="Field tools" action="Quick access">
+            <div style={{ display: "grid", gap: "0.55rem" }}>
+              <Link to="/scheduling" style={{ display: "flex", alignItems: "center", gap: "0.65rem", padding: "0.65rem 0.7rem", borderRadius: "10px", background: "#fff7ed", color: "#9a3412", textDecoration: "none", fontSize: "0.78rem", fontWeight: 800 }}>
+                <ClipboardCheck size={16} /> Open service reports <ArrowRight size={14} style={{ marginLeft: "auto" }} />
+              </Link>
+              <Link to="/clients" style={{ display: "flex", alignItems: "center", gap: "0.65rem", padding: "0.65rem 0.7rem", borderRadius: "10px", background: "#f0f9f5", color: "#1f7a5f", textDecoration: "none", fontSize: "0.78rem", fontWeight: 800 }}>
+                <MapPinned size={16} /> Find client history <ArrowRight size={14} style={{ marginLeft: "auto" }} />
+              </Link>
+              <Link to="/inventory" style={{ display: "flex", alignItems: "center", gap: "0.65rem", padding: "0.65rem 0.7rem", borderRadius: "10px", background: "#f8fafc", color: colors.body, textDecoration: "none", fontSize: "0.78rem", fontWeight: 800 }}>
+                <PackageSearch size={16} /> Check inventory <ArrowRight size={14} style={{ marginLeft: "auto" }} />
+              </Link>
+            </div>
+          </Panel>
+        </div>
+
         <Panel title="My schedule today" action={new Date().toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}>
           {loading && mineToday.length === 0 && <Empty>Loading your schedule…</Empty>}
           {!loading && mineToday.length === 0 && <Empty>No visits booked for you today.</Empty>}
@@ -117,6 +182,49 @@ function TechnicianDashboard() {
             />
           ))}
         </Panel>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1rem" }}>
+          <Panel title="Tomorrow's route" action={tomorrowJobs.length ? `${tomorrowJobs.length} visits` : "No visits"}>
+            {tomorrowJobs.length === 0 ? <Empty>No visits are assigned for tomorrow.</Empty> : tomorrowJobs.map((appointment, index) => (
+              <JobRow
+                key={appointment.id}
+                first={index === 0}
+                when={timeLabel(appointment.scheduledAt)}
+                title={nameOf(appointment)}
+                detail={[whereOf(appointment), appointment.serviceType || appointment.pestConcern].filter(Boolean).join(" · ")}
+                action={<Chip tone={appointment.reportSubmitted ? "done" : "attn"}>{appointment.reportSubmitted ? "Filed" : "Open"}</Chip>}
+              />
+            ))}
+          </Panel>
+
+          <Panel title="Recent completed work" action="Latest reports">
+            {recentCompleted.length === 0 ? <Empty>No completed reports yet.</Empty> : recentCompleted.map((appointment, index) => (
+              <JobRow
+                key={appointment.id}
+                first={index === 0}
+                when={timeLabel(appointment.reportSubmittedAt || appointment.scheduledAt)}
+                title={nameOf(appointment)}
+                detail={[appointment.treatmentMethods?.length ? `${appointment.treatmentMethods.length} treatment method${appointment.treatmentMethods.length === 1 ? "" : "s"}` : "Report filed", appointment.technicianSignaturePath ? "Signed" : "Signature pending"].join(" · ")}
+                action={appointment.technicianSignaturePath
+                  ? <Chip tone="done">Complete</Chip>
+                  : <Link to={`/scheduling?appointment=${encodeURIComponent(appointment.id)}&tab=Report`} style={{ textDecoration: "none" }}><Chip tone="attn">Sign</Chip></Link>}
+              />
+            ))}
+          </Panel>
+
+          <Panel title="Supplies to watch" action={inventoryLoading ? "Loading" : `${lowStock.length} shown`}>
+            {lowStock.length === 0 ? <Empty>No items are currently at or below reorder level.</Empty> : lowStock.map((item, index) => (
+              <JobRow
+                key={item.id}
+                first={index === 0}
+                when={`${item.quantity} ${item.unit || ""}`}
+                title={item.name}
+                detail={`Reorder level: ${item.reorderLevel} ${item.unit || ""}`}
+                action={<Chip tone="crit">Low</Chip>}
+              />
+            ))}
+          </Panel>
+        </div>
 
       </div>
     </div>

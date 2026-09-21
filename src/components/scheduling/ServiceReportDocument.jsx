@@ -29,10 +29,11 @@ function Block({ title, children }) {
   );
 }
 
-function ServiceReportDocument({ appointment, client, technician, photos = [], signatureUrl = "", technicianSignatureUrl = "", treatmentMethodsLookup = [] }) {
+function ServiceReportDocument({ appointment, client, technician, inventory = [], photos = [], signatureUrl = "", technicianSignatureUrl = "", treatmentMethodsLookup = [] }) {
   if (!appointment || !client) return null;
 
   const materials = appointment.stockUsed || [];
+  const inventoryById = new Map(inventory.map((item) => [item.id, item]));
   const methods = (appointment.treatmentMethods || [])
     .map((value) => {
       const found = treatmentMethodsLookup.find((method) => method.value === value);
@@ -90,14 +91,19 @@ function ServiceReportDocument({ appointment, client, technician, photos = [], s
         ) : (
           <table className="sf-materials">
             <thead>
-              <tr><th>Item</th><th>Batch / lot</th><th className="sf-num">Quantity</th></tr>
+              <tr><th className="sf-item">Item</th><th className="sf-num">Quantity out</th><th className="sf-num">Estimated value</th></tr>
             </thead>
             <tbody>
               {materials.map((entry, index) => (
                 <tr key={`${entry.itemId}-${index}`}>
-                  <td>{entry.name}</td>
-                  <td className="sf-batch">{entry.batchNumber || "—"}</td>
-                  <td className="sf-num">{entry.amount} {entry.unit}</td>
+                  <td className="sf-item">{entry.name}{(entry.unit || entry.itemUnit) ? ` (${entry.unit || entry.itemUnit})` : ""}</td>
+                  <td className="sf-num">{entry.amount ?? entry.quantity ?? "—"} {entry.unit || entry.itemUnit || ""}</td>
+                  <td className="sf-num">{(() => {
+                    const item = inventoryById.get(entry.itemId);
+                    const amount = Number(entry.amount ?? entry.quantity) || 0;
+                    const value = amount * (Number(item?.cost) || 0);
+                    return item?.cost !== undefined && item?.cost !== null ? `₱${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
+                  })()}</td>
                 </tr>
               ))}
             </tbody>

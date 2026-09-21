@@ -63,7 +63,7 @@ function ServiceReportPrinter({ request, onDone, onProblem, getAttachmentUrl, ge
     }
 
     let cancelled = false;
-    const { appointment, client, technician } = request;
+    const { appointment, client, technician, inventory = [] } = request;
 
     (async () => {
       // Images only, and only the ones that will actually render.
@@ -119,6 +119,7 @@ function ServiceReportPrinter({ request, onDone, onProblem, getAttachmentUrl, ge
           appointment,
           client,
           technician,
+          inventory,
           photos,
           signatureUrl,
           technicianSignatureUrl,
@@ -193,6 +194,7 @@ function ServiceReportPrinter({ request, onDone, onProblem, getAttachmentUrl, ge
         appointment={payload.appointment}
         client={payload.client}
         technician={payload.technician}
+        inventory={payload.inventory}
         photos={payload.photos}
         signatureUrl={payload.signatureUrl}
         technicianSignatureUrl={payload.technicianSignatureUrl}

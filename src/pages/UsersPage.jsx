@@ -13,13 +13,13 @@ import { pageShell, primaryButton } from "../styles/theme";
 
 function UsersPage() {
   const { can, currentUser } = useAuth();
-  const { users, updateAccount, toggleAccountStatus, resetAccountPassword } = useUsers();
+  const { users, updateAccount, updateAvatar, toggleAccountStatus, resetAccountPassword } = useUsers();
   const { showSuccess, showError } = useToast();
   const [resetTarget, setResetTarget] = useState(null);
 
   const visibleUsers = users.filter((user) => {
     if (currentUser?.role === "ADMIN") {
-      return user.role !== "ADMIN" || user.id === currentUser.id;
+      return true;
     }
     return user.role !== "ADMIN";
   });
@@ -41,6 +41,13 @@ function UsersPage() {
     const result = await toggleAccountStatus(userId);
     if (result === true) showSuccess("Account status updated.");
     else showError(result);
+  };
+
+  const handleAvatarChange = async (userId, file) => {
+    const result = await updateAvatar(userId, file);
+    if (result === true) showSuccess("Profile picture updated.");
+    else showError(result);
+    return result;
   };
 
   const handleResetPassword = async (userId, newPassword) => {
@@ -71,6 +78,7 @@ function UsersPage() {
         users={visibleUsers}
         canEdit={canEdit}
         onEdit={handleEdit}
+        onAvatarChange={handleAvatarChange}
         onToggleStatus={handleToggleStatus}
         onResetPassword={setResetTarget}
       />

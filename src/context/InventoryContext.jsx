@@ -35,7 +35,9 @@ export function InventoryProvider({ children }) {
   useEffect(() => {
     if (!session || !sessionVerified) {
       setInventory([]);
+      setMovements([]);
       setError("");
+      setMovementsError("");
       return;
     }
     refresh();
@@ -194,6 +196,7 @@ export function InventoryProvider({ children }) {
             amount: Number(movement.amount),
             quantityDelta: -Number(movement.amount),
             movementDate: movement.movement_date,
+            batchNumber: movement.batch_number || "",
             reference: `Appointment ${appointmentId}`,
             actor: movement.actor || "",
             movementType: "OUT",
@@ -243,6 +246,10 @@ export function InventoryProvider({ children }) {
     setMovementsLoading(false);
     return result;
   }, []);
+
+  useEffect(() => {
+    if (session && sessionVerified) refreshMovements();
+  }, [session, sessionVerified, refreshMovements]);
 
   const value = useMemo(
     () => ({

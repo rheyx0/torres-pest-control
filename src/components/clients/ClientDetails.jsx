@@ -15,6 +15,7 @@ import ServiceReportPrinter from "../scheduling/ServiceReportPrinter";
 import PageHeader from "../common/PageHeader";
 import { useScheduling } from "../../context/SchedulingContext";
 import useUsers from "../../hooks/useUsers";
+import useInventory from "../../hooks/useInventory";
 import { formatDate, formatDateTime, formatFileSize, formatTime, humanizeEnum } from "../../utils/formatters";
 import { DOCUMENT_CATEGORIES } from "../../utils/constants";
 import { colors, dangerButton, pageShell, primaryButton, secondaryButton } from "../../styles/theme";
@@ -448,20 +449,26 @@ function ClientDetails({
   const [selectedHistory, setSelectedHistory] = useState(null);
   const { appointments, getAttachmentUrl, getSignatureUrl, removeAttachment } = useScheduling();
   const { staff, technicians } = useUsers();
+  const { inventory } = useInventory();
   const accounts = [...staff, ...technicians];
   const serviceHistory = appointments
     .filter((appointment) => appointment.clientId === client.id && appointment.status === "Completed")
     .sort((a, b) => new Date(b.scheduledAt) - new Date(a.scheduledAt));
   const [printRequest, setPrintRequest] = useState(null);
   const [signatureUrl, setSignatureUrl] = useState("");
+  const [technicianSignatureUrl, setTechnicianSignatureUrl] = useState("");
   useEffect(() => {
     let cancelled = false;
-    if (!selectedHistory?.signaturePath) { setSignatureUrl(""); return undefined; }
-    getSignatureUrl(selectedHistory.signaturePath).then((result) => {
-      if (!cancelled && result?.url) setSignatureUrl(result.url);
+    if (!selectedHistory?.signaturePath) setSignatureUrl("");
+    else getSignatureUrl(selectedHistory.signaturePath).then((result) => {
+      if (!cancelled) setSignatureUrl(result?.url || "");
+    });
+    if (!selectedHistory?.technicianSignaturePath) setTechnicianSignatureUrl("");
+    else getSignatureUrl(selectedHistory.technicianSignaturePath).then((result) => {
+      if (!cancelled) setTechnicianSignatureUrl(result?.url || "");
     });
     return () => { cancelled = true; };
-  }, [selectedHistory?.signaturePath, getSignatureUrl]);
+  }, [selectedHistory?.signaturePath, selectedHistory?.technicianSignaturePath, getSignatureUrl]);
 
   const openHistoryDocument = async (document, download = false) => {
     const result = await onResolveDocumentUrl(document, { download });
@@ -716,7 +723,7 @@ function ClientDetails({
                 <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexShrink: 0 }}>
                   <button
                     type="button"
-                    onClick={() => setPrintRequest({ appointment: selectedHistory, client, technician: technician || null })}
+                    onClick={() => setPrintRequest({ appointment: selectedHistory, client, technician: technician || null, inventory })}
                     style={{ ...secondaryButton, display: "inline-flex", alignItems: "center", gap: "0.35rem", padding: "0.45rem 0.75rem", fontSize: "0.74rem" }}
                   >
                     <Printer size={14} /> Service form PDF
@@ -865,25 +872,46 @@ function ClientDetails({
                 </div>
 
                 {/* Completion Confirmation */}
-                {(selectedHistory.signaturePath || selectedHistory.completionNote) && (
+                {(selectedHistory.signaturePath || selectedHistory.technicianSignaturePath || selectedHistory.completionNote) && (
                   <div style={{ paddingTop: "1.1rem", paddingBottom: "1.1rem", borderBottom: "1px solid #f1f5f9", background: selectedHistory.signaturePath ? "#f0fdf4" : "#fff7ed", borderRadius: "8px", padding: "1rem", margin: "0.5rem 0" }}>
                     <div style={{ fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em", color: "#64748b" }}>Completion Confirmation</div>
-                    {selectedHistory.signaturePath ? (
-                      <>
-                        <div style={{ marginTop: "0.5rem", background: "#fff", borderRadius: "6px", padding: "0.4rem", display: "inline-block" }}>
-                          {signatureUrl
-                            ? <img src={signatureUrl} alt="Customer signature" style={{ display: "block", maxWidth: "100%", maxHeight: "100px" }} />
-                            : <span style={{ color: colors.muted, fontSize: "0.76rem" }}>Loading signature…</span>}
-                        </div>
-                        <div style={{ marginTop: "0.4rem", color: "#166534", fontWeight: 700, fontSize: "0.82rem" }}>Signed by {selectedHistory.customerName || "the customer"}</div>
-                        {selectedHistory.signedAt && <div style={{ color: colors.muted, fontSize: "0.72rem" }}>{formatDateTime(selectedHistory.signedAt)}</div>}
-                      </>
-                    ) : (
-                      <>
-                        <div style={{ marginTop: "0.3rem", color: "#9a3412", fontWeight: 700, fontSize: "0.82rem" }}>Completed without a customer signature</div>
-                        <div style={{ marginTop: "0.2rem", color: colors.body, fontSize: "0.84rem", whiteSpace: "pre-wrap" }}>{selectedHistory.completionNote}</div>
-                      </>
-                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem", marginTop: "0.5rem" }}>
+                      <div>
+                        <div style={{ color: "#64748b", fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase" }}>Client signature</div>
+                        {selectedHistory.signaturePath ? (
+                          <>
+                            <div style={{ marginTop: "0.35rem", background: "#fff", borderRadius: "6px", padding: "0.4rem", display: "inline-block" }}>
+                              {signatureUrl
+                                ? <img src={signatureUrl} alt="Customer signature" style={{ display: "block", maxWidth: "100%", maxHeight: "100px" }} />
+                                : <span style={{ color: colors.muted, fontSize: "0.76rem" }}>Loading signature…</span>}
+                            </div>
+                            <div style={{ marginTop: "0.4rem", color: "#166534", fontWeight: 700, fontSize: "0.82rem" }}>Signed by {selectedHistory.customerName || "the customer"}</div>
+                            {selectedHistory.signedAt && <div style={{ color: colors.muted, fontSize: "0.72rem" }}>{formatDateTime(selectedHistory.signedAt)}</div>}
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ marginTop: "0.3rem", color: "#9a3412", fontWeight: 700, fontSize: "0.82rem" }}>Completed without a customer signature</div>
+                            <div style={{ marginTop: "0.2rem", color: colors.body, fontSize: "0.84rem", whiteSpace: "pre-wrap" }}>{selectedHistory.completionNote}</div>
+                          </>
+                        )}
+                      </div>
+                      <div>
+                        <div style={{ color: "#64748b", fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase" }}>Technician signature</div>
+                        {selectedHistory.technicianSignaturePath ? (
+                          <>
+                            <div style={{ marginTop: "0.35rem", background: "#fff", borderRadius: "6px", padding: "0.4rem", display: "inline-block" }}>
+                              {technicianSignatureUrl
+                                ? <img src={technicianSignatureUrl} alt="Technician signature" style={{ display: "block", maxWidth: "100%", maxHeight: "100px" }} />
+                                : <span style={{ color: colors.muted, fontSize: "0.76rem" }}>Loading signature…</span>}
+                            </div>
+                            <div style={{ marginTop: "0.4rem", color: "#166534", fontWeight: 700, fontSize: "0.82rem" }}>Signed by {accounts.find((account) => account.id === selectedHistory.technicianId)?.name || accounts.find((account) => account.id === selectedHistory.technicianId)?.username || "the technician"}</div>
+                            {selectedHistory.technicianSignedAt && <div style={{ color: colors.muted, fontSize: "0.72rem" }}>{formatDateTime(selectedHistory.technicianSignedAt)}</div>}
+                          </>
+                        ) : (
+                          <div style={{ marginTop: "0.3rem", color: colors.muted, fontSize: "0.82rem", fontStyle: "italic" }}>No technician signature on file.</div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
 

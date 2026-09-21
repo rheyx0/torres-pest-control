@@ -24,6 +24,7 @@ import {
   appointmentsToday,
   averageMaterialCost,
   awaitingReschedule,
+  dayKey,
   lowStockItems,
   needsScheduling,
   peso,
@@ -66,11 +67,11 @@ function OfficeDashboard() {
     return Array.from({ length: 7 }, (_, index) => {
       const date = new Date(currentWeek.start);
       date.setDate(date.getDate() + index);
-      const key = date.toISOString().slice(0, 10);
+      const key = dayKey(date);
       const count = appointments.filter((appointment) => {
         if (appointment.status === "Cancelled") return false;
         const scheduled = new Date(appointment.scheduledAt);
-        return scheduled.toISOString().slice(0, 10) === key;
+        return dayKey(scheduled) === key;
       }).length;
       return {
         label: date.toLocaleDateString([], { weekday: "short" }),
