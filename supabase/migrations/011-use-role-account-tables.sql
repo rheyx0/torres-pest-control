@@ -174,5 +174,12 @@ begin
 end $$;
 alter table public.system_logs drop constraint if exists system_logs_actor_id_fkey;
 
-drop table if exists public.users;
+-- public.users is deliberately NOT dropped here.
+--
+-- Migrations 013, 014 and 015 still read and alter it, so dropping it at this
+-- point makes every one of them fail on a database built from scratch in
+-- numeric order. Migration 018 is the real cutover: it refuses to drop the
+-- table until every account has a matching row in admins / staff /
+-- technicians, and only then removes it. The rows above have already been
+-- copied, so nothing is lost by letting it stand until 018 runs.
 notify pgrst, 'reload schema';

@@ -21,19 +21,19 @@ insert into clients (name, phone, email, address, source, classification, create
 select v.name, v.phone, v.email, v.address, v.source, v.classification::client_classification,
        v.created_at::timestamptz, v.updated_at::timestamptz
 from (values
-  ('Bahay ng Baryo Homes',   '+63 917 223 4432', 'admin@bahayngbaryo.com',
+  ('Bahay ng Baryo Homes',   '09172234432', 'admin@bahayngbaryo.com',
    'Blk 11, Lot 5, Marfori, Davao City', 'Walk-in',  'RESIDENTIAL',
    '2026-07-08T09:00:00Z', '2026-08-18T09:00:00Z'),
 
-  ('Golden Harvest Foods',   '+63 921 768 9920', 'ops@goldenharvestfoods.ph',
+  ('Golden Harvest Foods',   '09217689920', 'ops@goldenharvestfoods.ph',
    'Puan, Davao City',                    'Referral', 'COMMERCIAL',
    '2026-06-18T13:15:00Z', '2026-08-18T13:15:00Z'),
 
-  ('Arawan Logistics Center','+63 910 553 1133', 'warehouse@arawanlogistics.com',
+  ('Arawan Logistics Center','09105531133', 'warehouse@arawanlogistics.com',
    'Km. 9, Panacan, Davao City',          'Referral', 'WAREHOUSE_STORAGE',
    '2026-07-20T10:00:00Z', '2026-08-18T10:00:00Z'),
 
-  ('Davao Garden Villas',    '+63 917 999 2255', 'manager@davaogardenvillas.com',
+  ('Davao Garden Villas',    '09179992255', 'manager@davaogardenvillas.com',
    'Bajada, Davao City',                  'Walk-in',  'HOSPITALITY',
    '2026-08-02T08:35:00Z', '2026-08-18T08:35:00Z')
 ) as v(name, phone, email, address, source, classification, created_at, updated_at)

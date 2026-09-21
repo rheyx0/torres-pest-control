@@ -15,7 +15,7 @@ returns users
 language plpgsql
 security definer
 set search_path = public
-as $BODY
+as $BODY$
 declare
   caller  users;
   updated users;
@@ -53,7 +53,7 @@ begin
   perform write_log(caller, format('Updated account for %s.', updated.name), 'admin');
   return updated;
 end;
-$BODY;
+$BODY$;
 
 create or replace function public.set_user_status(
   session_token uuid,
@@ -64,7 +64,7 @@ returns users
 language plpgsql
 security definer
 set search_path = public
-as $BODY
+as $BODY$
 declare
   caller  users;
   target  users;
@@ -98,7 +98,7 @@ begin
   perform write_log(caller, format('%s account marked %s.', updated.name, new_status), 'admin');
   return updated;
 end;
-$BODY;
+$BODY$;
 
 -- Fix: Do not show the list of admins to staff or technicians
 -- We'll add a helper to get the session role
@@ -108,14 +108,14 @@ language sql
 stable
 security definer
 set search_path = public
-as $BODY
+as $BODY$
   select u.role::text
   from sessions s
   join users u on u.id = s.user_id
   where s.token::text = (current_setting('request.headers', true)::json->>'x-session-token')
     and s.expires_at > now()
     and u.status = 'ACTIVE';
-$BODY;
+$BODY$;
 
 -- Update the RLS policy on users to hide admins from non-admins
 drop policy if exists "Read users" on users;

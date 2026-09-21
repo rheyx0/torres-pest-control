@@ -200,7 +200,10 @@ end $$;
 -- Seed a primary admin so there is always a way in. Safe to re-run.
 insert into users (name, username, email, phone, password_hash, role, status, is_primary)
 values (
-  'Maya Torres', 'admin', 'admin@torrespestcontrol.com', '+63 917 000 1111',
+  -- National format, not +63: migration 013 narrows users_phone_check to
+  -- ^09[0-9]{9}$, which is the only shape the account form can produce. Seeded
+  -- in +63 this row fails its own constraint the moment 013 is applied.
+  'Maya Torres', 'admin', 'admin@torrespestcontrol.com', '09170001111',
   crypt('ChangeMe123', gen_salt('bf')), 'ADMIN', 'ACTIVE', true
 )
 on conflict (email) do nothing;
