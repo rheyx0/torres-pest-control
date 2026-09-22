@@ -62,7 +62,9 @@ export function AuthProvider({ children }) {
     // sessions.last_seen_at server-side. Multiple devices can be signed in
     // at once (see migration 041) so nothing currently blocks on that
     // timestamp, but it's kept for future bookkeeping (e.g. a "signed in on
-    // N other devices" view).
+    // N other devices" view). This also lets check_login() tell an abandoned
+    // session (safe to replace) from one that's still in active use (login
+    // attempt gets refused instead of silently booting it).
     const intervalId = setInterval(async () => {
       if (session?.token) {
         const result = await authService.validateSession(session.token);
