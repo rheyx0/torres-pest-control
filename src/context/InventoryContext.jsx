@@ -145,7 +145,12 @@ export function InventoryProvider({ children }) {
       setInventory((previous) =>
         previous.map((entry) =>
           entry.id === itemId
-            ? { ...entry, quantity: result.newQuantity, cost: unitCost !== undefined ? Number(unitCost) : entry.cost }
+            ? {
+                ...entry,
+                quantity: result.newQuantity,
+                cost: unitCost !== undefined ? Number(unitCost) : entry.cost,
+                supplier: supplier || entry.supplier,
+              }
             : entry
         )
       );

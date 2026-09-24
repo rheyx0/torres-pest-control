@@ -29,12 +29,12 @@ const COLUMNS = `
 
 const MOVEMENT_COLUMNS = `
   id, item_id, amount, quantity_delta, movement_date, reference, actor, intake_branch_or_station, supplier, expiry_date, movement_type, appointment_id, unit_cost, total_cost, created_at,
-  inventory ( name, unit, cost )
+  inventory ( name, unit, cost, supplier )
 `;
 
 const LEGACY_MOVEMENT_COLUMNS = `
   id, item_id, amount, quantity_delta, movement_date, reference, actor, intake_branch_or_station, movement_type, appointment_id, unit_cost, total_cost, created_at,
-  inventory ( name, unit, cost )
+  inventory ( name, unit, cost, supplier )
 `;
 
 function describeError(error) {
@@ -63,7 +63,7 @@ export function mapInventoryRow(row) {
     usageUnit: row.usage_unit || row.unit,
     conversionMultiplier: row.conversion_multiplier === null ? 1 : Number(row.conversion_multiplier),
     cost: Number(row.cost),
-    supplier: row.supplier || "",
+    supplier: row.supplier || row.inventory?.supplier || "",
     storageLocation: row.storage_location || "",
     reorderLevel: row.reorder_level === null ? null : Number(row.reorder_level),
     status: row.status || INVENTORY_STATUS.ACTIVE,
@@ -348,14 +348,20 @@ export async function stockIn(
   const calculatedTotal = numericCost !== null ? Number(amount) * numericCost : 0;
 
   // Update item catalog cost if a unitCost was explicitly entered
-  if (numericCost !== null && !isNaN(numericCost) && numericCost >= 0) {
-    await supabase.from("inventory").update({ cost: numericCost }).eq("id", itemId);
+  const itemUpdates = {};
+  if (numericCost !== null && !isNaN(numericCost) && numericCost >= 0) itemUpdates.cost = numericCost;
+  if (nullIfBlank(supplier)) itemUpdates.supplier = nullIfBlank(supplier);
+  if (Object.keys(itemUpdates).length > 0) {
+    await supabase.from("inventory").update(itemUpdates).eq("id", itemId);
   }
-  await supabase.from("inventory_movements").update({
+  const { error: metadataError } = await supabase.from("inventory_movements").update({
     ...(numericCost !== null && !isNaN(numericCost) && numericCost >= 0 ? { unit_cost: numericCost, total_cost: calculatedTotal } : {}),
     supplier: nullIfBlank(supplier),
     expiry_date: expiryDate || null,
   }).eq("id", row.movement_id);
+  if (metadataError && /supplier|expiry_date|column/i.test(metadataError.message || "")) {
+    return { error: "Stock In was recorded, but supplier history needs migration 041 applied before per-intake suppliers can be saved." };
+  }
 
   return {
     movement: {
