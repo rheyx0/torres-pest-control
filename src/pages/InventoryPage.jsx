@@ -11,7 +11,7 @@
 // original note this replaced) — the file's just bigger now.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MoreHorizontal, Search } from "lucide-react";
+import { MoreHorizontal, Plus, Search, Trash2 } from "lucide-react";
 import useInventory from "../hooks/useInventory";
 import useAuth from "../hooks/useAuth";
 import { SUBSYSTEMS } from "../utils/permissions";
@@ -19,6 +19,7 @@ import { useToast } from "../context/ToastContext";
 import { INVENTORY_STATUS } from "../services/inventoryService";
 import { card, colors, primaryButton, secondaryButton, dangerButton, successButton } from "../styles/theme";
 import ConfirmDialog from "../components/common/ConfirmDialog";
+import { formatInventoryQuantity } from "../utils/formatters";
 
 const CREATE_FORM_DEFAULTS = {
   name: "",
@@ -47,31 +48,44 @@ const CREATE_FORM_DEFAULTS = {
 };
 
 const UNIT_OPTIONS = ["L", "mL", "kg", "g", "pcs", "boxes", "bottles", "sachets"];
+const TODAY = () => new Date().toISOString().slice(0, 10);
+const BRANCH_OPTIONS = [
+  "Davao Main Service Branch",
+  "Samal Service Branch",
+  "Digos Service Branch",
+  "Dumaguete Service Branch",
+  "Panglao Service Branch",
+  "Cebu Service Branch",
+];
+const DEFAULT_BRANCH = BRANCH_OPTIONS[0];
+const HISTORY_BRANCH_OPTIONS = ["All Stations / Branches", ...BRANCH_OPTIONS];
 
-function UnitField({ value, onChange }) {
+function UnitField({ value, onChange, inlineCustom = false }) {
   const usesCustomUnit = value && !UNIT_OPTIONS.includes(value);
 
   return (
     <Field label="Unit *">
-      <select
-        value={usesCustomUnit ? "OTHER" : value}
-        onChange={(event) => onChange(event.target.value === "OTHER" ? "" : event.target.value)}
-        style={inputStyle}
-        required
-      >
-        {UNIT_OPTIONS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
-        <option value="OTHER">Other</option>
-      </select>
-      {usesCustomUnit && (
-        <input
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          style={{ ...inputStyle, marginTop: "0.5rem" }}
-          placeholder="Enter a unit"
+      <div style={usesCustomUnit && inlineCustom ? { display: "flex", gap: "0.5rem", minWidth: 0 } : undefined}>
+        <select
+          value={usesCustomUnit ? "OTHER" : value}
+          onChange={(event) => onChange(event.target.value === "OTHER" ? "" : event.target.value)}
+          style={usesCustomUnit && inlineCustom ? { ...inputStyle, width: "50%", minWidth: 0 } : inputStyle}
           required
-          aria-label="Custom unit"
-        />
-      )}
+        >
+          {UNIT_OPTIONS.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+          <option value="OTHER">Other</option>
+        </select>
+        {usesCustomUnit && (
+          <input
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            style={usesCustomUnit && inlineCustom ? { ...inputStyle, width: "50%", minWidth: 0 } : { ...inputStyle, marginTop: "0.5rem" }}
+            placeholder="e.g. box"
+            required
+            aria-label="Custom unit"
+          />
+        )}
+      </div>
     </Field>
   );
 }
@@ -92,27 +106,68 @@ const HISTORY_SECTIONS = [
 ];
 
 const peso = (value) => `₱${(Number(value) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const MAX_DISPLAY_STOCK = 10000000;
+const formatCurrency = (value) => {
+  const numericValue = parseFloat(value) || 0;
+  const safeValue = Math.min(Math.max(numericValue, 0), 999999999);
+  return `₱${safeValue.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+const formatDisplayQuantity = (value, maximum = MAX_DISPLAY_STOCK) => {
+  const numericValue = parseFloat(value);
+  const safeValue = Number.isFinite(numericValue) ? Math.min(Math.max(numericValue, 0), maximum) : 0;
+  return safeValue.toLocaleString(undefined, { maximumFractionDigits: 2 });
+};
+
+const compactNumber = (value) => {
+  const numericValue = Number(value) || 0;
+  if (!Number.isFinite(numericValue)) return "0";
+
+  if (Math.abs(numericValue) >= 1000000) {
+    return new Intl.NumberFormat("en-US", {
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(numericValue);
+  }
+
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(numericValue);
+};
+
+const compactCurrency = (value) => {
+  const numericValue = Number(value) || 0;
+  if (!Number.isFinite(numericValue)) return "₱0";
+  return peso(numericValue);
+};
+
+const historyCellStyle = {
+  display: "block",
+  minWidth: 0,
+  maxWidth: "100%",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
 
 const itemCell = (movement) => (
-  <div>
-    <div style={{ fontWeight: 700, color: "#111827" }}>{movement.itemName}</div>
-    {movement.itemUnit && <div style={{ fontSize: "0.76rem", color: "#6b7280" }}>Unit: {movement.itemUnit}</div>}
+  <div style={{ minWidth: 0, maxWidth: "100%" }}>
+    <div style={{ ...historyCellStyle, fontWeight: 700, color: "#111827" }} title={movement.itemName}>{movement.itemName}</div>
+    {movement.itemUnit && <div style={{ ...historyCellStyle, fontSize: "0.76rem", color: "#6b7280" }} title={`Unit: ${movement.itemUnit}`}>Unit: {movement.itemUnit}</div>}
   </div>
 );
 
 const HISTORY_COLUMNS = {
   IN: {
-    template: "110px 1.2fr 110px 110px 130px 1.1fr 1.1fr 1fr",
-    minWidth: "1000px",
+    template: "110px 1.15fr 1.1fr 100px 110px 130px 1.1fr minmax(190px, 1.35fr) 1fr",
+    minWidth: "1200px",
     columns: [
       { label: "Date", render: (m) => <span style={{ color: "#374151" }}>{new Date(m.movementDate).toLocaleDateString()}</span> },
       { label: "Item Name", render: itemCell },
-      { label: "Qty In", render: (m) => <span style={{ fontWeight: 700, color: "#166534" }}>+{Math.abs(m.quantityDelta)}</span> },
-      { label: "Unit Cost", render: (m) => <span style={{ color: "#475569" }}>{peso(m.unitCost)}</span> },
-      { label: "Total Spent", render: (m) => <span style={{ fontWeight: 700, color: "#047857" }}>{peso(m.totalCost)}</span> },
-      { label: "PO / Reference", render: (m) => <span style={{ color: "#1e293b", fontWeight: 600 }}>{m.reference || "—"}</span> },
-      { label: "Branch / Origin", render: (m) => <span style={{ color: "#475569" }}>{m.intakeBranchOrStation || "—"}</span> },
-      { label: "Recorded By", render: (m) => <span style={{ color: "#64748b" }}>{m.actor || "—"}</span> },
+      { label: "Supplier", render: (m) => <span title={m.supplier || "—"} style={{ ...historyCellStyle, color: "#475569" }}>{m.supplier || "—"}</span> },
+      { label: "Qty In", render: (m) => <span title={`+${Math.abs(m.quantityDelta)}`} style={{ ...historyCellStyle, fontWeight: 600, color: "#047857" }}>+{compactNumber(Math.abs(m.quantityDelta))}</span> },
+      { label: "Unit Cost", render: (m) => <span title={peso(m.unitCost)} style={{ ...historyCellStyle, color: "#475569" }}>{compactCurrency(m.unitCost)}</span> },
+      { label: "Total Spent", render: (m) => <span title={peso(m.totalCost)} style={{ ...historyCellStyle, fontWeight: 700, color: "#047857" }}>{compactCurrency(m.totalCost)}</span> },
+      { label: "PO / Reference", render: (m) => <span title={m.reference || "—"} style={{ ...historyCellStyle, color: "#1e293b", fontWeight: 600 }}>{m.reference || "—"}</span> },
+      { label: "Branch / Origin", render: (m) => <span title={m.intakeBranchOrStation || "—"} style={{ ...historyCellStyle, whiteSpace: "normal", overflow: "visible", color: "#475569" }}>{m.intakeBranchOrStation || "—"}</span> },
+      { label: "Recorded By", render: (m) => <span title={m.actor || "—"} style={{ ...historyCellStyle, color: "#64748b" }}>{m.actor || "—"}</span> },
     ],
   },
   OUT: {
@@ -121,19 +176,19 @@ const HISTORY_COLUMNS = {
     columns: [
       { label: "Date", render: (m) => <span style={{ color: "#374151" }}>{new Date(m.movementDate).toLocaleDateString()}</span> },
       { label: "Item Name", render: itemCell },
-      { label: "Qty Out", render: (m) => <span style={{ fontWeight: 700, color: "#b91c1c" }}>-{Math.abs(m.quantityDelta)}</span> },
+      { label: "Qty Out", render: (m) => <span title={`-${Math.abs(m.quantityDelta)}`} style={{ ...historyCellStyle, fontWeight: 600, color: "#be123c" }}>-{compactNumber(Math.abs(m.quantityDelta))}</span> },
       // Derived from the item's current cost, not a figure recorded on the row,
       // so it is labelled as an estimate rather than presented as spend.
-      { label: "Est. Value", render: (m) => <span style={{ color: "#475569" }}>{peso(m.totalCost)}</span> },
+      { label: "Est. Value", render: (m) => <span title={peso(m.totalCost)} style={{ ...historyCellStyle, color: "#475569" }}>{compactCurrency(m.totalCost)}</span> },
       {
         label: "Used On",
         render: (m) => (
-          <span style={{ color: "#1e293b", fontWeight: 600 }}>
+          <span title={m.appointmentId ? `Appointment ${String(m.appointmentId).slice(0, 8).toUpperCase()}` : (m.reference || "—")} style={{ ...historyCellStyle, color: "#1e293b", fontWeight: 600 }}>
             {m.appointmentId ? `Appointment ${String(m.appointmentId).slice(0, 8).toUpperCase()}` : (m.reference || "—")}
           </span>
         ),
       },
-      { label: "Recorded By", render: (m) => <span style={{ color: "#64748b" }}>{m.actor || "—"}</span> },
+      { label: "Recorded By", render: (m) => <span title={m.actor || "—"} style={{ ...historyCellStyle, color: "#64748b" }}>{m.actor || "—"}</span> },
     ],
   },
   CORRECTION: {
@@ -145,13 +200,13 @@ const HISTORY_COLUMNS = {
       {
         label: "Adjustment",
         render: (m) => (
-          <span style={{ fontWeight: 700, color: m.quantityDelta < 0 ? "#b91c1c" : "#166534" }}>
-            {m.quantityDelta > 0 ? "+" : ""}{m.quantityDelta}
+          <span title={`${m.quantityDelta > 0 ? "+" : ""}${m.quantityDelta}`} style={{ ...historyCellStyle, fontWeight: 700, color: m.quantityDelta < 0 ? "#b91c1c" : "#166534" }}>
+            {m.quantityDelta > 0 ? "+" : ""}{compactNumber(m.quantityDelta)}
           </span>
         ),
       },
-      { label: "Reason", render: (m) => <span style={{ color: "#1e293b", fontWeight: 600 }}>{m.reference || "—"}</span> },
-      { label: "Recorded By", render: (m) => <span style={{ color: "#64748b" }}>{m.actor || "—"}</span> },
+      { label: "Reason", render: (m) => <span title={m.reference || "—"} style={{ ...historyCellStyle, color: "#1e293b", fontWeight: 600 }}>{m.reference || "—"}</span> },
+      { label: "Recorded By", render: (m) => <span title={m.actor || "—"} style={{ ...historyCellStyle, color: "#64748b" }}>{m.actor || "—"}</span> },
     ],
   },
 };
@@ -162,6 +217,7 @@ function InventoryPage() {
   const {
     inventory,
     addItem: onAddItem,
+    restoreDemoInventory,
     updateItem,
     setItemStatus,
     stockIn,
@@ -181,6 +237,7 @@ function InventoryPage() {
   const [selectedItem, setSelectedItem] = useState(null);
   const [editItem, setEditItem] = useState(null);
   const [stockInItem, setStockInItem] = useState(null);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [correctionItem, setCorrectionItem] = useState(null);
   const [disableTarget, setDisableTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -188,6 +245,11 @@ function InventoryPage() {
   const [actionMenuDirection, setActionMenuDirection] = useState({});
   const [form, setForm] = useState(CREATE_FORM_DEFAULTS);
   const actionMenuRef = useRef(null);
+
+  const supplierOptions = useMemo(() => {
+    const suppliers = new Set(inventory.map((item) => item.supplier).filter(Boolean));
+    return Array.from(suppliers).sort((a, b) => a.localeCompare(b));
+  }, [inventory]);
 
   useEffect(() => {
     const handlePointerDown = (event) => {
@@ -214,14 +276,6 @@ function InventoryPage() {
   const [historyBranchFilter, setHistoryBranchFilter] = useState("ALL");
   const [historyDateFilter, setHistoryDateFilter] = useState("ALL");
   const [historySort, setHistorySort] = useState("DATE_DESC");
-
-  const uniqueBranches = useMemo(() => {
-    const set = new Set();
-    movements.forEach((movement) => {
-      if (movement.intakeBranchOrStation && movement.intakeBranchOrStation !== "—") set.add(movement.intakeBranchOrStation);
-    });
-    return Array.from(set).sort();
-  }, [movements]);
 
   const uniqueItems = useMemo(() => {
     const map = new Map();
@@ -316,6 +370,17 @@ function InventoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  useEffect(() => {
+    if (selectedItem) refreshMovements();
+  }, [selectedItem, refreshMovements]);
+
+  const selectedItemIntakes = useMemo(
+    () => movements
+      .filter((movement) => movement.itemId === selectedItem?.id && (movement.movementType || "IN") === "IN")
+      .slice(0, 5),
+    [movements, selectedItem]
+  );
+
   const handleActionMenuToggle = (event, itemId) => {
     const bounds = event.currentTarget.getBoundingClientRect();
     const shouldOpenUp = bounds.bottom + 180 > window.innerHeight;
@@ -401,6 +466,40 @@ function InventoryPage() {
     setOpenForm(false);
   };
 
+  const handleBatchStockIn = async ({ receiptNumber, supplier, intakeBranchOrStation, date, lineItems }) => {
+    const reference = receiptNumber.trim();
+    const results = [];
+
+    for (const lineItem of lineItems) {
+      const idempotencyKey = typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"}`.replace(/[xy]/g, (character) => {
+            const randomValue = Math.random() * 16 | 0;
+            const value = character === "x" ? randomValue : (randomValue & 0x3 | 0x8);
+            return value.toString(16);
+          });
+      const result = await stockIn(lineItem.itemId, {
+        amount: Number(lineItem.quantity),
+        unitCost: Number(lineItem.unitCost),
+        supplier,
+        expiryDate: lineItem.expiryDate || null,
+        date,
+        reference,
+        intakeBranchOrStation,
+        idempotencyKey,
+      });
+      if (result !== true) {
+        showError(typeof result === "string" ? result : "Could not complete the batch Stock In.");
+        return false;
+      }
+      results.push(lineItem);
+    }
+
+    showSuccess(`Received ${results.length} inventory item${results.length === 1 ? "" : "s"} in batch.`);
+    setIsBatchModalOpen(false);
+    return true;
+  };
+
   return (
     <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
       <div style={{ marginBottom: "1.25rem", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
@@ -413,23 +512,42 @@ function InventoryPage() {
           </h1>
         </div>
         {tab === "items" && (
-          <button
-            type="button"
-            onClick={() => setOpenForm((value) => !value)}
-            style={{
-              background: "#b91c1c",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "10px",
-              padding: "0.78rem 1.15rem",
-              fontSize: "0.85rem",
-              fontWeight: 700,
-              cursor: "pointer",
-              boxShadow: "0 8px 22px rgba(185, 28, 28, 0.18)",
-            }}
-          >
-            {openForm ? "Close Form" : "Add Inventory Item"}
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.65rem", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => setIsBatchModalOpen(true)}
+              style={{
+                background: "#ffffff",
+                color: "#334155",
+                border: "1px solid #cbd5e1",
+                borderRadius: "10px",
+                padding: "0.78rem 1.15rem",
+                fontSize: "0.85rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+              }}
+            >
+              Stock In (Batch)
+            </button>
+            <button
+              type="button"
+              onClick={() => setOpenForm((value) => !value)}
+              style={{
+                background: "#b91c1c",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "10px",
+                padding: "0.78rem 1.15rem",
+                fontSize: "0.85rem",
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 8px 22px rgba(185, 28, 28, 0.18)",
+              }}
+            >
+              {openForm ? "Close Form" : "Add Inventory Item"}
+            </button>
+          </div>
         )}
       </div>
 
@@ -648,8 +766,8 @@ function InventoryPage() {
           </div>
 
           <div style={{ maxWidth: "1200px", width: "100%", margin: "0 auto", background: "#ffffff", border: "1px solid rgba(148, 163, 184, 0.2)", borderRadius: "18px", boxShadow: "0 8px 18px rgba(15, 23, 42, 0.03)", overflow: "visible", position: "relative", zIndex: 1 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2.5fr) 1fr 1.2fr 1fr 1.4fr", gap: "0.75rem", padding: "0.9rem 1.5rem", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
-              <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>Item Details</span>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 35%) minmax(100px, 15%) minmax(120px, 20%) minmax(100px, 15%) minmax(120px, 15%)", gap: "0.75rem", padding: "0.9rem 1.5rem", background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+              <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", minWidth: "200px" }}>Item Details</span>
               <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em" }}>Type</span>
               <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "right" }}>Stock Level</span>
               <span style={{ fontSize: "0.72rem", fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center" }}>Status</span>
@@ -669,9 +787,18 @@ function InventoryPage() {
             {!error && !loading && inventory.length === 0 && (
               <div style={{ padding: "1.5rem", color: "#6b7280", display: "grid", gap: "0.75rem", justifyItems: "start" }}>
                 <span>No inventory items yet. Add your first item to start tracking stock.</span>
-                <button type="button" onClick={() => setOpenForm(true)} style={{ background: "#b91c1c", color: "#ffffff", border: "none", borderRadius: "8px", padding: "0.65rem 0.9rem", fontWeight: 700, cursor: "pointer" }}>
-                  Add inventory item
-                </button>
+                <div style={{ display: "flex", gap: "0.65rem", flexWrap: "wrap" }}>
+                  <button type="button" onClick={async () => {
+                    const result = await restoreDemoInventory();
+                    if (result !== true) showError(typeof result === "string" ? result : "Could not restore inventory items.");
+                    else showSuccess("Inventory items restored.");
+                  }} style={{ background: "#7f1d1d", color: "#ffffff", border: "none", borderRadius: "8px", padding: "0.65rem 0.9rem", fontWeight: 700, cursor: "pointer" }}>
+                    Restore inventory items
+                  </button>
+                  <button type="button" onClick={() => setOpenForm(true)} style={{ background: "#b91c1c", color: "#ffffff", border: "none", borderRadius: "8px", padding: "0.65rem 0.9rem", fontWeight: 700, cursor: "pointer" }}>
+                    Add inventory item
+                  </button>
+                </div>
               </div>
             )}
 
@@ -685,7 +812,8 @@ function InventoryPage() {
               const isLowStock = Number(item.quantity) <= 0 || (item.reorderLevel !== null && item.reorderLevel !== undefined && item.quantity <= item.reorderLevel);
               const isDisabled = item.status === INVENTORY_STATUS.DISABLED;
               const typeLabel = item.type === "CHEMICAL" ? "Chemical" : item.type === "EQUIPMENT" ? "Equipment" : "Material";
-              const stockText = `${Number(item.quantity || 0).toLocaleString()} ${item.unit || ""}`.trim();
+              const stockValue = formatInventoryQuantity(Number(item.quantity || 0));
+              const stockText = `${stockValue} ${item.unit || ""}`.trim();
               const stockBadgeStyle = isDisabled
                 ? { background: "#f1f5f9", border: "1px solid #e2e8f0", color: "#475569" }
                 : isLowStock
@@ -698,7 +826,7 @@ function InventoryPage() {
                   onClick={() => setSelectedItem(item)}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "minmax(0, 2.5fr) 1fr 1.2fr 1fr 1.4fr",
+                    gridTemplateColumns: "minmax(0, 35%) minmax(100px, 15%) minmax(120px, 20%) minmax(100px, 15%) minmax(120px, 15%)",
                     gap: "0.75rem",
                     padding: "1rem",
                     borderTop: "1px solid #f1f5f9",
@@ -714,16 +842,16 @@ function InventoryPage() {
                   onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#f8fafc")}
                   onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
                 >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: "#0f172a", fontSize: "0.96rem" }}>{item.name}</div>
-                    <div style={{ marginTop: "0.2rem", fontSize: "0.72rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ minWidth: 0, maxWidth: "100%" }}>
+                    <div style={{ fontWeight: 700, color: "#0f172a", fontSize: "0.96rem", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.name}>{item.name}</div>
+                    <div style={{ marginTop: "0.2rem", fontSize: "0.72rem", color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={item.supplier || item.storageLocation || "Inventory item"}>
                       {item.supplier || item.storageLocation || "Inventory item"}
                     </div>
                   </div>
 
                   <div style={{ color: "#475569", fontSize: "0.9rem" }}>{typeLabel}</div>
 
-                  <div style={{ color: isLowStock ? "#b91c1c" : "#0f172a", fontWeight: 700, textAlign: "right", whiteSpace: "nowrap" }}>
+                  <div style={{ color: isLowStock ? "#b91c1c" : "#0f172a", fontWeight: 700, textAlign: "right", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }} title={`${item.quantity || 0}${item.unit || ""}`}>
                     {stockText}
                   </div>
 
@@ -856,9 +984,9 @@ function InventoryPage() {
               {historySection === "IN" && <Field label="Branch / Station">
                 <select value={historyBranchFilter} onChange={(e) => setHistoryBranchFilter(e.target.value)} style={inputStyle}>
                   <option value="ALL">All Stations / Branches</option>
-                  {uniqueBranches.map((br) => (
-                    <option key={br} value={br}>
-                      {br}
+                  {HISTORY_BRANCH_OPTIONS.slice(1).map((branch) => (
+                    <option key={branch} value={branch}>
+                      {branch}
                     </option>
                   ))}
                 </select>
@@ -940,9 +1068,10 @@ function InventoryPage() {
                   fontSize: "0.72rem",
                   textTransform: "uppercase",
                   letterSpacing: "0.06em",
+                  minWidth: 0,
                 }}
               >
-                {activeHistoryColumns.columns.map((column) => <span key={column.label}>{column.label}</span>)}
+                {activeHistoryColumns.columns.map((column) => <span key={column.label} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "0.75rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "#64748b" }}>{column.label}</span>)}
               </div>
 
               {movementsError && (
@@ -973,10 +1102,11 @@ function InventoryPage() {
                     borderTop: "1px solid #f1f5f9",
                     alignItems: "center",
                     fontSize: "0.9rem",
+                    minWidth: 0,
                   }}
                 >
                   {activeHistoryColumns.columns.map((column) => (
-                    <div key={column.label}>{column.render(movement)}</div>
+                    <div key={column.label} style={{ minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>{column.render(movement)}</div>
                   ))}
                 </div>
               ))}
@@ -985,7 +1115,7 @@ function InventoryPage() {
         </div>
       )}
 
-      {selectedItem && <InventoryDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />}
+      {selectedItem && <InventoryDetailModal item={selectedItem} intakes={selectedItemIntakes} onClose={() => setSelectedItem(null)} />}
 
       {editItem && (
         <EditItemModal
@@ -1007,6 +1137,7 @@ function InventoryPage() {
       {stockInItem && (
         <StockInModal
           item={stockInItem}
+          suppliers={supplierOptions}
           onClose={() => setStockInItem(null)}
           onSubmit={async (values) => {
             const result = await stockIn(stockInItem.id, values);
@@ -1018,6 +1149,15 @@ function InventoryPage() {
             setStockInItem(null);
             return true;
           }}
+        />
+      )}
+
+      {isBatchModalOpen && (
+        <BatchStockInModal
+          items={inventory.filter((item) => item.status !== INVENTORY_STATUS.DISABLED)}
+          suppliers={supplierOptions}
+          onClose={() => setIsBatchModalOpen(false)}
+          onSubmit={handleBatchStockIn}
         />
       )}
 
@@ -1124,6 +1264,7 @@ function EditItemModal({ item, onClose, onSave }) {
     unit: item.unit || "",
     cost: item.cost ?? "",
     supplier: item.supplier || "",
+    intakeBranchOrStation: item.intakeBranchOrStation || DEFAULT_BRANCH,
     storageLocation: item.storageLocation || "",
     reorderLevel: item.reorderLevel ?? "",
     chemicalType: item.chemicalType || "INSECTICIDE",
@@ -1154,13 +1295,13 @@ function EditItemModal({ item, onClose, onSave }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!values.name.trim() || !values.unit.trim() || values.cost === "") return;
+    if (!values.name.trim() || !values.unit.trim() || values.cost === "" || !values.intakeBranchOrStation) return;
     if (values.lastMaintenanceDate && values.nextMaintenanceDate && values.nextMaintenanceDate <= values.lastMaintenanceDate) {
       setValidationError("Next maintenance must be after the last maintenance date.");
       return;
     }
     setSaving(true);
-    await onSave({ ...values, name: values.name.trim(), unit: values.unit.trim() });
+    await onSave({ ...values, name: values.name.trim(), unit: values.unit.trim(), intakeBranchOrStation: values.intakeBranchOrStation });
     setSaving(false);
   };
 
@@ -1180,19 +1321,25 @@ function EditItemModal({ item, onClose, onSave }) {
             <select name="type" value={values.type} disabled style={{ ...inputStyle, background: "#f3f4f6", cursor: "not-allowed" }} title="Type is fixed after creation to preserve the item's stock history.">
               <option value="CHEMICAL">Chemical</option>
               <option value="EQUIPMENT">Equipment</option>
-              <option value="MATERIAL">Material</option>
+              <option value="MATERIAL">Material / PPE</option>
             </select>
           </Field>
-          <UnitField value={values.unit} onChange={(unit) => setValues((previous) => ({ ...previous, unit }))} />
+          <UnitField value={values.unit} inlineCustom onChange={(unit) => setValues((previous) => ({ ...previous, unit }))} />
           <Field label="Cost per Unit (₱) *">
             <input name="cost" type="number" min="0" step="0.01" value={values.cost} onChange={handleChange} style={inputStyle} required />
           </Field>
-          <Field label="Supplier">
+          <Field label="Default / Preferred Supplier (Optional)">
             <input name="supplier" value={values.supplier} onChange={handleChange} style={inputStyle} />
           </Field>
-          <Field label="Storage Location">
-            <input name="storageLocation" value={values.storageLocation} onChange={handleChange} style={inputStyle} />
+          <Field label="Branch *">
+            <select name="intakeBranchOrStation" value={values.intakeBranchOrStation} onChange={handleChange} style={inputStyle} required>
+              {BRANCH_OPTIONS.map((branch) => <option key={branch} value={branch}>{branch}</option>)}
+            </select>
           </Field>
+          <Field label="Storage Rack / Shelf (Optional)">
+            <input name="storageLocation" value={values.storageLocation} onChange={handleChange} style={inputStyle} placeholder="e.g. Closet A, Shelf 2" />
+          </Field>
+                        <option value="MATERIAL">Material / PPE</option>
           <Field label="Reorder Level">
             <input name="reorderLevel" type="number" min="0" step="0.1" value={values.reorderLevel} onChange={handleChange} style={inputStyle} />
           </Field>
@@ -1260,12 +1407,151 @@ function EditItemModal({ item, onClose, onSave }) {
   );
 }
 
-function StockInModal({ item, onClose, onSubmit }) {
+function BatchStockInModal({ items, suppliers, onClose, onSubmit }) {
+  const [receiptNumber, setReceiptNumber] = useState("");
+  const [supplier, setSupplier] = useState("");
+  const [intakeBranchOrStation, setIntakeBranchOrStation] = useState(DEFAULT_BRANCH);
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [lineItems, setLineItems] = useState([{ itemId: "", quantity: "", unitCost: "", expiryDate: "" }]);
+  const [saving, setSaving] = useState(false);
+
+  const updateLineItem = (index, field, value) => {
+    setLineItems((previous) => previous.map((lineItem, lineIndex) => (
+      lineIndex === index ? { ...lineItem, [field]: value } : lineItem
+    )));
+  };
+
+  const handleAddRow = () => {
+    setLineItems((previous) => [...previous, { itemId: "", quantity: "", unitCost: "", expiryDate: "" }]);
+  };
+
+  const handleRemoveRow = (index) => {
+    setLineItems((previous) => previous.length === 1 ? previous : previous.filter((_, lineIndex) => lineIndex !== index));
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!date || !supplier || !intakeBranchOrStation) return;
+    if (lineItems.some((lineItem) => lineItem.expiryDate && lineItem.expiryDate < TODAY())) return;
+    if (lineItems.some((lineItem) => !lineItem.itemId || !Number.isInteger(Number(lineItem.quantity)) || Number(lineItem.quantity) <= 0 || lineItem.unitCost === "" || Number(lineItem.unitCost) < 0)) return;
+
+    setSaving(true);
+    await onSubmit({ receiptNumber, supplier, intakeBranchOrStation: intakeBranchOrStation.trim(), date, lineItems });
+    setSaving(false);
+  };
+
+  const totalShipmentCost = lineItems.reduce((total, lineItem) => total + (Number(lineItem.quantity) || 0) * (Number(lineItem.unitCost) || 0), 0);
+
+  return (
+    <ModalShell onClose={onClose} title="Stock In (Batch)" subtitle="Receive multiple inventory items from one delivery transaction." maxWidth="64rem">
+      <form onSubmit={handleSubmit} style={{ display: "grid", gap: "1.35rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "1rem" }}>
+          <Field label="Date Received *">
+            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} style={inputStyle} required autoFocus />
+          </Field>
+          <Field label="PO / Invoice / DR # (Optional)">
+            <input value={receiptNumber} onChange={(event) => setReceiptNumber(event.target.value)} style={inputStyle} placeholder="e.g. PO-1001, INV-8492" />
+          </Field>
+          <Field label="Supplier *">
+            <select value={supplier} onChange={(event) => setSupplier(event.target.value)} style={inputStyle} required>
+              <option value="">Select supplier</option>
+              {suppliers.map((supplierName) => <option key={supplierName} value={supplierName}>{supplierName}</option>)}
+            </select>
+          </Field>
+          <Field label="Receiving Branch *">
+            <select value={intakeBranchOrStation} onChange={(event) => setIntakeBranchOrStation(event.target.value)} style={inputStyle} required>
+              {BRANCH_OPTIONS.map((branch) => <option key={branch} value={branch}>{branch}</option>)}
+            </select>
+          </Field>
+        </div>
+
+        <div style={{ border: "1px solid #e2e8f0", borderRadius: "12px", overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(170px, 1.5fr) minmax(110px, 0.8fr) minmax(120px, 0.85fr) minmax(130px, 0.95fr) minmax(110px, 0.8fr) 2.5rem", gap: "0.65rem", padding: "0.75rem 1rem", background: "#f8fafc", color: "#475569", fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            <span>Item / Chemical</span><span>Quantity</span><span>Unit Cost (₱)</span><span>Expiry Date</span><span style={{ textAlign: "right" }}>Row Total</span>
+            <span aria-hidden="true" />
+          </div>
+          <div style={{ display: "grid", gap: "0.65rem", padding: "0.75rem 1rem" }}>
+            {lineItems.map((lineItem, index) => (
+              <div key={`batch-line-${index}`} style={{ display: "grid", gridTemplateColumns: "minmax(170px, 1.5fr) minmax(110px, 0.8fr) minmax(120px, 0.85fr) minmax(130px, 0.95fr) minmax(110px, 0.8fr) 2.5rem", gap: "0.65rem", alignItems: "center" }}>
+                <select
+                  value={lineItem.itemId}
+                  onChange={(event) => {
+                    const selectedItem = items.find((item) => item.id === event.target.value);
+                    setLineItems((previous) => previous.map((currentLineItem, lineIndex) => (
+                      lineIndex === index
+                        ? { ...currentLineItem, itemId: event.target.value, unitCost: selectedItem?.cost ?? "" }
+                        : currentLineItem
+                    )));
+                  }}
+                  style={inputStyle}
+                  required
+                  aria-label={`Item or chemical ${index + 1}`}
+                >
+                  <option value="">Select item</option>
+                  {items.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}
+                </select>
+                <div style={{ position: "relative" }}>
+                  <input type="number" min="1" step="1" value={lineItem.quantity} onChange={(event) => updateLineItem(index, "quantity", event.target.value)} style={{ ...inputStyle, paddingRight: "2.8rem" }} placeholder="0" required aria-label={`Quantity ${index + 1}`} />
+                  <span style={{ position: "absolute", top: "50%", right: "0.65rem", transform: "translateY(-50%)", color: "#64748b", fontSize: "0.75rem", fontWeight: 700 }}>{items.find((item) => item.id === lineItem.itemId)?.unit || "—"}</span>
+                </div>
+                <div style={{ position: "relative" }}>
+                  <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "#64748b", fontSize: "0.8rem", fontWeight: 700 }}>₱</span>
+                  <input type="number" min="0" step="0.01" value={lineItem.unitCost} onChange={(event) => updateLineItem(index, "unitCost", event.target.value)} style={{ ...inputStyle, paddingLeft: "1.5rem" }} placeholder="0.00" required aria-label={`Unit cost ${index + 1}`} />
+                </div>
+                <input type="date" value={lineItem.expiryDate} min={TODAY()} onChange={(event) => updateLineItem(index, "expiryDate", event.target.value)} style={inputStyle} aria-label={`Expiry date ${index + 1}`} />
+                <span style={{ color: "#0f172a", fontSize: "0.85rem", fontWeight: 700, textAlign: "right", whiteSpace: "nowrap" }}>₱{((Number(lineItem.quantity) || 0) * (Number(lineItem.unitCost) || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                <button type="button" onClick={() => handleRemoveRow(index)} disabled={lineItems.length === 1} aria-label={`Remove line item ${index + 1}`} title="Remove item" style={{ display: "grid", placeItems: "center", width: "2.25rem", height: "2.25rem", border: "none", background: "transparent", color: lineItems.length === 1 ? "#cbd5e1" : "#94a3b8", cursor: lineItems.length === 1 ? "not-allowed" : "pointer", padding: 0 }}>
+                  <Trash2 size={17} />
+                </button>
+              </div>
+            ))}
+            <button type="button" onClick={handleAddRow} style={{ display: "inline-flex", alignItems: "center", gap: "0.3rem", width: "fit-content", border: "none", background: "transparent", color: "#2563eb", fontSize: "0.875rem", fontWeight: 600, cursor: "pointer", padding: "0.35rem 0" }}>
+              <Plus size={15} /> Add another item
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: "-0.35rem", padding: "0.875rem", borderRadius: "12px", background: "#f8fafc", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ color: "#64748b", fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.08em" }}>Total Shipment Value</span>
+          <span style={{ color: "#0f172a", fontSize: "1.125rem", fontWeight: 800 }}>₱{totalShipmentCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.65rem", paddingTop: "1rem", borderTop: "1px solid #f1f5f9" }}>
+          <button type="button" onClick={onClose} style={{ ...secondaryButton, borderRadius: "12px", padding: "0.625rem 1rem", borderColor: "#cbd5e1", fontSize: "0.875rem" }}>Cancel</button>
+          <button
+            type="submit"
+            disabled={saving}
+            style={{
+              border: "none",
+              background: "#7A1518",
+              color: "#ffffff",
+              fontWeight: 600,
+              borderRadius: "12px",
+              padding: "0.625rem 1.25rem",
+              fontSize: "0.875rem",
+              cursor: saving ? "default" : "pointer",
+              opacity: saving ? 0.7 : 1,
+              boxShadow: "0 1px 2px rgba(15, 23, 42, 0.08)",
+            }}
+          >
+            {saving ? "Receiving…" : "Confirm Stock-In"}
+          </button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+function StockInModal({ item, suppliers, onClose, onSubmit }) {
   const [amount, setAmount] = useState("");
   const [unitCost, setUnitCost] = useState(item.cost !== undefined && item.cost !== null ? item.cost : "");
+  const [supplier, setSupplier] = useState(item.supplier || "");
+  const [expiryDate, setExpiryDate] = useState("");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [reference, setReference] = useState("");
-  const [intakeBranchOrStation, setIntakeBranchOrStation] = useState(item.intakeBranchOrStation || "");
+  const [intakeBranchOrStation, setIntakeBranchOrStation] = useState(
+    BRANCH_OPTIONS.includes(item.intakeBranchOrStation) ? item.intakeBranchOrStation : DEFAULT_BRANCH
+  );
   const [idempotencyKey] = useState(() =>
     typeof crypto !== "undefined" && crypto.randomUUID
       ? crypto.randomUUID()
@@ -1280,40 +1566,41 @@ function StockInModal({ item, onClose, onSubmit }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     const parsedAmount = Number(amount);
-    if (!Number.isInteger(parsedAmount) || parsedAmount <= 0 || !date) return;
-    if (!reference.trim() || !intakeBranchOrStation.trim()) return;
+    if (!Number.isInteger(parsedAmount) || parsedAmount <= 0 || !date || (expiryDate && expiryDate < TODAY())) return;
+    if (!intakeBranchOrStation) return;
     setSaving(true);
     await onSubmit({
       amount: parsedAmount,
       unitCost: Number(unitCost) || 0,
+      supplier,
+      expiryDate,
       date,
       reference: reference.trim(),
-      intakeBranchOrStation: intakeBranchOrStation.trim(),
+      intakeBranchOrStation,
       idempotencyKey,
     });
     setSaving(false);
   };
 
+  const currentStock = Number(item.quantity) || 0;
+  const primaryStockInButtonStyle = {
+    border: "none",
+    background: "#7A1518",
+    color: "#ffffff",
+    fontWeight: 600,
+    borderRadius: "12px",
+    padding: "0.625rem 1.25rem",
+    fontSize: "0.875rem",
+    cursor: saving ? "default" : "pointer",
+    opacity: saving ? 0.7 : 1,
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.08)",
+  };
+
   return (
-    <ModalShell onClose={onClose} title="Stock In" subtitle={`Item: ${item.name} • Current Stock: ${item.quantity} ${item.unit}`}>
+    <ModalShell onClose={onClose} title="Stock In" subtitle={`Item: ${item.name} • Current Stock: ${currentStock.toLocaleString()} ${item.unit}`}>
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: "1rem" }}>
         <div style={{ display: "grid", gap: "1rem" }}>
-          <Field label={`Amount (${item.unit}) *`}>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              inputMode="numeric"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              style={inputStyle}
-              placeholder="0"
-              required
-              autoFocus
-            />
-          </Field>
-
-          <Field label={`Purchase Cost per Unit (₱) *`} hint="Unit price paid for this delivery batch">
+          <Field label="Unit Cost (₱) *" hint="Cost per unit for this delivery batch">
             <input
               type="number"
               min="0"
@@ -1322,6 +1609,22 @@ function StockInModal({ item, onClose, onSubmit }) {
               onChange={(e) => setUnitCost(e.target.value)}
               style={inputStyle}
               placeholder="0.00"
+              required
+              autoFocus
+            />
+          </Field>
+
+          <Field label={`Quantity (${item.unit}) *`}>
+            <input
+              type="number"
+              min="1"
+              max="99999999"
+              step="1"
+              inputMode="numeric"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              style={inputStyle}
+              placeholder="0"
               required
             />
           </Field>
@@ -1351,14 +1654,25 @@ function StockInModal({ item, onClose, onSubmit }) {
             </div>
           </div>
 
-          <Field label="Date *">
+          <Field label="Date Received *">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} required />
           </Field>
-          <Field label="PO / Supplier Invoice Reference *" hint="Enter the Purchase Order (PO) or invoice number">
-            <input value={reference} onChange={(e) => setReference(e.target.value)} style={inputStyle} placeholder="PO-1001, Invoice #, delivery note" required />
+          <Field label="Expiry Date (Optional)">
+            <input type="date" value={expiryDate} min={TODAY()} onChange={(e) => setExpiryDate(e.target.value)} style={inputStyle} />
           </Field>
-          <Field label="Intake Branch / Station *" hint="Station or warehouse where items were received">
-            <input value={intakeBranchOrStation} onChange={(e) => setIntakeBranchOrStation(e.target.value)} style={inputStyle} placeholder="e.g. Main Warehouse, Pasig Station" required />
+          <Field label="PO / Invoice / DR # (Optional)" hint="Enter a purchase order, invoice, or delivery receipt number if available">
+            <input value={reference} onChange={(e) => setReference(e.target.value)} style={inputStyle} placeholder="e.g. PO-1001, INV-8492" />
+          </Field>
+          <Field label="Receiving Branch *" hint="Branch where the stock was received">
+            <select value={intakeBranchOrStation} onChange={(e) => setIntakeBranchOrStation(e.target.value)} style={inputStyle} required>
+              {BRANCH_OPTIONS.map((branch) => <option key={branch} value={branch}>{branch}</option>)}
+            </select>
+          </Field>
+          <Field label="Supplier *">
+            <select value={supplier} onChange={(e) => setSupplier(e.target.value)} style={inputStyle} required>
+              <option value="">Select supplier</option>
+              {suppliers.map((supplierName) => <option key={supplierName} value={supplierName}>{supplierName}</option>)}
+            </select>
           </Field>
         </div>
 
@@ -1379,23 +1693,8 @@ function StockInModal({ item, onClose, onSubmit }) {
           >
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={saving}
-            style={{
-              border: "none",
-              background: "#7f1d1d",
-              color: "#ffffff",
-              borderRadius: "10px",
-              padding: "0.65rem 1.25rem",
-              fontSize: "0.875rem",
-              fontWeight: 600,
-              cursor: saving ? "default" : "pointer",
-              opacity: saving ? 0.7 : 1,
-              boxShadow: "0 1px 2px rgba(15, 23, 42, 0.08)",
-            }}
-          >
-            {saving ? "Recording…" : "Submit"}
+          <button type="submit" disabled={saving} style={primaryStockInButtonStyle}>
+            {saving ? "Recording…" : "Confirm Stock-In"}
           </button>
         </div>
       </form>
@@ -1497,24 +1796,29 @@ function ModalShell({ title, subtitle, onClose, children, maxWidth = "28rem" }) 
   );
 }
 
-function InventoryDetailModal({ item, onClose }) {
+function InventoryDetailModal({ item, intakes, onClose }) {
   const typeLabel = item.type === "CHEMICAL" ? "Chemical" : item.type === "EQUIPMENT" ? "Equipment" : "Material";
+  const safeTotal = Math.min(
+    (Number(item.quantity) || 0) * (Number(item.costPerUnit || item.cost_per_unit || item.cost) || 0),
+    999999999
+  );
 
   return (
-    <ModalShell onClose={onClose} title={item.name}>
+    <ModalShell onClose={onClose} title={item.name} maxWidth="42rem">
       {/* Basic Information */}
       <div style={{ marginBottom: "1.5rem" }}>
         <h3 style={{ color: "#374151", fontSize: "0.875rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
           Basic Information
         </h3>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", columnGap: "2rem", rowGap: "1rem" }}>
           <DetailRow label="Type" value={typeLabel} />
           <DetailRow label="Status" value={item.status === "DISABLED" ? "Disabled" : "Active"} />
-          <DetailRow label="Quantity" value={`${item.quantity} ${item.unit}`} />
-          {item.cost !== undefined && item.cost !== null ? <DetailRow label="Cost per Unit" value={`₱${Number(item.cost).toFixed(2)}`} /> : null}
-          {item.cost !== undefined && item.cost !== null && item.quantity ? <DetailRow label="Total Value" value={`₱${(item.quantity * Number(item.cost)).toFixed(2)}`} /> : null}
-          {item.supplier && <DetailRow label="Supplier" value={item.supplier} />}
-          {item.reorderLevel && <DetailRow label="Reorder Level" value={item.reorderLevel} />}
+          <DetailRow label="Quantity" value={`${formatDisplayQuantity(item.quantity)} ${item.unit}`} />
+          {item.cost !== undefined && item.cost !== null ? <DetailRow label="Cost per Unit" value={formatCurrency(item.cost)} /> : null}
+          {item.cost !== undefined && item.cost !== null && item.quantity ? <DetailRow label="Total Value" value={formatCurrency(safeTotal)} /> : null}
+          {item.supplier && <DetailRow label="Latest Supplier" value={item.supplier} />}
+          <DetailRow label="Reorder Level" value={item.reorderLevel ?? "—"} />
+          <DetailRow label="Branch" value={<span style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{item.intakeBranchOrStation || DEFAULT_BRANCH}</span>} />
         </div>
       </div>
 
@@ -1524,13 +1828,39 @@ function InventoryDetailModal({ item, onClose }) {
           <h3 style={{ color: "#374151", fontSize: "0.875rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
             Chemical Details
           </h3>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", columnGap: "1.5rem", rowGap: "0.75rem" }}>
             <DetailRow label="Chemical Type" value={item.chemicalType} />
-            {item.expirationDate && <DetailRow label="Expiration Date" value={new Date(item.expirationDate).toLocaleDateString()} />}
-            {item.safetyLevel && <DetailRow label="Safety Level" value={item.safetyLevel} />}
+            {item.expirationDate && <DetailRow label="Nearest Expiry Date" value={new Date(item.expirationDate).toLocaleDateString()} />}
+            {item.safetyLevel && (
+              <DetailRow
+                label="Safety Level"
+                value={<span style={{ display: "inline-flex", alignItems: "center", padding: "0.125rem 0.5rem", borderRadius: "999px", fontSize: "0.75rem", fontWeight: 600, background: "#fff1f2", color: "#be123c", border: "1px solid #fecdd3" }}>{item.safetyLevel}</span>}
+              />
+            )}
               {item.hazardRating && <DetailRow label="Hazard Note" value={item.hazardRating} />}
             {item.standardRate !== "" && item.standardRate !== null && <DetailRow label="Standard Rate" value={`${item.standardRate} ${item.rateUnit || ""}`.trim()} />}
-            {item.dateReceived && <DetailRow label="Date Received" value={new Date(item.dateReceived).toLocaleDateString()} />}
+            {item.dateReceived && <DetailRow label="Last Restocked" value={new Date(item.dateReceived).toLocaleDateString()} />}
+          </div>
+        </div>
+      )}
+
+      {intakes.length > 0 && (
+        <div style={{ marginBottom: "1.5rem" }}>
+          <h3 style={{ color: "#374151", fontSize: "0.875rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
+            Recent Intakes
+          </h3>
+          <div style={{ width: "100%", border: "1px solid rgba(226, 232, 240, 0.8)", borderRadius: "12px", overflow: "hidden", fontSize: "0.75rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "0.9fr 1.4fr 0.85fr 1fr", gap: "0.75rem", padding: "0.65rem 0.75rem", background: "#f8fafc", color: "#64748b", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              <span>Date</span><span>Supplier</span><span style={{ textAlign: "right" }}>Qty Added</span><span style={{ textAlign: "right" }}>Unit Cost</span>
+            </div>
+            {intakes.map((intake) => (
+              <div key={intake.id} style={{ display: "grid", gridTemplateColumns: "0.9fr 1.4fr 0.85fr 1fr", gap: "0.75rem", padding: "0.7rem 0.75rem", borderTop: "1px solid #f1f5f9", color: "#334155", alignItems: "center" }}>
+                <span>{intake.movementDate ? new Date(intake.movementDate).toLocaleDateString() : "—"}</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={intake.supplier || "—"}>{intake.supplier || "—"}</span>
+                <span style={{ textAlign: "right" }}>{formatDisplayQuantity(intake.amount, 999999)} {intake.itemUnit || item.unit}</span>
+                <span style={{ textAlign: "right" }}>{formatCurrency(intake.unitCost)}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -1600,11 +1930,11 @@ function formatMaterialCategory(category) {
 
 function DetailRow({ label, value }) {
   return (
-    <div>
+    <div style={{ minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
       <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.25rem" }}>
         {label}
       </div>
-      <div style={{ fontSize: "0.95rem", color: "#111827", fontWeight: 600 }}>
+      <div style={{ minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere", wordBreak: "break-word", fontSize: "0.95rem", color: "#111827", fontWeight: 600 }}>
         {value || "—"}
       </div>
     </div>

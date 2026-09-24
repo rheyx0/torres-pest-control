@@ -59,3 +59,15 @@ export function humanizeEnum(value) {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
+
+export function formatInventoryQuantity(value) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) return "0";
+  if (numericValue < 1000000) return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(numericValue);
+
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(numericValue);
+}

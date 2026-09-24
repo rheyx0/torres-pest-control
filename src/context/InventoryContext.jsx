@@ -24,13 +24,20 @@ export function InventoryProvider({ children }) {
     setLoading(true);
     setError("");
 
+    await inventoryService.removeUnverifiedInventory();
+    const restoreResult = await inventoryService.restoreDemoInventory();
+    if (restoreResult.error) {
+      setError(restoreResult.error);
+      setLoading(false);
+      return restoreResult;
+    }
     const result = await inventoryService.fetchInventory();
     if (result.error) setError(result.error);
     else setInventory(result.inventory);
 
     setLoading(false);
     return result;
-  }, []);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     if (!session || !sessionVerified) {
@@ -54,6 +61,13 @@ export function InventoryProvider({ children }) {
     },
     [actor, currentUser?.id, inventory]
   );
+
+  const restoreDemoInventory = useCallback(async () => {
+    const result = await inventoryService.restoreDemoInventory();
+    if (result.error) return result.error;
+    setInventory(result.inventory);
+    return true;
+  }, [currentUser?.id]);
 
   const updateItem = useCallback(
     async (itemId, form) => {
@@ -112,7 +126,7 @@ export function InventoryProvider({ children }) {
    * can't drift apart even under concurrent Stock Ins.
    */
   const stockIn = useCallback(
-    async (itemId, { amount, date, reference, intakeBranchOrStation, idempotencyKey, unitCost }) => {
+    async (itemId, { amount, date, reference, intakeBranchOrStation, idempotencyKey, unitCost, supplier, expiryDate }) => {
       const target = inventory.find((entry) => entry.id === itemId);
       const result = await inventoryService.stockIn(itemId, {
         amount,
@@ -123,6 +137,8 @@ export function InventoryProvider({ children }) {
         intakeBranchOrStation,
         idempotencyKey,
         unitCost,
+        supplier,
+        expiryDate,
       });
       if (result.error) return result.error;
 
@@ -258,6 +274,7 @@ export function InventoryProvider({ children }) {
       error,
       refresh,
       addItem,
+      restoreDemoInventory,
       updateItem,
       updateItemBasics,
       removeItem,
@@ -277,6 +294,7 @@ export function InventoryProvider({ children }) {
       error,
       refresh,
       addItem,
+      restoreDemoInventory,
       updateItem,
       updateItemBasics,
       removeItem,

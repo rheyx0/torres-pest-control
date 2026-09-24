@@ -34,24 +34,42 @@ const styles = {
     inset: "0 auto 0 0",
     width: "264px",
     height: "100vh",
-    background: "linear-gradient(180deg, #7f1111 0%, #561313 100%)",
-    padding: "1.4rem 1rem 1.2rem",
+    background: "#7f1111",
+    padding: "0",
     display: "flex",
     flexDirection: "column",
-    gap: "0.35rem",
-    boxShadow: "18px 0 40px rgba(86, 19, 19, 0.18)",
+    gap: "0",
+    boxShadow: "1px 0 0 rgba(15, 23, 42, 0.14)",
     overflow: "hidden",
   },
   logoWrap: {
-    marginBottom: "0.35rem",
-    padding: "0.15rem 0.8rem 0.35rem",
-    borderRadius: "10px",
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "1rem 0",
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+  },
+  logoBadge: {
+    width: "2.75rem",
+    height: "2.75rem",
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxSizing: "border-box",
+    padding: "0.375rem",
+    background: "#FFFFFF",
+    borderRadius: "0.75rem",
+    border: "1px solid rgba(255, 255, 255, 0.2)",
+    boxShadow: "0 1px 3px rgba(15, 23, 42, 0.12)",
   },
   logoImage: {
     display: "block",
-    width: "190px",
-    maxWidth: "100%",
-    height: "auto",
+    width: "100%",
+    height: "100%",
     objectFit: "contain",
   },
   logo: {
@@ -102,8 +120,8 @@ const styles = {
     overflowY: "auto",
     display: "flex",
     flexDirection: "column",
-    gap: "0.35rem",
-    paddingBottom: "0.5rem",
+    gap: "0.25rem",
+    padding: "1rem 0.875rem 0.75rem",
   },
   logoutButton: {
     display: "block",
@@ -135,7 +153,9 @@ function Sidebar() {
   return (
     <nav style={styles.sidebar}>
       <div style={styles.logoWrap}>
-        <img src="/brand-logo.png" alt="Torres Pest Control" style={styles.logoImage} />
+        <div style={styles.logoBadge}>
+          <img src="/login-logo.png" alt="Torres Pest Control" style={styles.logoImage} />
+        </div>
       </div>
 
       <div style={styles.navLinks}>

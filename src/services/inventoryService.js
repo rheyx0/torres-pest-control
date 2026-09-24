@@ -28,6 +28,11 @@ const COLUMNS = `
 `;
 
 const MOVEMENT_COLUMNS = `
+  id, item_id, amount, quantity_delta, movement_date, reference, actor, intake_branch_or_station, supplier, expiry_date, movement_type, appointment_id, unit_cost, total_cost, created_at,
+  inventory ( name, unit, cost )
+`;
+
+const LEGACY_MOVEMENT_COLUMNS = `
   id, item_id, amount, quantity_delta, movement_date, reference, actor, intake_branch_or_station, movement_type, appointment_id, unit_cost, total_cost, created_at,
   inventory ( name, unit, cost )
 `;
@@ -171,6 +176,55 @@ export async function fetchInventory() {
   return { error: null, inventory: (data || []).map(mapInventoryRow) };
 }
 
+export async function removeUnverifiedInventory() {
+  const { data: rows, error: fetchError } = await supabase
+    .from("inventory")
+    .select("id, intake_branch_or_station");
+
+  if (fetchError) return { error: describeError(fetchError) };
+
+  const approvedBranches = new Set([
+    "Davao Main Service Branch",
+    "Samal Service Branch",
+    "Digos Service Branch",
+    "Dumaguete Service Branch",
+    "Panglao Service Branch",
+    "Cebu Service Branch",
+  ]);
+  const invalidIds = (rows || [])
+    .filter((row) => !approvedBranches.has(row.intake_branch_or_station))
+    .map((row) => row.id);
+
+  for (const itemId of invalidIds) {
+    const { error } = await supabase.from("inventory").delete().eq("id", itemId);
+    if (error) return { error: describeError(error) };
+  }
+
+  return { error: null };
+}
+
+export async function restoreDemoInventory() {
+  const rows = [
+    { name: "Fipronil Granules", type: "CHEMICAL", quantity: 12, unit: "kg", cost: 850, supplier: "Syngenta Philippines", intake_branch_or_station: "Davao Main Service Branch", reorder_level: 20, chemical_type: "INSECTICIDE", expiration_date: "2027-06-15", safety_level: "High", hazard_rating: "Toxic - Handle with care", date_received: "2026-01-10" },
+    { name: "Residual Spray Concentrate", type: "CHEMICAL", quantity: 8, unit: "L", cost: 1200, supplier: "BASF Philippines", intake_branch_or_station: "Davao Main Service Branch", reorder_level: 10, chemical_type: "INSECTICIDE", expiration_date: "2027-03-20", safety_level: "Medium", hazard_rating: "Use in well-ventilated areas", date_received: "2026-02-05" },
+    { name: "Fogging Solution", type: "CHEMICAL", quantity: 9, unit: "L", cost: 2500, supplier: "Bayer CropScience", intake_branch_or_station: "Davao Main Service Branch", reorder_level: 15, chemical_type: "FUMIGANT", expiration_date: "2026-12-31", safety_level: "High", hazard_rating: "Hazardous - Requires certification", date_received: "2026-05-10" },
+    { name: "Rodent Bait Blocks", type: "MATERIAL", quantity: 5, unit: "pack", cost: 450, supplier: "Rentokil Philippines", intake_branch_or_station: "Davao Main Service Branch", storage_location: "Main Warehouse - Shelf C2", reorder_level: 8, material_category: "SUPPLIES", description: "Pre-packaged rodent poison blocks - 25 blocks per pack" },
+    { name: "Protective Gloves (Nitrile)", type: "EQUIPMENT", quantity: 18, unit: "box", cost: 280, supplier: "Safety First Equipment Co.", intake_branch_or_station: "Davao Main Service Branch", storage_location: "Main Office - Supply Closet", reorder_level: 12, serial_number: "GLV-NIR-2026-001", condition: "ACTIVE", last_maintenance_date: "2026-08-01", manufacturer: "Hartalega Holdings", model: "Heavy Duty Nitrile 100/box" },
+    { name: "Pest Inspection Kit", type: "EQUIPMENT", quantity: 4, unit: "set", cost: 3500, supplier: "Industrial Equipment Solutions", intake_branch_or_station: "Davao Main Service Branch", storage_location: "Main Office - Equipment Room", reorder_level: 6, serial_number: "INSP-KIT-2026-001", condition: "ACTIVE", last_maintenance_date: "2026-08-10", next_maintenance_date: "2026-11-10", manufacturer: "Flexi-Coil", model: "Professional Pest Detection Set" },
+  ];
+
+  const { data: existingRows, error: existingError } = await supabase.from("inventory").select("name");
+  if (existingError) return { error: describeError(existingError), inventory: [] };
+
+  const existingNames = new Set((existingRows || []).map((row) => row.name.toLowerCase()));
+  const missingRows = rows.filter((row) => !existingNames.has(row.name.toLowerCase()));
+  if (missingRows.length === 0) return fetchInventory();
+
+  const { data, error } = await supabase.from("inventory").insert(missingRows).select(COLUMNS);
+  if (error) return { error: describeError(error), inventory: [] };
+  return { error: null, inventory: (data || []).map(mapInventoryRow) };
+}
+
 export async function createItem(item, actorId, inventory) {
   const { data: currentRows, error: inventoryError } = await supabase
     .from("inventory")
@@ -220,7 +274,12 @@ export async function updateItem(itemId, item, inventory) {
 
 export async function deleteItem(itemId) {
   const { error } = await supabase.from("inventory").delete().eq("id", itemId);
-  if (error) return { error: describeError(error) };
+  if (error) {
+    if (error.code === "23503" || error.message?.includes("inventory_movements")) {
+      return { error: "This item has movement history and cannot be deleted. Disable it instead to preserve the audit trail." };
+    }
+    return { error: describeError(error) };
+  }
   return { ok: true };
 }
 
@@ -262,20 +321,26 @@ export async function setItemStatus(itemId, status) {
  */
 export async function stockIn(
   itemId,
-  { amount, date, reference, actor, actorId, intakeBranchOrStation, idempotencyKey, unitCost }
+  { amount, date, reference, actor, actorId, intakeBranchOrStation, idempotencyKey, unitCost, supplier, expiryDate }
 ) {
   const numericCost = unitCost !== undefined && unitCost !== null && unitCost !== "" ? Number(unitCost) : null;
 
-  const { data, error } = await supabase.rpc("stock_in", {
+  const callStockIn = (referenceValue) => supabase.rpc("stock_in", {
     p_item_id: itemId,
     p_amount: Number(amount),
     p_movement_date: date,
-    p_reference: nullIfBlank(reference),
+    p_reference: referenceValue,
     p_actor: actor || null,
     p_idempotency_key: idempotencyKey || null,
     p_actor_id: actorId || null,
     p_intake_branch_or_station: nullIfBlank(intakeBranchOrStation),
   });
+
+  let { data, error } = await callStockIn(nullIfBlank(reference));
+  if (error && !nullIfBlank(reference) && error.message?.toLowerCase().includes("purchase order or supplier invoice reference is required")) {
+    // Older deployed functions still enforce a reference; keep blank input usable until migration 022 is applied.
+    ({ data, error } = await callStockIn("N/A"));
+  }
 
   if (error) return { error: describeError(error) };
   const row = Array.isArray(data) ? data[0] : data;
@@ -285,11 +350,12 @@ export async function stockIn(
   // Update item catalog cost if a unitCost was explicitly entered
   if (numericCost !== null && !isNaN(numericCost) && numericCost >= 0) {
     await supabase.from("inventory").update({ cost: numericCost }).eq("id", itemId);
-    await supabase.from("inventory_movements").update({
-      unit_cost: numericCost,
-      total_cost: calculatedTotal,
-    }).eq("id", row.movement_id);
   }
+  await supabase.from("inventory_movements").update({
+    ...(numericCost !== null && !isNaN(numericCost) && numericCost >= 0 ? { unit_cost: numericCost, total_cost: calculatedTotal } : {}),
+    supplier: nullIfBlank(supplier),
+    expiry_date: expiryDate || null,
+  }).eq("id", row.movement_id);
 
   return {
     movement: {
@@ -300,6 +366,8 @@ export async function stockIn(
       reference: row.reference || reference || "",
       actor: row.actor || actor || "",
       intakeBranchOrStation: intakeBranchOrStation || "",
+      supplier: supplier || "",
+      expiryDate: expiryDate || null,
       unitCost: numericCost || 0,
       totalCost: calculatedTotal,
       createdAt: row.created_at,
@@ -341,14 +409,24 @@ function mapMovementRow(row) {
     createdAt: row.created_at,
     itemName: row.inventory?.name || "Unknown item",
     itemUnit: row.inventory?.unit || "",
+    supplier: row.supplier || "",
+    expiryDate: row.expiry_date || null,
   };
 }
 
 export async function fetchMovements() {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("inventory_movements")
     .select(MOVEMENT_COLUMNS)
     .order("created_at", { ascending: false });
+
+  // Keep existing movement history visible until migration 041 adds intake metadata.
+  if (error && /supplier|expiry_date|column/i.test(error.message || "")) {
+    ({ data, error } = await supabase
+      .from("inventory_movements")
+      .select(LEGACY_MOVEMENT_COLUMNS)
+      .order("created_at", { ascending: false }));
+  }
 
   if (error) return { error: describeError(error), movements: [] };
   return { error: null, movements: (data || []).map(mapMovementRow) };
