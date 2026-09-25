@@ -1,6 +1,7 @@
 // A visit in progress, on the technician's phone: /visit/:id.
 //
-// Four steps — Findings, Treatment, Photos, Sign — one screen each, with a
+// Four steps — Findings, Treatment (the services performed and materials),
+// Photos (every report upload category), Sign — one screen each, with a
 // fixed footer carrying the one primary action. What the technician types is
 // saved on the phone as they go (utils/techDay draft helpers), so a dropped
 // signal or an accidental Back loses nothing; the office sees it when the
@@ -15,20 +16,19 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowRight, Camera, Check, ChevronLeft, Minus, Plus } from "lucide-react";
+import { ArrowRight, Camera, Check, ChevronLeft, FileText, Minus, Plus, Trash2 } from "lucide-react";
 import useAuth from "../hooks/useAuth";
 import useClients from "../hooks/useClients";
 import useInventory from "../hooks/useInventory";
 import useNow from "../hooks/useNow";
 import useServices from "../hooks/useServices";
-import useTreatmentMethods from "../hooks/useTreatmentMethods";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
 import SignaturePad from "../components/scheduling/SignaturePad";
 import Button from "../components/ui/Button";
 import StatusPill from "../components/ui/StatusPill";
-import { ROLES } from "../utils/constants";
-import { isAssignedTo } from "../utils/scheduling";
+import { REPORT_UPLOAD_CATEGORIES, ROLES } from "../utils/constants";
+import { combineServices, isAssignedTo, servicesOf } from "../utils/scheduling";
 import { todayISO, validateAttachment } from "../utils/validators";
 import {
   VISIT_STEPS,
@@ -56,11 +56,16 @@ const field = {
   fontFamily: "inherit",
 };
 
-const PHOTO_CATEGORIES = [
-  { value: "BEFORE", label: "Before" },
-  { value: "AFTER", label: "After" },
-  { value: "INSPECTION", label: "Inspection" },
-];
+// Every category the Report tab offers (REPORT_UPLOAD_CATEGORIES), with the
+// short labels a phone button has room for. Before/After/Inspection are
+// photos and open the camera; proof and other files may be a PDF as well.
+const SHORT_LABELS = { BEFORE: "Before", AFTER: "After", INSPECTION: "Inspection", TREATMENT_PROOF: "Treatment proof", OTHER: "Other" };
+const CAMERA_CATEGORIES = new Set(["BEFORE", "AFTER", "INSPECTION"]);
+const PHOTO_CATEGORIES = REPORT_UPLOAD_CATEGORIES.map((category) => ({
+  ...category,
+  shortLabel: SHORT_LABELS[category.value] || category.label,
+  camera: CAMERA_CATEGORIES.has(category.value),
+}));
 
 function Toggle({ selected, onClick, children }) {
   return (
@@ -115,14 +120,21 @@ function VisitPage() {
   const { currentUser } = useAuth();
   const { clients } = useClients();
   const { inventory, stockOutMany } = useInventory();
-  const { serviceById, serviceByName } = useServices();
-  const { methods } = useTreatmentMethods();
-  const { appointments, loading, startVisit, submitReport, uploadSignature, addAttachment, addStockUsed } = useScheduling();
+  const { activeServices, serviceById, serviceByName } = useServices();
+  const { appointments, loading, startVisit, submitReport, uploadSignature, addAttachment, removeAttachment, addStockUsed } = useScheduling();
   const { showError, showSuccess } = useToast();
 
   const appointment = appointments.find((entry) => entry.id === id) || null;
   const client = appointment ? clients.find((entry) => entry.id === appointment.clientId) : null;
-  const service = appointment ? serviceById(appointment.serviceId) || serviceByName(appointment.serviceType) : null;
+  // Every service on the visit (migration 051), and their materials merged.
+  const visitServices = servicesOf(appointment, serviceById, serviceByName);
+  const visitServiceIds = visitServices.map((entry) => entry.id);
+  const service = combineServices(visitServices);
+  // Booked under a name that is no longer in the catalog: kept until the
+  // technician ticks a service.
+  const legacyName = visitServices.length === 0 ? appointment?.serviceType || "" : "";
+  // A retired service stays tickable on the visit that was booked with it.
+  const serviceChoices = [...activeServices, ...visitServices.filter((entry) => !activeServices.some((active) => active.id === entry.id))];
   const isTechnician = currentUser?.role === ROLES.TECHNICIAN;
   const mine = appointment && (!isTechnician || isAssignedTo(appointment, currentUser?.id));
   const alreadyStocked = (appointment?.stockUsed || []).length > 0;
@@ -148,13 +160,13 @@ function VisitPage() {
       stored || {
         findings: appointment.report || "",
         recommendations: appointment.recommendations || "",
-        treatmentMethods: appointment.treatmentMethods || [],
-        notes: appointment.treatmentPerformed || "",
+        serviceIds: visitServiceIds,
         materials: alreadyStocked ? [] : materialsFromService(service, inventory),
         customerName: appointment.customerName || "",
       }
     );
     if (stored?.savedAt) setSavedAt(stored.savedAt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appointment, draft, service, inventory, alreadyStocked]);
 
   const update = (changes) => {
@@ -188,6 +200,24 @@ function VisitPage() {
   const stepIndex = VISIT_STEPS.indexOf(step);
   const onSite = minutesOnSite(appointment, now);
   const photos = appointment.attachments || [];
+  // A draft saved on this phone before multi-service had one serviceId, or
+  // none; either way it reads as a list here.
+  const tickedIds = Array.isArray(draft.serviceIds) ? draft.serviceIds : (draft.serviceId ? [draft.serviceId] : visitServiceIds);
+  const photoChoice = PHOTO_CATEGORIES.find((category) => category.value === photoCategory) || PHOTO_CATEGORIES[0];
+  const inCategory = photos.filter((attachment) => (attachment.category || "OTHER") === photoChoice.value);
+
+  const toggleService = (serviceId) => {
+    const next = tickedIds.includes(serviceId) ? tickedIds.filter((entry) => entry !== serviceId) : [...tickedIds, serviceId];
+    // The ticked services' usual materials, unless stock for this visit has
+    // already been recorded.
+    const materials = materialsFromService(combineServices(next.map((entry) => serviceById(entry)).filter(Boolean)), inventory);
+    update({ serviceIds: next, ...(alreadyStocked ? {} : { materials }) });
+  };
+
+  const handleRemoveFile = async (attachment) => {
+    const result = await removeAttachment({ ...attachment, appointmentId: attachment.appointmentId || appointment.id });
+    if (result !== true) showError(result);
+  };
 
   const handleStart = async () => {
     setStarting(true);
@@ -213,8 +243,8 @@ function VisitPage() {
 
   const stepProblem = (name) => {
     if (name === "Findings" && !draft.findings.trim()) return "Write what you found before moving on.";
-    if (name === "Treatment" && draft.treatmentMethods.length === 0 && !draft.notes.trim()) {
-      return "Tick at least one method, or describe the treatment in the notes.";
+    if (name === "Treatment" && tickedIds.length === 0 && !legacyName) {
+      return "Tick the services you performed.";
     }
     return null;
   };
@@ -239,11 +269,16 @@ function VisitPage() {
     try {
       const report = {
         findings: draft.findings.trim(),
-        treatmentPerformed: draft.notes.trim(),
-        treatmentMethods: draft.treatmentMethods,
+        // No notes box any more; an older report's notes are kept as they were.
+        treatmentPerformed: appointment.treatmentPerformed || "",
         recommendations: draft.recommendations.trim(),
         followUpDate: appointment.followUpDate || "",
       };
+      // Sent only when the technician changed the list (migration 051).
+      if (tickedIds.length && tickedIds.join() !== visitServiceIds.join()) {
+        report.serviceIds = tickedIds;
+        report.serviceType = tickedIds.map((entry) => serviceById(entry)?.name).filter(Boolean).join(", ");
+      }
 
       const customerFile = await customerPad.current?.toFile();
       if (customerFile) {
@@ -390,29 +425,21 @@ function VisitPage() {
 
         {step === "Treatment" && (
           <>
-            <p style={label}>Methods used</p>
-            <div role="group" aria-label="Methods used" style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-              {methods.map((method) => {
-                const selected = draft.treatmentMethods.includes(method.value);
-                return (
-                  <Toggle
-                    key={method.value}
-                    selected={selected}
-                    onClick={() =>
-                      update({
-                        treatmentMethods: selected ? draft.treatmentMethods.filter((value) => value !== method.value) : [...draft.treatmentMethods, method.value],
-                      })
-                    }
-                  >
-                    {method.label}
-                  </Toggle>
-                );
-              })}
-              {methods.length === 0 && <span style={{ color: neutral.bark }}>No treatment methods are set up. Describe the treatment in the notes below.</span>}
+            <p style={label}>Services performed · tick all that apply</p>
+            {legacyName && tickedIds.length === 0 && (
+              <p style={{ margin: "0 0 10px", color: neutral.bark, fontSize: "13px" }}>Booked as {legacyName}. Kept unless you tick a service.</p>
+            )}
+            <div role="group" aria-label="Services performed" style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+              {serviceChoices.map((choice) => (
+                <Toggle key={choice.id} selected={tickedIds.includes(choice.id)} onClick={() => toggleService(choice.id)}>
+                  {choice.name}
+                </Toggle>
+              ))}
+              {serviceChoices.length === 0 && <span style={{ color: neutral.bark }}>No services are set up. Ask the office to add them.</span>}
             </div>
 
             <p style={{ ...label, marginTop: "24px" }}>
-              Materials used{service?.materials?.length && !alreadyStocked ? <span style={{ textTransform: "none", letterSpacing: 0, color: neutral.bark }}> · prefilled from service</span> : null}
+              Materials used{tickedIds.some((entry) => serviceById(entry)?.materials?.length) && !alreadyStocked ? <span style={{ textTransform: "none", letterSpacing: 0, color: neutral.bark }}> · prefilled from the services</span> : null}
             </p>
             {alreadyStocked ? (
               <p style={{ margin: 0, color: neutral.saddle }}>
@@ -457,23 +484,22 @@ function VisitPage() {
                 </div>
               </div>
             )}
-
-            <label style={{ display: "block", marginTop: "24px" }}>
-              <p style={label}>Notes</p>
-              <textarea aria-label="Treatment notes" rows={3} value={draft.notes} onChange={(event) => update({ notes: event.target.value })} placeholder="Where and how it was applied…" style={field} />
-            </label>
           </>
         )}
 
         {step === "Photos" && (
           <>
-            <p style={label}>Photo type</p>
+            <p style={label}>What are you adding?</p>
             <div role="group" aria-label="Photo type" style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-              {PHOTO_CATEGORIES.map((category) => (
-                <Toggle key={category.value} selected={photoCategory === category.value} onClick={() => setPhotoCategory(category.value)}>
-                  {category.label}
-                </Toggle>
-              ))}
+              {PHOTO_CATEGORIES.map((category) => {
+                const count = photos.filter((attachment) => (attachment.category || "OTHER") === category.value).length;
+                return (
+                  <Toggle key={category.value} selected={photoCategory === category.value} onClick={() => setPhotoCategory(category.value)}>
+                    {category.shortLabel}
+                    {count > 0 && <span style={{ fontVariantNumeric: "tabular-nums", opacity: 0.75 }}>· {count}</span>}
+                  </Toggle>
+                );
+              })}
             </div>
             <label
               style={{
@@ -491,12 +517,45 @@ function VisitPage() {
                 color: neutral.saddle,
               }}
             >
-              <Camera size={28} aria-hidden="true" />
-              {uploading ? "Uploading…" : "Take or choose a photo"}
-              <input type="file" accept="image/*" capture="environment" onChange={handlePhoto} disabled={uploading} aria-label="Add photo" style={{ display: "none" }} />
+              {photoChoice.camera ? <Camera size={28} aria-hidden="true" /> : <FileText size={28} aria-hidden="true" />}
+              {uploading ? "Uploading…" : photoChoice.camera ? `Take or choose a ${photoChoice.shortLabel.toLowerCase()} photo` : `Add ${photoChoice.shortLabel.toLowerCase()} — photo or PDF`}
+              {/* Camera categories open straight into the camera; proof and
+                  other files accept a PDF too, so they open the file picker. */}
+              <input
+                type="file"
+                accept={photoChoice.camera ? "image/*" : "image/*,application/pdf"}
+                {...(photoChoice.camera ? { capture: "environment" } : {})}
+                onChange={handlePhoto}
+                disabled={uploading}
+                aria-label="Add photo"
+                style={{ display: "none" }}
+              />
             </label>
+
+            <p style={{ ...label, marginTop: "20px" }}>
+              {photoChoice.label} · {inCategory.length}
+            </p>
+            {inCategory.length === 0 ? (
+              <p style={{ margin: 0, color: neutral.bark, fontSize: "13px" }}>None yet. Files upload as you add them.</p>
+            ) : (
+              <ul style={{ listStyle: "none", margin: 0, padding: 0, border: `1px solid ${colors.line}`, borderRadius: radius.card, background: surface.panel }}>
+                {inCategory.map((attachment) => (
+                  <li key={attachment.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px", borderBottom: `1px solid ${colors.line}` }}>
+                    <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>{attachment.name}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${attachment.name}`}
+                      onClick={() => handleRemoveFile(attachment)}
+                      style={{ width: "44px", height: "44px", display: "grid", placeItems: "center", border: 0, background: "none", color: semantic.danger, cursor: "pointer" }}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <p style={{ margin: "12px 0 0", color: neutral.bark, fontSize: "13px" }}>
-              {photos.length === 0 ? "No photos yet. Photos upload as you take them." : `${photos.length} ${photos.length === 1 ? "file" : "files"} on this visit.`}
+              {photos.length === 0 ? "Nothing on this visit yet." : `${photos.length} ${photos.length === 1 ? "file" : "files"} on this visit in all.`}
             </p>
           </>
         )}

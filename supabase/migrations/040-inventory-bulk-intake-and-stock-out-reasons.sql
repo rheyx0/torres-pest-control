@@ -93,6 +93,14 @@ create index if not exists inventory_movements_stock_out_reason_idx
   on public.inventory_movements (stock_out_reason)
   where stock_out_reason is not null;
 
+-- The whole-number check (006, narrowed to IN by 036) is dropped in section 2,
+-- but it has to go BEFORE the backfill below: it was added `not valid`, so old
+-- decimal rows were never checked — until an UPDATE touches them. A database
+-- still carrying 006's version refuses the backfill on the first 0.4 L
+-- stock-out with 23514. Dropping it here first is harmless on every database.
+alter table public.inventory_movements
+  drop constraint if exists inventory_movements_amount_whole_number_check;
+
 -- Rows written before this migration all came from an appointment.
 update public.inventory_movements
 set stock_out_reason = 'APPOINTMENT'

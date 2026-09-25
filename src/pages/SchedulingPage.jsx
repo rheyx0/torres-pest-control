@@ -24,10 +24,9 @@ import useUsers from "../hooks/useUsers";
 import useServices from "../hooks/useServices";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
-import { APPOINTMENT_STATUSES, ATTACHMENT_CATEGORIES, DOCUMENT_CATEGORIES, PEST_CONCERN_SUGGESTIONS, ROLES, LIMITS, SERVICE_FREQUENCIES } from "../utils/constants";
-import useTreatmentMethods from "../hooks/useTreatmentMethods";
+import { APPOINTMENT_STATUSES, ATTACHMENT_CATEGORIES, DOCUMENT_CATEGORIES, PEST_CONCERN_SUGGESTIONS, REPORT_UPLOAD_CATEGORIES, ROLES, LIMITS, SERVICE_FREQUENCIES } from "../utils/constants";
 import useNow from "../hooks/useNow";
-import { CALENDAR_END_HOUR, DAY_END_HOUR, DAY_START_HOUR, SCHEDULE_END_HOUR, allowedNextStatuses, bookableTechnicians, busyTechnicianIds, canTransition, crewOf, dayLoad, describeSlotConflict, findTechnicianConflicts, isAssignedTo, endOf, layoutDayAppointments, moveSteps, startOf, technicianHours } from "../utils/scheduling";
+import { CALENDAR_END_HOUR, DAY_END_HOUR, DAY_START_HOUR, SCHEDULE_END_HOUR, allowedNextStatuses, appointmentReference, combineServices, servicesOf, bookableTechnicians, busyTechnicianIds, canTransition, crewOf, dayLoad, describeSlotConflict, findTechnicianConflicts, isAssignedTo, endOf, layoutDayAppointments, moveSteps, startOf, technicianHours } from "../utils/scheduling";
 import {
   addDays,
   formatDateTime,
@@ -74,8 +73,6 @@ const MAX_CARD_COLUMNS = 3;
 
 const TAB_LABELS = ["Overview", "Documents", "Report", "Stock-Out"];
 const STOCK_CATEGORIES = ["CHEMICAL", "MATERIAL", "EQUIPMENT"];
-// Select value for a service name that has no profile behind it any more.
-const LEGACY_SERVICE = "__legacy__";
 
 function SchedulingPage() {
   const { can, currentUser } = useAuth();
@@ -102,8 +99,6 @@ function SchedulingPage() {
   const [reserviceDrag, setReserviceDrag] = useState(null);
   const [overflowGroup, setOverflowGroup] = useState(null);
   const [printRequest, setPrintRequest] = useState(null);
-  const { methods: dynamicMethods, groups: dynamicGroups } = useTreatmentMethods();
-  const [treatmentMethods, setTreatmentMethods] = useState([]);
   const [appointmentSearch, setAppointmentSearch] = useState("");
   // Widens the grid back to the whole working day when something falls
   // outside the window the week would otherwise show.
@@ -166,16 +161,6 @@ function SchedulingPage() {
   // Who can be put on a visit: deactivated accounts are never offered.
   const activeTechnicians = useMemo(() => bookableTechnicians(technicians), [technicians]);
 
-  useEffect(() => {
-    setTreatmentMethods(selected?.treatmentMethods || []);
-  }, [selectedId, selected?.treatmentMethods]);
-
-  const toggleTreatmentMethod = (value) => {
-    setTreatmentMethods((current) => current.includes(value)
-      ? current.filter((entry) => entry !== value)
-      : [...current, value]);
-  };
-
   const weekStart = startOfWeek(anchorDate);
   const weekStartTime = weekStart.getTime();
   const anchorDayKey = localDateKey(anchorDate);
@@ -205,7 +190,7 @@ function SchedulingPage() {
         .map((id) => allAccounts.find((account) => account.id === id))
         .map((account) => account?.name || account?.username || "")
         .join(" ");
-      const text = `${appointment.id} ${client?.name || ""} ${client?.address || ""} ${appointment.pestConcern || ""} ${appointment.status} ${crewNames}`.toLowerCase();
+      const text = `${appointment.id} ${appointment.reference || ""} ${client?.name || ""} ${client?.address || ""} ${appointment.pestConcern || ""} ${appointment.status} ${crewNames}`.toLowerCase();
       return (!term || text.includes(term))
         && (technicianFilter === "ALL" || isAssignedTo(appointment, technicianFilter))
         && (statusFilter === "ALL" || appointment.status === statusFilter)
@@ -402,12 +387,6 @@ function SchedulingPage() {
       setMessage(guard);
       return;
     }
-    // The select holds a service id; the appointment stores the name as its
-    // snapshot. LEGACY_SERVICE keeps a name whose profile is gone.
-    const chosenService = form.get("serviceId");
-    const nextService = chosenService === LEGACY_SERVICE
-      ? { serviceId: "", serviceType: selected.serviceType }
-      : { serviceId: chosenService || "", serviceType: serviceById(chosenService)?.name || "" };
     const candidate = {
       ...selected,
       scheduledAt: nextScheduledAt,
@@ -447,7 +426,8 @@ function SchedulingPage() {
       scheduledAt: nextScheduledAt,
       durationMinutes: nextDuration,
       pestConcern: form.get("pestConcern"),
-      ...nextService,
+      // The service is chosen in the Report tab now; Overview keeps whatever
+      // the visit already has (serviceId / serviceType ride in on ...selected).
       serviceLocation: form.get("serviceLocation") || "",
       technicianIds,
       serviceFrequency: form.get("serviceFrequency") || "",
@@ -469,17 +449,28 @@ function SchedulingPage() {
     const form = new FormData(formElement);
     const report = {
       findings: (form.get("findings") || "").trim(),
-      treatmentPerformed: (form.get("treatmentPerformed") || "").trim(),
+      // The treatment notes box was removed; notes already on an older report
+      // are sent back unchanged so re-saving it never wipes them.
+      treatmentPerformed: selected.treatmentPerformed || "",
       recommendations: (form.get("recommendations") || "").trim(),
       followUpDate: form.get("followUpDate") || "",
-      treatmentMethods,
     };
     if (!report.findings) {
       showError("Inspection findings are required.");
       return;
     }
-    if (treatmentMethods.length === 0 && !report.treatmentPerformed) {
-      showError("Record the treatment: tick at least one method, or describe it in the notes.");
+    // The services performed, ticked on the report. Sent only when the list
+    // changes: submit_appointment_report replaces the visit's services and
+    // snapshots their names (migration 051). A visit booked under a name no
+    // longer in the catalog keeps that name until something is ticked.
+    const ticked = form.getAll("serviceIds").filter(Boolean);
+    const current = servicesOf(selected, serviceById, serviceByName).map((service) => service.id);
+    if (ticked.length && ticked.join() !== current.join()) {
+      report.serviceIds = ticked;
+      report.serviceType = ticked.map((id) => serviceById(id)?.name).filter(Boolean).join(", ");
+    }
+    if (!ticked.length && !(current.length === 0 && selected.serviceType)) {
+      showError("Tick the services performed on this visit.");
       return;
     }
 
@@ -877,10 +868,6 @@ function SchedulingPage() {
               .join(", ") || "another technician",
           }}
           report={{
-            treatmentMethods,
-            onToggleMethod: toggleTreatmentMethod,
-            dynamicMethods,
-            dynamicGroups,
             getSignatureUrl,
             onReportSubmit: handleReportSubmit,
             onPrintServiceForm: () => printServiceForm(selected),
@@ -899,7 +886,7 @@ function SchedulingPage() {
             onScheduleFollowUp: scheduleFollowUp,
             onProblem: showError,
           }}
-          stock={{ inventory, service: serviceById(selected.serviceId) || serviceByName(selected.serviceType), services: activeServices, serviceById, serviceByName }}
+          stock={{ inventory, service: combineServices(servicesOf(selected, serviceById, serviceByName)), services: activeServices, serviceById, serviceByName }}
         />
       )}
       <ServiceReportPrinter request={printRequest} onDone={() => setPrintRequest(null)} onProblem={showError} getAttachmentUrl={getAttachmentUrl} getSignatureUrl={getSignatureUrl} />
@@ -942,7 +929,7 @@ export function weekRangeLabel(start, end) {
   return `${month(start)} ${start.getDate()} – ${endPart}, ${end.getFullYear()}`;
 }
 
-function AppointmentOverviewForm({ appointment, client, activeAccounts, busyTechnicians, appointments, services = [], serviceById = () => null, serviceByName = () => null, onSave }) {
+function AppointmentOverviewForm({ appointment, client, activeAccounts, busyTechnicians, appointments, onSave }) {
   const hours = Math.floor((appointment.durationMinutes || 60) / 60);
   const minutes = (appointment.durationMinutes || 60) % 60;
   const [technicianIds, setTechnicianIds] = useState(() => crewOf(appointment));
@@ -954,15 +941,6 @@ function AppointmentOverviewForm({ appointment, client, activeAccounts, busyTech
   // The crew is React state, not a form field, so it is handed to the save
   // handler directly rather than read back out of FormData.
   const handleSubmit = (event) => onSave(event, technicianIds);
-  // Pre-047 appointments carry only a name, so an exact name match adopts the
-  // profile. A retired service stays selectable on the visit that uses it; a
-  // name with no profile at all is kept as LEGACY_SERVICE so saving the form
-  // never erases what the visit was booked as.
-  const currentService = serviceById(appointment.serviceId) || serviceByName(appointment.serviceType);
-  const serviceChoices = currentService && !services.some((service) => service.id === currentService.id)
-    ? [...services, currentService]
-    : services;
-  const initialServiceValue = currentService?.id || (appointment.serviceType ? LEGACY_SERVICE : "");
 
   return <form onSubmit={handleSubmit} style={{ display: "grid", gap: "1rem" }}>
     <InfoRow icon={<UserRound size={15} />} label="Client contact" value={`${client.phone || "No phone"} ${client.email ? `• ${client.email}` : ""}`} />
@@ -975,7 +953,6 @@ function AppointmentOverviewForm({ appointment, client, activeAccounts, busyTech
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Date and time</strong><input name="scheduledAt" type="datetime-local" defaultValue={toDateTimeLocal(appointment.scheduledAt)} style={inputStyle} />{appointment.status !== "Reschedule" && <span style={hintStyle}>Set the status to Reschedule before changing the date, time, or duration.</span>}</div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}><label style={{ display: "grid", gap: "0.25rem", color: colors.muted, fontSize: "0.72rem", fontWeight: 500 }}>Hours<input name="durationHours" type="number" min="0" max="24" defaultValue={hours} style={{ ...inputStyle, padding: "0.55rem" }} required /></label><label style={{ display: "grid", gap: "0.25rem", color: colors.muted, fontSize: "0.72rem", fontWeight: 500 }}>Minutes<input name="durationMinutes" type="number" min="0" max="59" defaultValue={minutes} style={{ ...inputStyle, padding: "0.55rem" }} required /></label></div>
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Technicians</strong><TechnicianPicker accounts={activeAccounts} value={technicianIds} busyIds={busyTechnicians} onChange={setTechnicianIds} />{conflicts.length > 0 && <span style={{ color: colors.danger, fontSize: "0.72rem", fontWeight: 500 }}>Conflict: someone on this crew overlaps another appointment.</span>}</div>
-    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Service type</strong><select name="serviceId" aria-label="Service type" defaultValue={initialServiceValue} style={inputStyle}><option value="">Select a service type</option>{serviceChoices.map((service) => <option key={service.id} value={service.id}>{service.name}{service.isActive ? "" : " (retired)"}</option>)}{initialServiceValue === LEGACY_SERVICE && <option value={LEGACY_SERVICE}>{appointment.serviceType} (no longer in the catalog)</option>}</select></div>
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Service location</strong><input name="serviceLocation" maxLength={LIMITS.NOTES_MAX} defaultValue={appointment.serviceLocation || ""} placeholder={client.address || "Client address"} style={inputStyle} /><span style={hintStyle}>Leave blank to use the client's address.</span></div>
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Pest concern</strong><select name="pestConcern" defaultValue={appointment.pestConcern || ""} style={inputStyle}><option value="">Select a pest concern</option>{PEST_CONCERN_SUGGESTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
@@ -1106,80 +1083,79 @@ const fieldsetReset = { border: 0, padding: 0, margin: 0, minWidth: 0 };
  * not. Technicians never see the override.
  */
 /**
- * The treatment as a checklist. Grouped so a long list stays scannable, with
- * the old free-text box kept underneath — a visit occasionally needs a sentence
- * that no fixed list will ever cover.
+ * The services performed on this visit, as a checklist (migration 051). Ticked
+ * boxes are read back out of the report form by name ("serviceIds").
+ *
+ * Pre-047 appointments carry only a name, so an exact name match adopts the
+ * profile. A retired service stays tickable on the visit that uses it. A name
+ * with no profile at all is shown as booked, and kept until something is
+ * ticked, so saving the report never erases what the visit was booked as.
  */
-function TreatmentMethods({ appointment, selected, onToggle, treatmentMethods, treatmentMethodGroups }) {
+function ReportService({ appointment, services = [], inventory = [], serviceById = () => null, serviceByName = () => null }) {
+  const current = servicesOf(appointment, serviceById, serviceByName);
+  const choices = [...services, ...current.filter((service) => !services.some((entry) => entry.id === service.id))];
+  const [ticked, setTicked] = useState(() => current.map((service) => service.id));
+  const legacyName = current.length === 0 ? appointment.serviceType : "";
+  const toggle = (id) => setTicked((list) => (list.includes(id) ? list.filter((entry) => entry !== id) : [...list, id]));
+  const materialNames = (combineServices(ticked.map((id) => serviceById(id)).filter(Boolean))?.materials || [])
+    .map((material) => inventory.find((item) => item.id === material.itemId)?.name)
+    .filter(Boolean);
+
   return (
-    <div
-      className="p-4 bg-slate-50/60 border border-slate-200 rounded-xl flex flex-col gap-3"
+    <fieldset
       style={{
+        margin: 0,
+        minWidth: 0,
         padding: "1rem",
         background: "rgba(248, 250, 252, 0.6)",
         border: "1px solid #efe9e0",
         borderRadius: "0.75rem",
         display: "flex",
         flexDirection: "column",
-        gap: "0.75rem",
+        gap: "0.6rem",
       }}
     >
-      <div>
-        <strong style={{ color: colors.body, fontWeight: 500, fontSize: "0.82rem" }}>Treatment performed</strong>
-        <div style={{ color: colors.muted, fontSize: "0.72rem", marginTop: "0.15rem" }}>
-          Tick everything that was done. {selected.length > 0 ? `${selected.length} selected.` : "None selected yet."}
+      <legend style={{ padding: 0, color: colors.body, fontWeight: 500, fontSize: "0.82rem", float: "left", width: "100%" }}>
+        Services performed <span style={{ color: "#9a2d24" }}>*</span>
+        <span style={{ display: "block", color: colors.muted, fontWeight: 400, fontSize: "0.72rem", marginTop: "0.15rem" }}>
+          Tick every service carried out. {ticked.length > 0 ? `${ticked.length} selected.` : "None selected yet."}
+        </span>
+      </legend>
+      {legacyName && (
+        <div style={{ color: colors.muted, fontSize: "0.72rem" }}>
+          Booked as <strong style={{ color: colors.body, fontWeight: 500 }}>{legacyName}</strong> (no longer in the catalog). Kept unless you tick a service below.
         </div>
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        {treatmentMethodGroups.map((group) => (
-          <div key={group}>
-            <div
-              style={{
-                color: colors.muted,
-                fontSize: "0.65rem",
-                fontWeight: 500,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                borderBottom: "1px solid #efe9e0",
-                paddingBottom: "0.2rem",
-                marginBottom: "0.35rem",
-              }}
+      )}
+      <div style={{ display: "grid", gap: "0.35rem" }}>
+        {choices.map((service) => {
+          const on = ticked.includes(service.id);
+          return (
+            <label
+              key={service.id}
+              style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", fontSize: "0.8rem", color: on ? colors.ink : colors.body, fontWeight: on ? 500 : 400, cursor: "pointer" }}
             >
-              {group}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.4rem" }}>
-              {treatmentMethods.filter((method) => method.group === group).map((method) => {
-                const on = selected.includes(method.value);
-                return (
-                  <label
-                    key={method.value}
-                    style={{
-                      display: "flex",
-                      gap: "0.4rem",
-                      alignItems: "flex-start",
-                      fontSize: "0.75rem",
-                      color: on ? colors.ink : colors.body,
-                      fontWeight: on ? 600 : 400,
-                      cursor: "pointer",
-                      padding: "0.15rem 0",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={on}
-                      onChange={() => onToggle(method.value)}
-                      style={{ marginTop: "0.15rem", accentColor: colors.brand }}
-                    />
-                    <span style={{ lineHeight: 1.3 }}>{method.label}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+              <input
+                type="checkbox"
+                name="serviceIds"
+                value={service.id}
+                checked={on}
+                onChange={() => toggle(service.id)}
+                style={{ marginTop: "0.15rem", accentColor: colors.brand }}
+              />
+              <span style={{ lineHeight: 1.35 }}>
+                {service.name}{service.isActive === false ? " (retired)" : ""}
+              </span>
+            </label>
+          );
+        })}
+        {choices.length === 0 && <span style={{ color: colors.muted, fontSize: "0.75rem" }}>No services are set up yet. Add them under Services.</span>}
       </div>
-    </div>
+      {materialNames.length > 0 && (
+        <div style={{ color: colors.muted, fontSize: "0.72rem", lineHeight: 1.45 }}>
+          Usual materials: {materialNames.join(", ")}. Record what was actually used in the Stock-Out tab.
+        </div>
+      )}
+    </fieldset>
   );
 }
 
@@ -1484,10 +1460,6 @@ function AppointmentPanel({
     assignedName,
   } = access;
   const {
-    treatmentMethods,
-    onToggleMethod,
-    dynamicMethods,
-    dynamicGroups,
     getSignatureUrl,
     onReportSubmit,
     onPrintServiceForm,
@@ -1530,6 +1502,9 @@ function AppointmentPanel({
               style={{ fontSize: "0.6875rem", fontWeight: 500, color: "#9a2d24", textTransform: "uppercase", letterSpacing: "0.05em" }}
             >
               Appointment detail
+              <span style={{ marginLeft: "0.5rem", color: "#96897b", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", letterSpacing: 0 }}>
+                {appointmentReference(appointment)}
+              </span>
             </div>
             <h2
               className="text-lg font-bold text-slate-900 mt-0.5"
@@ -1613,9 +1588,6 @@ function AppointmentPanel({
                   activeAccounts={activeAccounts}
                   busyTechnicians={busyTechnicians}
                   appointments={appointments}
-                  services={services}
-                  serviceById={serviceById}
-                  serviceByName={serviceByName}
                   onSave={onSave}
                 />
               </fieldset>
@@ -1683,22 +1655,6 @@ function AppointmentPanel({
                             />
                           </label>
 
-                          <label style={{ display: "grid", gap: "0.3rem", color: colors.body, fontWeight: 500, fontSize: "0.82rem" }}>
-                            <span>
-                              Additional treatment notes{" "}
-                              <span style={{ fontWeight: 400, color: colors.muted, fontSize: "0.72rem" }}>
-                                (Optional — anything the list does not cover)
-                              </span>
-                            </span>
-                            <textarea
-                              name="treatmentPerformed"
-                              defaultValue={appointment.treatmentPerformed}
-                              rows={2}
-                              placeholder="e.g. Pipe chase behind the range needs sealing before the next visit."
-                              style={{ ...inputStyle, resize: "vertical", whiteSpace: "pre-wrap", width: "100%" }}
-                            />
-                          </label>
-
                           <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 500, fontSize: "0.82rem" }}>
                             Recommendations / follow-up notes
                             <textarea
@@ -1721,13 +1677,13 @@ function AppointmentPanel({
                           </label>
                         </div>
 
-                        {/* Right Column (Checklist) */}
-                        <TreatmentMethods
+                        {/* Right Column (Service performed) */}
+                        <ReportService
                           appointment={appointment}
-                          selected={treatmentMethods}
-                          onToggle={onToggleMethod}
-                          treatmentMethods={dynamicMethods}
-                          treatmentMethodGroups={dynamicGroups}
+                          services={services}
+                          inventory={inventory}
+                          serviceById={serviceById}
+                          serviceByName={serviceByName}
                         />
                       </div>
 
@@ -1764,7 +1720,11 @@ function AppointmentPanel({
                         className="grid grid-cols-1 md:grid-cols-2 gap-3.5 overflow-hidden"
                         style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "0.875rem", overflow: "hidden" }}
                       >
-                        {ATTACHMENT_CATEGORIES.map((category) => (
+                        {/* No signed-form upload: the customer signs on the
+                            report. A visit that already has signed forms from
+                            before keeps showing them, so they can be opened. */}
+                        {ATTACHMENT_CATEGORIES.filter((category) => REPORT_UPLOAD_CATEGORIES.includes(category)
+                          || (appointment.attachments || []).some((attachment) => attachment.category === category.value)).map((category) => (
                           <ClientDocuments
                             key={category.value}
                             variant="tile"

@@ -15,10 +15,13 @@ import {
   dayLoad,
   technicianHours,
   moveSteps,
+  appointmentReference,
   appointmentsOverlap,
   busyTechnicianIds,
   canTransition,
+  combineServices,
   crewOf,
+  servicesOf,
   describeSlotConflict,
   findTechnicianConflicts,
   isAssignedTo,
@@ -126,6 +129,54 @@ describe("layoutDayAppointments", () => {
   });
 });
 
+describe("appointmentReference", () => {
+  it("uses the visit number when the appointment has one", () => {
+    expect(appointmentReference({ id: "3f9a1c2e-0000-4000-8000-000000000000", reference: "TPC-V-00042" })).toBe("TPC-V-00042");
+  });
+
+  it("falls back to the start of the uuid before migration 050", () => {
+    expect(appointmentReference({ id: "3f9a1c2e-0000-4000-8000-000000000000", reference: "" })).toBe("3F9A1C2E");
+  });
+
+  it("is empty for no appointment", () => {
+    expect(appointmentReference(null)).toBe("");
+  });
+});
+
+describe("servicesOf / combineServices", () => {
+  const catalog = [
+    { id: "s1", name: "Termite Control", materials: [{ itemId: "i1", defaultAmount: 1.5 }, { itemId: "i2", defaultAmount: 2 }] },
+    { id: "s2", name: "Rodent Control", materials: [{ itemId: "i2", defaultAmount: 4 }, { itemId: "i3", defaultAmount: 1 }] },
+  ];
+  const byId = (id) => catalog.find((service) => service.id === id) || null;
+  const byName = (name) => catalog.find((service) => service.name === name) || null;
+
+  it("reads every service on the visit, in order", () => {
+    expect(servicesOf({ serviceIds: ["s2", "s1"] }, byId, byName).map((service) => service.id)).toEqual(["s2", "s1"]);
+  });
+
+  it("falls back to the single service, then to the name, on older visits", () => {
+    expect(servicesOf({ serviceId: "s1" }, byId, byName).map((service) => service.id)).toEqual(["s1"]);
+    expect(servicesOf({ serviceType: "Rodent Control" }, byId, byName).map((service) => service.id)).toEqual(["s2"]);
+    expect(servicesOf({ serviceType: "Gone From Catalog" }, byId, byName)).toEqual([]);
+  });
+
+  it("merges materials, summing an item two services share", () => {
+    const combined = combineServices(catalog);
+    expect(combined.name).toBe("Termite Control, Rodent Control");
+    expect(combined.materials).toEqual([
+      { itemId: "i1", defaultAmount: 1.5 },
+      { itemId: "i2", defaultAmount: 6 },
+      { itemId: "i3", defaultAmount: 1 },
+    ]);
+  });
+
+  it("passes one service through untouched, and none as null", () => {
+    expect(combineServices([catalog[0]])).toBe(catalog[0]);
+    expect(combineServices([])).toBeNull();
+  });
+});
+
 describe("appointmentsOverlap", () => {
   it("treats touching appointments as non-overlapping", () => {
     expect(appointmentsOverlap(at("a", "09:00"), at("b", "10:00"))).toBe(false);
@@ -155,7 +206,7 @@ describe("describeSlotConflict", () => {
   });
 
   it("rejects a start before the working day opens", () => {
-    expect(describeSlotConflict([], at("new", "06:00"))).toMatch(/inside the working day/i);
+    expect(describeSlotConflict([], at("new", "05:00"))).toMatch(/inside the working day/i);
   });
 
   it("rejects a start at or after the working day closes", () => {

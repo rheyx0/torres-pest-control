@@ -10,6 +10,7 @@
 
 import { COMPANY } from "../../utils/constants";
 import { formatDate, formatDateTime } from "../../utils/formatters";
+import { appointmentReference } from "../../utils/scheduling";
 
 function Row({ label, value }) {
   return (
@@ -29,17 +30,11 @@ function Block({ title, children }) {
   );
 }
 
-function ServiceReportDocument({ appointment, client, technician, technicians = [], inventory = [], photos = [], signatureUrl = "", technicianSignatureUrl = "", treatmentMethodsLookup = [] }) {
+function ServiceReportDocument({ appointment, client, technician, technicians = [], inventory = [], photos = [], signatureUrl = "", technicianSignatureUrl = "" }) {
   if (!appointment || !client) return null;
 
   const materials = appointment.stockUsed || [];
   const inventoryById = new Map(inventory.map((item) => [item.id, item]));
-  const methods = (appointment.treatmentMethods || [])
-    .map((value) => {
-      const found = treatmentMethodsLookup.find((method) => method.value === value);
-      return found?.label || value;
-    })
-    .filter(Boolean);
   // The report identifies the technician by name only; the internal reference
   // id is deliberately left off the printed form.
   const technicianName = technician?.name || technician?.username || "Unassigned";
@@ -62,7 +57,7 @@ function ServiceReportDocument({ appointment, client, technician, technicians = 
         </div>
         <div className="sf-doc">
           <div className="sf-doc-title">Service Report</div>
-          <div className="sf-doc-ref">{appointment.id.slice(0, 8).toUpperCase()}</div>
+          <div className="sf-doc-ref">{appointmentReference(appointment)}</div>
         </div>
       </header>
 
@@ -72,23 +67,16 @@ function ServiceReportDocument({ appointment, client, technician, technicians = 
           <Row label="Service address" value={appointment.serviceLocation || client.address} />
           <Row label="Contact" value={[client.phone, client.email].filter(Boolean).join(" · ")} />
           <Row label="Date of service" value={formatDateTime(appointment.scheduledAt)} />
-          <Row label="Service type" value={appointment.serviceType} />
+          <Row label={appointment.serviceType?.includes(", ") ? "Services performed" : "Service performed"} value={appointment.serviceType} />
           <Row label="Pest concern" value={appointment.pestConcern || client.pestConcern} />
           <Row label={crewNames.length > 1 ? "Technicians" : "Technician"} value={crewNames.join(", ") || technicianName} />
         </tbody>
       </table>
 
       <Block title="Inspection findings">{appointment.report}</Block>
-      <section className="sf-block">
-        <h2 className="sf-h2">Treatment performed</h2>
-        {methods.length > 0 && (
-          <ul className="sf-methods">
-            {methods.map((label) => <li key={label}>{label}</li>)}
-          </ul>
-        )}
-        {appointment.treatmentPerformed && <div className="sf-prose" style={{ marginTop: methods.length ? 6 : 0 }}>{appointment.treatmentPerformed}</div>}
-        {methods.length === 0 && !appointment.treatmentPerformed && <div className="sf-prose">Not recorded.</div>}
-      </section>
+      {/* The services performed are the row above. Treatment notes are no
+          longer taken; a report filed with some still prints them. */}
+      {appointment.treatmentPerformed && <Block title="Treatment notes">{appointment.treatmentPerformed}</Block>}
 
       <section className="sf-block">
         <h2 className="sf-h2">Materials used</h2>

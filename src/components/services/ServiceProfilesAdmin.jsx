@@ -26,7 +26,15 @@ const formatDuration = (minutes) => {
   if (!minutes) return "—";
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  return [hours ? `${hours} h` : "", rest ? `${rest} min` : ""].filter(Boolean).join(" ");
+  return [hours ? `${hours}h` : "", rest ? `${rest}m` : ""].filter(Boolean).join(" ");
+};
+
+const MAX_SERVICE_DURATION_MINUTES = 13 * 60;
+const clampWholeNumber = (value, maximum) => {
+  if (value === "") return "";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "";
+  return String(Math.min(maximum, Math.max(0, Math.floor(number))));
 };
 
 const TYPE_LABELS = { CHEMICAL: "Chemicals", MATERIAL: "Materials", EQUIPMENT: "Equipment" };
@@ -53,6 +61,9 @@ export function validateServiceForm(form, services = [], editingId = null) {
   if (form.defaultDurationMinutes !== "" && form.defaultDurationMinutes !== null && form.defaultDurationMinutes !== undefined) {
     const durationError = validateDuration(form.defaultDurationMinutes);
     if (durationError) errors.defaultDurationMinutes = durationError;
+    else if (Number(form.defaultDurationMinutes) > MAX_SERVICE_DURATION_MINUTES) {
+      errors.defaultDurationMinutes = "Default duration must fit within the 6 AM–7 PM service day (13 hours maximum).";
+    }
   }
 
   const filled = (form.materials || []).filter((row) => row.itemId);
@@ -78,6 +89,8 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
       : [newRow()],
   }));
   const [errors, setErrors] = useState({});
+  const durationHours = form.defaultDurationMinutes === "" ? "" : Math.floor(Number(form.defaultDurationMinutes) / 60);
+  const durationMinutes = form.defaultDurationMinutes === "" ? "" : Number(form.defaultDurationMinutes) % 60;
 
   const itemsById = useMemo(() => new Map(inventory.map((item) => [item.id, item])), [inventory]);
   // Disabled items stay selectable only if the service already lists them, so
@@ -90,6 +103,17 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
   const set = (field, value) => {
     setErrors((current) => ({ ...current, [field]: undefined }));
     setForm((current) => ({ ...current, [field]: value }));
+  };
+  const setDurationPart = (part, value) => {
+    const nextPart = clampWholeNumber(value, part === "hours" ? 13 : 59);
+    const otherPart = part === "hours" ? durationMinutes : durationHours;
+    if (nextPart === "" && otherPart === "") {
+      set("defaultDurationMinutes", "");
+      return;
+    }
+    const hours = part === "hours" ? Number(nextPart) || 0 : Number(durationHours) || 0;
+    const minutes = part === "minutes" ? Number(nextPart) || 0 : Number(durationMinutes) || 0;
+    set("defaultDurationMinutes", String(Math.min(MAX_SERVICE_DURATION_MINUTES, hours * 60 + minutes)));
   };
   const updateRow = (key, patch) => {
     setErrors((current) => ({ ...current, materials: undefined }));
@@ -162,8 +186,11 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
           />
         </Field>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
-          <Field label="Default price (₱)" hint="Prefills the booking form. Each appointment keeps its own price." error={errors.defaultPrice}>
+        {/* Pinned to the top, with one-line hints, so the two inputs sit on
+            the same line: a stretched Field hands the extra height to its rows
+            and pushes one input down whenever the hints wrap differently. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", alignItems: "start" }}>
+          <Field label="Default price (₱)" hint="Prefills the booking form." error={errors.defaultPrice} style={{ alignContent: "start" }}>
             <Input
               type="number"
               min="0"
@@ -175,17 +202,11 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
               invalid={Boolean(errors.defaultPrice)}
             />
           </Field>
-          <Field label="Default duration (minutes)" hint="15 minutes to 24 hours." error={errors.defaultDurationMinutes}>
-            <Input
-              type="number"
-              min={LIMITS.MIN_DURATION_MINUTES}
-              max={LIMITS.MAX_DURATION_MINUTES}
-              step="15"
-              value={form.defaultDurationMinutes}
-              onChange={(event) => set("defaultDurationMinutes", event.target.value)}
-              placeholder="60"
-              invalid={Boolean(errors.defaultDurationMinutes)}
-            />
+          <Field label="Default duration" hint="Hours and minutes, up to 13 h." error={errors.defaultDurationMinutes} style={{ alignContent: "start" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+              <Input aria-label="Default duration hours" type="number" min="0" max="13" step="1" value={durationHours} onChange={(event) => setDurationPart("hours", event.target.value)} placeholder="Hours" invalid={Boolean(errors.defaultDurationMinutes)} />
+              <Input aria-label="Default duration minutes" type="number" min="0" max="59" step="1" value={durationMinutes} onChange={(event) => setDurationPart("minutes", event.target.value)} placeholder="Minutes" invalid={Boolean(errors.defaultDurationMinutes)} />
+            </div>
           </Field>
         </div>
 

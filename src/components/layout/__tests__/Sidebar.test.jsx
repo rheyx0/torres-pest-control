@@ -76,7 +76,8 @@ describe("Sidebar groups", () => {
     expect(screen.getByRole("link", { name: /Accounts/ })).toHaveAttribute("href", "/users");
     expect(screen.getByRole("link", { name: /Activity log/ })).toHaveAttribute("href", "/activity");
     expect(screen.getByRole("link", { name: /Services/ })).toHaveAttribute("href", "/services");
-    expect(screen.getByRole("link", { name: /Treatment methods/ })).toHaveAttribute("href", "/treatment-methods");
+    // Retired: the report records the service performed instead.
+    expect(screen.queryByRole("link", { name: /Treatment methods/ })).not.toBeInTheDocument();
   });
 
   // Filtering the items without then dropping the empty group would leave a
@@ -104,7 +105,7 @@ describe("Sidebar groups", () => {
     });
 
     const setup = lists.find((list) => list.getAttribute("aria-labelledby") === groupHeadingId("Setup"));
-    expect(within(setup).getAllByRole("link")).toHaveLength(4);
+    expect(within(setup).getAllByRole("link")).toHaveLength(3);
   });
 });
 

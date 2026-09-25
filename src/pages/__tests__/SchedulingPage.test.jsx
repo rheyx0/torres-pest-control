@@ -77,6 +77,14 @@ const mockServices = [
     defaultDurationMinutes: 120,
     materials: [{ itemId: "i1", defaultAmount: 1.5 }, { itemId: "i2", defaultAmount: 2 }],
   },
+  {
+    id: "s2",
+    name: "Rodent Control",
+    isActive: true,
+    defaultPrice: 2500,
+    defaultDurationMinutes: 60,
+    materials: [{ itemId: "i2", defaultAmount: 4 }],
+  },
 ];
 
 const mockStockOutMany = jest.fn(async () => [{ movement_id: "m1" }]);
@@ -119,11 +127,6 @@ jest.mock("../../hooks/useServices", () => ({
     serviceById: (id) => mockServices.find((service) => service.id === id) || null,
     serviceByName: (name) => mockServices.find((service) => service.name === name) || null,
   }),
-}));
-
-jest.mock("../../hooks/useTreatmentMethods", () => ({
-  __esModule: true,
-  default: () => ({ methods: [], groups: [] }),
 }));
 
 jest.mock("../../context/SchedulingContext", () => ({
@@ -310,6 +313,36 @@ describe("SchedulingPage", () => {
 
       const save = screen.getByRole("button", { name: /Save appointment/i });
       expect(save.closest("fieldset")).not.toBeNull();
+    });
+
+    // Treatment methods were retired: the service is chosen on the report,
+    // not in Overview, and the report form carries it by name.
+    it("chooses the service in the Report tab, not in Overview", async () => {
+      renderPage();
+
+      await userEvent.click(screen.getByText("Rhey Garcia"));
+      expect(screen.queryByLabelText("Service type")).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Report" }));
+      const service = screen.getByRole("checkbox", { name: "Termite Control" });
+      expect(service).toBeChecked();
+      expect(service).toHaveAttribute("name", "serviceIds");
+      expect(service.closest("form")).toHaveAttribute("id", "appointment-report-form");
+      // Several services can be ticked at once.
+      await userEvent.click(screen.getByRole("checkbox", { name: "Rodent Control" }));
+      expect(screen.getAllByRole("checkbox", { checked: true })).toHaveLength(2);
+    });
+
+    it("has no treatment notes box and no signed-form upload on the report", async () => {
+      renderPage();
+
+      await userEvent.click(screen.getByText("Rhey Garcia"));
+      await userEvent.click(screen.getByRole("button", { name: "Report" }));
+
+      expect(screen.queryByText(/Treatment notes/)).not.toBeInTheDocument();
+      expect(screen.queryByText("Signed service forms")).not.toBeInTheDocument();
+      expect(screen.getByText("Before-treatment pictures")).toBeInTheDocument();
+      expect(screen.getByText("Treatment proof")).toBeInTheDocument();
     });
   });
 

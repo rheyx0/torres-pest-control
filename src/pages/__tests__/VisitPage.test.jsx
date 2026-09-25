@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import VisitPage from "../VisitPage";
@@ -25,17 +25,20 @@ jest.mock("../../hooks/useInventory", () => ({
     stockOutMany: mockStockOutMany,
   }),
 }));
-jest.mock("../../hooks/useServices", () => ({
-  __esModule: true,
-  default: () => ({
-    serviceById: (id) => (id === "s1" ? { id: "s1", materials: [{ itemId: "blox", defaultAmount: 0.5 }, { itemId: "station", defaultAmount: 6 }] } : null),
-    serviceByName: () => null,
-  }),
-}));
-jest.mock("../../hooks/useTreatmentMethods", () => ({
-  __esModule: true,
-  default: () => ({ methods: [{ value: "BAIT_STATIONS", label: "Bait stations" }, { value: "GEL_BAIT", label: "Gel bait" }] }),
-}));
+jest.mock("../../hooks/useServices", () => {
+  const services = [
+    { id: "s1", name: "Rodent Control", isActive: true, materials: [{ itemId: "blox", defaultAmount: 0.5 }, { itemId: "station", defaultAmount: 6 }] },
+    { id: "s2", name: "Termite Treatment", isActive: true, materials: [{ itemId: "station", defaultAmount: 2 }] },
+  ];
+  return {
+    __esModule: true,
+    default: () => ({
+      activeServices: services,
+      serviceById: (id) => services.find((service) => service.id === id) || null,
+      serviceByName: () => null,
+    }),
+  };
+});
 jest.mock("../../context/SchedulingContext", () => ({
   useScheduling: () => ({
     appointments: mockState.appointment ? [mockState.appointment] : [],
@@ -44,6 +47,7 @@ jest.mock("../../context/SchedulingContext", () => ({
     submitReport: mockSubmitReport,
     uploadSignature: jest.fn(),
     addAttachment: jest.fn(),
+    removeAttachment: jest.fn(async () => true),
     addStockUsed: mockAddStockUsed,
   }),
 }));
@@ -93,7 +97,9 @@ describe("VisitPage", () => {
 
     await userEvent.type(screen.getByLabelText("Findings"), "Burrows along the seawall fence line");
     await userEvent.click(screen.getByRole("button", { name: /Next: Treatment/ }));
-    expect(screen.getByRole("group", { name: "Methods used" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rodent Control", pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Termite Treatment", pressed: false })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Treatment notes")).not.toBeInTheDocument();
   });
 
   it("prefills materials from the service and steps them by the unit", async () => {
@@ -121,16 +127,71 @@ describe("VisitPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /^Findings/ }));
     await userEvent.type(screen.getByLabelText("Findings"), "Droppings by the loading bay");
-    await userEvent.click(screen.getByRole("button", { name: /^Treatment/ }));
-    await userEvent.click(screen.getByRole("button", { name: "Bait stations" }));
     await userEvent.click(screen.getByRole("button", { name: /^Sign/ }));
     await userEvent.click(screen.getByRole("button", { name: /Send report/ }));
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/"));
-    expect(mockSubmitReport).toHaveBeenCalledWith("a1", expect.objectContaining({ findings: "Droppings by the loading bay", treatmentMethods: ["BAIT_STATIONS"] }));
+    expect(mockSubmitReport).toHaveBeenCalledWith("a1", expect.objectContaining({ findings: "Droppings by the loading bay" }));
+    // The services were left as booked, so they are not re-sent.
+    expect(mockSubmitReport.mock.calls[0][1]).not.toHaveProperty("serviceIds");
     expect(mockStockOutMany).toHaveBeenCalledWith("a1", [{ itemId: "blox", amount: 0.5, batchNumber: "" }, { itemId: "station", amount: 6, batchNumber: "" }], expect.any(String));
     expect(mockShowSuccess).toHaveBeenCalledWith("Report sent. The visit stays open until the customer signs.");
     expect(localStorage.getItem("torres_visit_draft_a1")).toBeNull();
+  });
+
+  it("ticks several services, merges their materials, and files them all", async () => {
+    renderVisit(visit, "/visit/a1?step=Findings");
+    mockSubmitReport.mockResolvedValue({});
+    mockStockOutMany.mockResolvedValue(true);
+
+    await userEvent.type(screen.getByLabelText("Findings"), "Mud tubes on the east wall");
+    await userEvent.click(screen.getByRole("button", { name: /^Treatment/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Termite Treatment" }));
+    // Both services' materials; the bait stations both use are summed (6 + 2).
+    expect(screen.getByText("0.5 kg")).toBeInTheDocument();
+    expect(screen.getByText("8 pc")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /^Sign/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Send report/ }));
+
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/"));
+    expect(mockSubmitReport).toHaveBeenCalledWith("a1", expect.objectContaining({ serviceIds: ["s1", "s2"], serviceType: "Rodent Control, Termite Treatment" }));
+  });
+
+  it("unticking a service drops its materials", async () => {
+    renderVisit(visit, "/visit/a1?step=Treatment");
+    await userEvent.click(screen.getByRole("button", { name: "Termite Treatment" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rodent Control" }));
+    expect(screen.getByText("2 pc")).toBeInTheDocument();
+    expect(screen.queryByText("0.5 kg")).not.toBeInTheDocument();
+  });
+
+  it("asks for a service when none is ticked", async () => {
+    renderVisit({ ...visit, serviceId: "" }, "/visit/a1?step=Findings");
+    await userEvent.type(screen.getByLabelText("Findings"), "Droppings");
+    await userEvent.click(screen.getByRole("button", { name: /Next: Treatment/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Next: Photos/ }));
+    expect(mockShowError).toHaveBeenCalledWith("Tick the services you performed.");
+  });
+
+  it("offers every upload category but signed forms, and lists what is in each", async () => {
+    renderVisit({
+      ...visit,
+      attachments: [
+        { id: "f1", name: "bait-map.pdf", category: "TREATMENT_PROOF" },
+        { id: "f2", name: "front-door.jpg", category: "BEFORE" },
+      ],
+    }, "/visit/a1?step=Photos");
+    const group = screen.getByRole("group", { name: "Photo type" });
+    ["Before", "After", "Inspection", "Treatment proof", "Other"].forEach((name) => {
+      expect(within(group).getByRole("button", { name: new RegExp(`^${name}`) })).toBeInTheDocument();
+    });
+    expect(within(group).queryByRole("button", { name: /Signed/ })).not.toBeInTheDocument();
+
+    expect(screen.getByText("front-door.jpg")).toBeInTheDocument();
+    await userEvent.click(within(group).getByRole("button", { name: /^Treatment proof/ }));
+    expect(screen.getByText("bait-map.pdf")).toBeInTheDocument();
+    expect(screen.getByLabelText("Add photo")).toHaveAttribute("accept", "image/*,application/pdf");
   });
 
   it("keeps the report when recording materials fails, and says so", async () => {
@@ -139,8 +200,6 @@ describe("VisitPage", () => {
     mockStockOutMany.mockResolvedValue("Requested quantity for Contrac Blox exceeds available stock.");
 
     await userEvent.type(screen.getByLabelText("Findings"), "Droppings");
-    await userEvent.click(screen.getByRole("button", { name: /^Treatment/ }));
-    await userEvent.type(screen.getByLabelText("Treatment notes"), "Baited the perimeter");
     await userEvent.click(screen.getByRole("button", { name: /^Sign/ }));
     await userEvent.click(screen.getByRole("button", { name: /Send report/ }));
 

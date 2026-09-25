@@ -7,8 +7,8 @@ const ATTACHMENT_BUCKET = "report-attachments";
 const ATTACHMENT_COLUMNS = "id, appointment_id, name, mime_type, size_bytes, storage_path, category, uploaded_at";
 const SIGNED_URL_TTL_SECONDS = 60;
 
-const APPOINTMENT_COLUMNS = "id, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, created_at, updated_at";
-const REPORT_COLUMNS = "appointment_id, findings, treatment_performed, recommendations, follow_up_date, submitted_by, submitted_at, customer_name, signature_path, signed_at, completion_note, technician_signature_path, technician_signed_at, treatment_methods";
+const APPOINTMENT_COLUMNS = "id, reference, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, created_at, updated_at";
+const REPORT_COLUMNS = "appointment_id, findings, treatment_performed, recommendations, follow_up_date, submitted_by, submitted_at, customer_name, signature_path, signed_at, completion_note, technician_signature_path, technician_signed_at";
 
 function describeError(error) {
   if (!error) return "Unknown error";
@@ -18,14 +18,23 @@ function describeError(error) {
 export function mapAppointmentRow(row, report = null) {
   return {
     id: row.id,
+    // "TPC-V-00042" (migration 050). Empty before 050 is applied; read it
+    // through appointmentReference() in utils/scheduling.js, which falls back.
+    reference: row.reference || "",
     clientId: row.client_id,
     scheduledAt: row.scheduled_at,
     durationMinutes: Number(row.duration_minutes) || 60,
     pestConcern: row.pest_concern || "",
     serviceType: row.service_type || "",
     // Link to the service profile (migration 047), used only to prefill the
-    // Stock-Out tab. serviceType stays the name the visit was booked under.
+    // Stock-Out tab. serviceType stays the name the visit was booked under —
+    // since 051, every service's name joined, "Termite Control, Rodent Control".
     serviceId: row.service_id || "",
+    // Every service on the visit, in order (migration 051). serviceId is the
+    // first. Read through servicesOf() in utils/scheduling.js.
+    serviceIds: Array.isArray(row.serviceIds)
+      ? row.serviceIds
+      : (row.service_id ? [row.service_id] : []),
     serviceLocation: row.service_location || "",
     cancellationReason: row.cancellation_reason || "",
     technicianId: row.technician_id || "",
@@ -43,7 +52,6 @@ export function mapAppointmentRow(row, report = null) {
     price: row.price === null || row.price === undefined ? "" : Number(row.price),
     report: report?.findings || "",
     treatmentPerformed: report?.treatment_performed || "",
-    treatmentMethods: report?.treatment_methods || [],
     recommendations: report?.recommendations || "",
     followUpDate: report?.follow_up_date || "",
     reportSubmitted: Boolean(report),
@@ -61,29 +69,57 @@ export function mapAppointmentRow(row, report = null) {
   };
 }
 
-// Before migration 048 there is no started_at column, and PostgREST refuses a
-// select naming a column that doesn't exist. Rather than blank the whole
-// schedule when the app is deployed ahead of the migration, retry without it.
-const PRE_048_COLUMNS = APPOINTMENT_COLUMNS.replace("started_at, ", "");
+// Before migration 048 there is no started_at column, and before 050 no
+// reference, and PostgREST refuses a select naming a column that doesn't
+// exist. Rather than blank the whole schedule when the app is deployed ahead
+// of a migration, retry without whichever column it named.
+const OPTIONAL_COLUMNS = ["reference", "started_at"];
 
 async function selectAppointments() {
-  const result = await supabase.from("appointments").select(APPOINTMENT_COLUMNS).order("scheduled_at", { ascending: true });
-  if (result.error && /started_at/.test(`${result.error.message || ""} ${result.error.details || ""}`)) {
-    return supabase.from("appointments").select(PRE_048_COLUMNS).order("scheduled_at", { ascending: true });
+  let columns = APPOINTMENT_COLUMNS;
+  // Each retry drops one column, so this runs at most OPTIONAL_COLUMNS + 1 times.
+  for (;;) {
+    const selected = columns;
+    const result = await supabase.from("appointments").select(selected).order("scheduled_at", { ascending: true });
+    const text = result.error ? `${result.error.message || ""} ${result.error.details || ""}` : "";
+    const missing = OPTIONAL_COLUMNS.find((column) => selected.includes(`${column}, `) && text.includes(column));
+    if (!missing) return result;
+    columns = selected.replace(`${missing}, `, "");
+  }
+}
+
+// The services list arrives with migration 051. Before it, the table does not
+// exist, and each visit's single service_id stands in (mapAppointmentRow).
+async function selectAppointmentServices() {
+  const result = await supabase.from("appointment_services").select("appointment_id, position, service_id");
+  if (result.error && /appointment_services/.test(`${result.error.message || ""} ${result.error.details || ""}`)) {
+    return { data: [], error: null };
   }
   return result;
 }
 
 export async function fetchAppointments() {
-  const [appointmentsResult, reportsResult, stockResult, attachmentsResult, crewResult] = await Promise.all([
+  const [appointmentsResult, reportsResult, stockResult, attachmentsResult, crewResult, servicesResult] = await Promise.all([
     selectAppointments(),
     supabase.from("appointment_reports").select(REPORT_COLUMNS),
     supabase.from("inventory_movements").select("item_id, appointment_id, amount, movement_date, batch_number, inventory(name, unit)").eq("movement_type", "OUT").not("appointment_id", "is", null),
     supabase.from("appointment_report_attachments").select(ATTACHMENT_COLUMNS).order("uploaded_at", { ascending: false }),
     supabase.from("appointment_technicians").select("appointment_id, technician_id, is_lead, assigned_at"),
+    selectAppointmentServices(),
   ]);
-  const error = appointmentsResult.error || reportsResult.error || stockResult.error || attachmentsResult.error || crewResult.error;
+  const error = appointmentsResult.error || reportsResult.error || stockResult.error || attachmentsResult.error || crewResult.error || servicesResult.error;
   if (error) return { error: describeError(error), appointments: [] };
+  // In the order ticked. A service since deleted from the catalog has no id
+  // left and is skipped; its name survives in the visit's service_type.
+  const servicesByAppointment = new Map();
+  [...(servicesResult.data || [])]
+    .sort((a, b) => a.position - b.position)
+    .forEach((row) => {
+      if (!row.service_id) return;
+      const entries = servicesByAppointment.get(row.appointment_id) || [];
+      entries.push(row.service_id);
+      servicesByAppointment.set(row.appointment_id, entries);
+    });
   const reports = new Map((reportsResult.data || []).map((report) => [report.appointment_id, report]));
   const stockByAppointment = new Map();
   (stockResult.data || []).forEach((movement) => {
@@ -116,6 +152,7 @@ export async function fetchAppointments() {
       stockUsed: stockByAppointment.get(row.id) || [],
       attachments: attachmentsByAppointment.get(row.id) || [],
       technicianIds: crewByAppointment.get(row.id) || (row.technician_id ? [row.technician_id] : []),
+      serviceIds: servicesByAppointment.get(row.id) || (row.service_id ? [row.service_id] : []),
     }, reports.get(row.id))),
   };
 }
@@ -219,7 +256,14 @@ export async function startVisit(appointmentId) {
   return { status: row?.status || "In progress", startedAt: row?.started_at || new Date().toISOString() };
 }
 
-export async function submitReport(appointmentId, { findings, treatmentPerformed, treatmentMethods, recommendations, followUpDate, customerName, signaturePath, completionNote, technicianSignaturePath }) {
+/**
+ * `serviceIds` are the services performed, ticked on the report (migration
+ * 051): the RPC replaces the visit's list and snapshots the names onto the
+ * appointment. Omitted, the visit's services are left alone — and the
+ * parameter is not sent at all, so a report that doesn't change them still
+ * files before 051 is applied.
+ */
+export async function submitReport(appointmentId, { findings, treatmentPerformed, recommendations, followUpDate, customerName, signaturePath, completionNote, technicianSignaturePath, serviceIds }) {
   const { data, error } = await supabase.rpc("submit_appointment_report", {
     p_appointment_id: appointmentId,
     p_findings: findings,
@@ -229,8 +273,8 @@ export async function submitReport(appointmentId, { findings, treatmentPerformed
     p_customer_name: customerName || null,
     p_signature_path: signaturePath || null,
     p_completion_note: completionNote || null,
-    p_treatment_methods: treatmentMethods || [],
     p_technician_signature_path: technicianSignaturePath || null,
+    ...(serviceIds?.length ? { p_service_ids: serviceIds } : {}),
   });
   if (error) return { error: describeError(error) };
   return { report: Array.isArray(data) ? data[0] : data };

@@ -129,11 +129,9 @@ drop trigger if exists technicians_set_updated_at on technicians;
 create trigger technicians_set_updated_at before update on technicians
   for each row execute function set_updated_at();
 
--- Seed the first admin so there's always a way to log in. Safe to re-run —
--- inserts it if missing, otherwise just makes sure the password matches.
-insert into admins (name, phone, email, password, is_primary)
-values ('Maya Torres', '+63 917 000 1111', 'admin@torrespestcontrol.com', '123321', true)
-on conflict (email) do update set password = excluded.password;
+-- Do not seed a default admin in this project.
+-- The app is meant to use the existing role-table admin row already present in
+-- the database, and to keep any live admin account rather than creating a new one.
 
 -- --- Clients ----------------------------------------------------------
 
@@ -244,6 +242,7 @@ grant insert, update, delete on admins, staff, technicians to anon, authenticate
 -- reads are revoked above.
 
 drop function if exists public.lookup_auth_user_id(text);
+drop function if exists public.check_login(text, text);
 
 create or replace function public.check_login(login_email text, login_password text)
 returns table(id uuid, name text, phone text, email text, role text, status account_status)

@@ -24,7 +24,9 @@ import StatusPill from "../components/ui/StatusPill";
 import { SUBSYSTEMS } from "../utils/permissions";
 import { inventoryAlerts, isBelowReorder, isExpiringSoon, isMaintenanceOverdue, itemValue, sortByUrgency, watchFor } from "../utils/inventoryWatch";
 import useUsers from "../hooks/useUsers";
+import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
+import { appointmentReference } from "../utils/scheduling";
 import { INVENTORY_STATUS } from "../services/inventoryService";
 import { ACCOUNT_STATUS, LIMITS, STOCK_OUT_REASONS, STOCK_OUT_REASON_LABELS } from "../utils/constants";
 import { todayISO, validateMoney, validateMovementDate, validateQuantity } from "../utils/validators";
@@ -196,7 +198,7 @@ const HISTORY_COLUMNS = {
             <div style={{ minWidth: 0 }}>
               <div style={{ color: "#50463c" }}>
                 {m.appointmentId
-                  ? `Appointment ${String(m.appointmentId).slice(0, 8).toUpperCase()}`
+                  ? `Visit ${context.appointmentLabel ? context.appointmentLabel(m.appointmentId) : appointmentReference({ id: m.appointmentId })}`
                   : technician
                     ? `Checked out to ${technician}`
                     : (m.reference || "—")}
@@ -247,6 +249,7 @@ function InventoryPage() {
     refreshMovements,
   } = useInventory();
   const { technicians } = useUsers();
+  const { appointments } = useScheduling();
   const { showSuccess, showError } = useToast();
 
   const [tab, setTab] = useState("items"); // "items" | "history"
@@ -313,6 +316,12 @@ function InventoryPage() {
       return account ? account.name || account.username : "";
     },
     [technicians]
+  );
+
+  // "TPC-V-00042" for the Stock Out history's Used On column.
+  const appointmentLabel = useCallback(
+    (id) => appointmentReference(appointments.find((entry) => entry.id === id) || { id }),
+    [appointments]
   );
 
   // Missing/damaged per item over the last 30 days, for the list badge.
@@ -386,7 +395,8 @@ function InventoryPage() {
       result = result.filter((m) => {
         const reasonLabel = STOCK_OUT_REASON_LABELS[reasonOf(m)] || "";
         const technician = m.technicianId ? technicianName(m.technicianId) : "";
-        const text = `${m.itemName || ""} ${m.reference || ""} ${m.intakeBranchOrStation || ""} ${m.actor || ""} ${m.note || ""} ${reasonLabel} ${technician}`.toLowerCase();
+        const visit = m.appointmentId ? appointmentLabel(m.appointmentId) : "";
+        const text = `${m.itemName || ""} ${m.reference || ""} ${m.intakeBranchOrStation || ""} ${m.actor || ""} ${m.note || ""} ${reasonLabel} ${technician} ${visit}`.toLowerCase();
         return text.includes(term);
       });
     }
@@ -412,7 +422,7 @@ function InventoryPage() {
       }
     }
     return result;
-  }, [movements, historySearch, historyItemFilter, historySection, historyBranchFilter, historyDateFilter, technicianName]);
+  }, [movements, historySearch, historyItemFilter, historySection, historyBranchFilter, historyDateFilter, technicianName, appointmentLabel]);
 
   const reasonCounts = useMemo(() => countByReason(sectionMovements), [sectionMovements]);
   const lossSummary = useMemo(() => summarizeLosses(sectionMovements), [sectionMovements]);
@@ -1162,7 +1172,7 @@ function InventoryPage() {
                   }}
                 >
                   {activeHistoryColumns.columns.map((column) => (
-                    <div key={column.label}>{column.render(movement, { technicianName })}</div>
+                    <div key={column.label}>{column.render(movement, { technicianName, appointmentLabel })}</div>
                   ))}
                 </div>
               ))}
@@ -1531,8 +1541,8 @@ const EXPIRY_WARNING_DAYS = 30;
 export function expiryHint(expiry, deliveryDate, currentExpiry) {
   if (!expiry) {
     return currentExpiry
-      ? `Printed on the container. Leave blank to keep ${formatDate(currentExpiry)}.`
-      : "Printed on the container.";
+      ? `Printed on the container. Required — currently ${formatDate(currentExpiry)}.`
+      : "Printed on the container. Required for every chemical.";
   }
   const days = Math.round((new Date(`${expiry}T00:00:00`) - new Date(`${deliveryDate || todayISO()}T00:00:00`)) / 86400000);
   if (days < 0) return "Before the delivery date: this stock has already expired.";
@@ -1643,6 +1653,12 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
         return;
       }
       const expiry = item.type === "CHEMICAL" ? row.expirationDate : "";
+      // Every chemical delivery carries its expiry: it is printed on the
+      // container, and this is the only place the app records it.
+      if (item.type === "CHEMICAL" && !expiry) {
+        setValidationError(`Enter the expiry date printed on the ${item.name} delivery.`);
+        return;
+      }
       if (expiry && expiry < date) {
         setValidationError(`${item.name} has already expired: its expiry date is before the delivery date.`);
         return;
@@ -1819,11 +1835,12 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
                 {item?.type === "CHEMICAL" && (
                   <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 12rem)", gap: "0.45rem" }}>
                     <Field
-                      label="Expiry date"
+                      label="Expiry date *"
                       hint={expiryHint(row.expirationDate, date, item.expirationDate)}
                     >
                       <input
                         aria-label="Expiry date"
+                        aria-required="true"
                         type="date"
                         min={date || undefined}
                         value={row.expirationDate}

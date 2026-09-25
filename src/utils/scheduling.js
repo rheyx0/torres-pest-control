@@ -9,6 +9,50 @@ import { ACCOUNT_STATUS, APPOINTMENT_STATUS_TRANSITIONS } from "./constants";
 export const startOf = (appointment) => new Date(appointment.scheduledAt).getTime();
 export const endOf = (appointment) => startOf(appointment) + (appointment.durationMinutes || 60) * 60000;
 
+/**
+ * The visit's human-readable number, "TPC-V-00042" (migration 050). Before 050
+ * is applied an appointment has no reference, so this falls back to the first
+ * block of its uuid — the label the app used to print everywhere.
+ */
+export function appointmentReference(appointment) {
+  if (!appointment) return "";
+  if (appointment.reference) return appointment.reference;
+  return appointment.id ? String(appointment.id).slice(0, 8).toUpperCase() : "";
+}
+
+/**
+ * The service profiles on a visit, in order (migration 051). A visit booked
+ * before 051 has one serviceId, or only a name; an exact name match adopts the
+ * profile, as the Overview form always did. Unknown ids are dropped.
+ */
+export function servicesOf(appointment, serviceById = () => null, serviceByName = () => null) {
+  if (!appointment) return [];
+  const ids = appointment.serviceIds?.length ? appointment.serviceIds : [appointment.serviceId].filter(Boolean);
+  const found = ids.map((id) => serviceById(id)).filter(Boolean);
+  if (found.length) return found;
+  const byName = appointment.serviceType ? serviceByName(appointment.serviceType) : null;
+  return byName ? [byName] : [];
+}
+
+/**
+ * Several services as one, for the Stock-Out prefill: their usual materials
+ * merged, and an item two services both list summed rather than repeated.
+ * Null for no services, so callers keep their "no profile" path.
+ */
+export function combineServices(services) {
+  if (!services?.length) return null;
+  if (services.length === 1) return services[0];
+  const byItem = new Map();
+  services.forEach((service) => (service.materials || []).forEach((material) => {
+    byItem.set(material.itemId, (byItem.get(material.itemId) || 0) + (Number(material.defaultAmount) || 0));
+  }));
+  return {
+    id: services.map((service) => service.id).join("+"),
+    name: services.map((service) => service.name).join(", "),
+    materials: Array.from(byItem, ([itemId, defaultAmount]) => ({ itemId, defaultAmount })),
+  };
+}
+
 export function appointmentsOverlap(a, b) {
   return startOf(a) < endOf(b) && endOf(a) > startOf(b);
 }
@@ -96,7 +140,7 @@ export function layoutDayAppointments(dayAppointments, { maxColumns = 3 } = {}) 
  * The bookable window of a working day, in local hours. The week grid renders
  * exactly these rows, so a visit outside them is one nobody can see or drag.
  */
-export const DAY_START_HOUR = 7;
+export const DAY_START_HOUR = 6;
 export const DAY_END_HOUR = 19;
 // The calendar shows the boundary row so existing 7 PM appointments remain visible.
 // DAY_END_HOUR remains the booking cutoff used by validation.

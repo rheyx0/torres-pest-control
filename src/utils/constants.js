@@ -74,11 +74,9 @@ export const LIMITS = {
   PAST_BOOKING_GRACE_MS: 5 * 60 * 1000,
 };
 
-// Treatment methods are now admin-managed and stored in the
-// `treatment_methods` database table (migration 038).  Use the
-// useTreatmentMethods hook to read them at runtime.
-//
-// The "Devices" group has been removed from the system.
+// Treatment methods are retired (migration 050): a service report records the
+// service performed instead. The `treatment_methods` table and the report's
+// treatment_methods column stay in the database so old reports keep their data.
 
 // Why stock left the shelf outside an appointment. Values mirror the
 // inventory_movements_stock_out_reason_check constraint in migration 040;
@@ -204,6 +202,12 @@ export const ATTACHMENT_CATEGORIES = [
   { value: "TREATMENT_PROOF", label: "Treatment proof", uploadLabel: "Add treatment proof" },
   { value: "OTHER", label: "Other service documents", uploadLabel: "Add document" },
 ];
+
+// What the Report tab and the technician's visit flow offer to upload. Signed
+// forms are no longer uploaded — the customer signs on the report itself — so
+// SIGNED_FORM is left out here but kept above, where the check constraint and
+// files uploaded before this change still need it.
+export const REPORT_UPLOAD_CATEGORIES = ATTACHMENT_CATEGORIES.filter((category) => category.value !== "SIGNED_FORM");
 
 // Letterhead for the printed service form. This app serves one business, so
 // the details live here rather than behind a settings table and an admin UI.

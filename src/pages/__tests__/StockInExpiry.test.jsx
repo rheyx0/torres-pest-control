@@ -46,6 +46,21 @@ describe("Stock In expiry date", () => {
     expect(onSubmit.mock.calls[0][0][0].expirationDate).toBe(shiftDays(200));
   });
 
+  it("will not receive a chemical without one", () => {
+    const onSubmit = renderModal("c1");
+    fillHeader();
+    fireEvent.submit(screen.getByLabelText("Expiry date").closest("form"));
+    expect(screen.getByText("Enter the expiry date printed on the Termidor SC delivery.")).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("receives equipment without one", async () => {
+    const onSubmit = renderModal("e1");
+    fillHeader();
+    fireEvent.submit(screen.getByLabelText("Stock In quantity").closest("form"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+  });
+
   it("refuses a delivery that has already expired", () => {
     const onSubmit = renderModal("c1");
     fillHeader();
@@ -57,8 +72,9 @@ describe("Stock In expiry date", () => {
 });
 
 describe("expiryHint", () => {
-  it("says a blank field keeps the item's current date", () => {
-    expect(expiryHint("", "2026-09-25", "2027-01-10")).toMatch(/Leave blank to keep/);
+  it("says a blank field is required, and shows the item's current date", () => {
+    expect(expiryHint("", "2026-09-25", "2027-01-10")).toMatch(/Required — currently/);
+    expect(expiryHint("", "2026-09-25")).toMatch(/Required for every chemical/);
   });
   it("warns when the delivery expires within 30 days", () => {
     expect(expiryHint("2026-10-05", "2026-09-25")).toBe("Expires 10 days after delivery.");

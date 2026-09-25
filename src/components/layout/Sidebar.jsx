@@ -19,7 +19,6 @@ import {
   Home,
   Lock,
   Package,
-  SlidersHorizontal,
   Tag,
   Users,
 } from "lucide-react";
@@ -52,7 +51,6 @@ const NAV_GROUPS = [
     label: "Setup",
     items: [
       { label: "Services", path: "/services", subsystem: SUBSYSTEMS.SETTINGS, action: "view", Icon: Tag },
-      { label: "Treatment methods", path: "/treatment-methods", subsystem: SUBSYSTEMS.SETTINGS, action: "view", Icon: SlidersHorizontal },
       { label: "Accounts", path: "/users", subsystem: SUBSYSTEMS.USERS, action: "view", Icon: Lock },
       { label: "Activity log", path: "/activity", subsystem: SUBSYSTEMS.LOGS, action: "view", Icon: Activity },
     ],

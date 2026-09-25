@@ -37,6 +37,14 @@ import TechnicianPicker from "./TechnicianPicker";
 const DURATION_PRESETS = [30, 60, 90, 120];
 
 const CUSTOM = "custom";
+const MAX_CUSTOM_HOURS = 24;
+
+const clampWholeNumber = (value, maximum) => {
+  if (value === "") return "";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "";
+  return String(Math.min(maximum, Math.max(0, Math.floor(number))));
+};
 
 function Section({ legend, span = 1, children }) {
   return (
@@ -188,6 +196,7 @@ function NewAppointmentModal({
     const guard =
       validateAppointmentStart(scheduledAt) ||
       validateDuration(durationMinutes) ||
+      describeSlotConflict([], { scheduledAt, durationMinutes }) ||
       validateMoney(price, { label: "Price" });
     if (guard) {
       setFormError(guard);
@@ -383,10 +392,10 @@ function NewAppointmentModal({
                 <Input
                   type="number"
                   min="0"
-                  max="24"
+                  max={MAX_CUSTOM_HOURS}
                   step="1"
                   value={customHours}
-                  onChange={(event) => setCustomHours(event.target.value)}
+                  onChange={(event) => setCustomHours(clampWholeNumber(event.target.value, MAX_CUSTOM_HOURS))}
                 />
               </Field>
               <Field label="Minutes">
@@ -395,7 +404,7 @@ function NewAppointmentModal({
                   min="0"
                   max="59"
                   value={customMinutes}
-                  onChange={(event) => setCustomMinutes(event.target.value)}
+                  onChange={(event) => setCustomMinutes(clampWholeNumber(event.target.value, 59))}
                 />
               </Field>
             </div>

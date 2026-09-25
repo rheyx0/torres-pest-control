@@ -8,7 +8,7 @@ const SchedulingContext = createContext(null);
 // than to the appointment row itself. update_appointment knows nothing about
 // them, so they must never be overwritten from its response.
 const REPORT_OWNED = [
-  "report", "treatmentPerformed", "treatmentMethods", "recommendations", "followUpDate",
+  "report", "treatmentPerformed", "recommendations", "followUpDate",
   "reportSubmitted", "reportSubmittedAt", "customerName", "signaturePath",
   "signedAt", "technicianSignaturePath", "technicianSignedAt",
   "completionNote", "stockUsed", "attachments",
@@ -77,7 +77,6 @@ export function SchedulingProvider({ children }) {
       ...entry,
       report: result.report.findings,
       treatmentPerformed: result.report.treatment_performed || "",
-      treatmentMethods: result.report.treatment_methods || [],
       recommendations: result.report.recommendations || "",
       followUpDate: result.report.follow_up_date || "",
       reportSubmitted: true,
@@ -89,6 +88,12 @@ export function SchedulingProvider({ children }) {
       technicianSignedAt: result.report.technician_signed_at || "",
       completionNote: result.report.completion_note || "",
       status: confirmed ? "Completed" : entry.status,
+      // The services ticked on the report (migration 051). The server keeps the
+      // first as service_id and the names joined as service_type — the same
+      // joined names passed here.
+      ...(reportFields.serviceIds?.length
+        ? { serviceIds: reportFields.serviceIds, serviceId: reportFields.serviceIds[0], serviceType: reportFields.serviceType || entry.serviceType }
+        : {}),
     } : entry));
     return result.report;
   }, []);

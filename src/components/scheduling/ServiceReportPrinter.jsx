@@ -14,7 +14,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ServiceReportDocument from "./ServiceReportDocument";
-import useTreatmentMethods from "../../hooks/useTreatmentMethods";
 import { ATTACHMENT_CATEGORIES } from "../../utils/constants";
 
 const categoryLabel = (value) =>
@@ -54,7 +53,6 @@ function serviceFormFileName(appointment, client) {
 function ServiceReportPrinter({ request, onDone, onProblem, getAttachmentUrl, getSignatureUrl }) {
   const [payload, setPayload] = useState(null);
   const hostRef = useRef(null);
-  const { methods: treatmentMethodsLookup } = useTreatmentMethods();
 
   useEffect(() => {
     if (!request) {
@@ -200,7 +198,6 @@ function ServiceReportPrinter({ request, onDone, onProblem, getAttachmentUrl, ge
         photos={payload.photos}
         signatureUrl={payload.signatureUrl}
         technicianSignatureUrl={payload.technicianSignatureUrl}
-        treatmentMethodsLookup={treatmentMethodsLookup}
       />
     </div>,
     document.body

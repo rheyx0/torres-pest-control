@@ -169,6 +169,22 @@ describe("NewAppointmentModal", () => {
       expect(screen.getByLabelText("Minutes")).toBeInTheDocument();
     });
 
+    it("keeps custom duration inside the 24-hour limit as the user edits it", async () => {
+      renderModal();
+
+      await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+      const hours = screen.getByLabelText("Hours");
+      const minutes = screen.getByLabelText("Minutes");
+
+      await userEvent.clear(hours);
+      await userEvent.type(hours, "25");
+      await userEvent.clear(minutes);
+      await userEvent.type(minutes, "90");
+
+      expect(hours).toHaveValue(24);
+      expect(minutes).toHaveValue(59);
+    });
+
     it("submits the preset's minutes", async () => {
       const { onCreate } = renderModal();
 

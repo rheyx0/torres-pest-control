@@ -32,7 +32,6 @@ import CreateClientPage from "./pages/CreateClientPage";
 import ClientDetailPage from "./pages/ClientDetailPage";
 import InventoryPage from "./pages/InventoryPage";
 import SchedulingPage from "./pages/SchedulingPage";
-import TreatmentMethodsPage from "./pages/TreatmentMethodsPage";
 import ServicesPage from "./pages/ServicesPage";
 
 import { SUBSYSTEMS } from "./utils/permissions";
@@ -117,10 +116,6 @@ function App() {
                 <Route
                   path="/scheduling"
                   element={<Guarded subsystem={SUBSYSTEMS.SCHEDULING} action="view"><SchedulingPage /></Guarded>}
-                />
-                <Route
-                  path="/treatment-methods"
-                  element={<Guarded subsystem={SUBSYSTEMS.SETTINGS} action="view"><TreatmentMethodsPage /></Guarded>}
                 />
                 <Route
                   path="/services"

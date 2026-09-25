@@ -197,16 +197,8 @@ begin
   end if;
 end $$;
 
--- Seed a primary admin so there is always a way in. Safe to re-run.
-insert into users (name, username, email, phone, password_hash, role, status, is_primary)
-values (
-  -- National format, not +63: migration 013 narrows users_phone_check to
-  -- ^09[0-9]{9}$, which is the only shape the account form can produce. Seeded
-  -- in +63 this row fails its own constraint the moment 013 is applied.
-  'Maya Torres', 'admin', 'admin@torrespestcontrol.com', '09170001111',
-  crypt('ChangeMe123', gen_salt('bf')), 'ADMIN', 'ACTIVE', true
-)
-on conflict (email) do nothing;
+-- Do not seed a default admin. The project is meant to use the existing admin
+-- row already present in the database rather than creating a new one.
 
 -- Drop the old tables only once you've confirmed the migration above.
 -- Left commented deliberately — uncomment and re-run when ready.

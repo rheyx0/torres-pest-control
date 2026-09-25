@@ -24,18 +24,11 @@ import useUsers from "../../hooks/useUsers";
 import useInventory from "../../hooks/useInventory";
 import { formatDate, formatDateTime, formatFileSize, formatTime } from "../../utils/formatters";
 import { DOCUMENT_CATEGORIES } from "../../utils/constants";
-import { crewOf } from "../../utils/scheduling";
+import { appointmentReference, crewOf } from "../../utils/scheduling";
 import { colors, pageShell, secondaryButton } from "../../styles/theme";
 
 
 const peso = (value) => `₱${(Number(value) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-function treatmentMethodLabel(value) {
-  if (!value) return "";
-  const str = typeof value === "object" ? (value.label || value.name || value.value || "") : String(value);
-  if (!str) return "";
-  return str.toLowerCase().split("_").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
-}
 
 
 function HistoryFileList({ files = [], onOpen, onResolveUrl, onRemove, emptyMessage }) {
@@ -547,7 +540,6 @@ function ClientDetails({
           .map((account) => account?.name || account?.username)
           .filter(Boolean);
         const technicianName = crew.join(", ") || technician?.name || technician?.username || "Unassigned";
-        const treatmentMethods = (selectedHistory.treatmentMethods || []).map(treatmentMethodLabel);
 
         return (
           <div
@@ -563,7 +555,9 @@ function ClientDetails({
               {/* ── Fixed Header ── */}
               <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid #efe9e0", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "1rem", flexShrink: 0 }}>
                 <div>
-                  <div style={{ color: colors.brand, fontSize: "0.68rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.1em" }}>Service Record</div>
+                  <div style={{ color: colors.brand, fontSize: "0.68rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                    Service Record · {appointmentReference(selectedHistory)}
+                  </div>
                   <h2 style={{ margin: "0.25rem 0 0", fontSize: "1.45rem", fontWeight: 500, color: colors.ink, lineHeight: 1.2 }}>{client.name}</h2>
                   <div style={{ marginTop: "0.4rem", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "0.35rem", fontSize: "0.78rem", color: colors.muted }}>
                     <span>{formatDateTime(selectedHistory.scheduledAt)}</span>
@@ -707,20 +701,23 @@ function ClientDetails({
                   {/* RIGHT: Treatment + Materials + Recommendations */}
                   <div style={{ display: "flex", flexDirection: "column", gap: "0", borderLeft: "1px solid #efe9e0", paddingLeft: "1rem" }}>
 
-                    {/* Treatment Performed */}
+                    {/* Service Performed + the technician's treatment notes */}
                     <div style={{ paddingBottom: "0.9rem", borderBottom: "1px solid #efe9e0" }}>
-                      <div style={{ fontSize: "0.65rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em", color: "#96897b" }}>Treatment Performed</div>
+                      <div style={{ fontSize: "0.65rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em", color: "#96897b" }}>Service Performed</div>
                       <div style={{ marginTop: "0.4rem", display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
-                        {treatmentMethods.length > 0 ? treatmentMethods.map((method, idx) => (
-                          <span key={idx} style={{ display: "inline-flex", padding: "0.2rem 0.55rem", fontSize: "0.72rem", fontWeight: 500, background: idx === 0 ? "#f9ecea" : "#efe9e0", color: idx === 0 ? "#9a2d24" : "#50463c", border: `1px solid ${idx === 0 ? "#fecaca" : "#efe9e0"}`, borderRadius: "3.75px" }}>
-                            {method}
+                        {selectedHistory.serviceType ? (
+                          <span style={{ display: "inline-flex", padding: "0.2rem 0.55rem", fontSize: "0.72rem", fontWeight: 500, background: "#f9ecea", color: "#9a2d24", border: "1px solid #fecaca", borderRadius: "3.75px" }}>
+                            {selectedHistory.serviceType}
                           </span>
-                        )) : selectedHistory.treatmentPerformed ? (
-                          <span style={{ fontSize: "0.84rem", color: colors.body }}>{selectedHistory.treatmentPerformed}</span>
                         ) : (
-                          <span style={{ fontSize: "0.84rem", color: colors.muted, fontStyle: "italic" }}>No treatment recorded.</span>
+                          <span style={{ fontSize: "0.84rem", color: colors.muted, fontStyle: "italic" }}>No service recorded.</span>
                         )}
                       </div>
+                      {selectedHistory.treatmentPerformed && (
+                        <div style={{ marginTop: "0.45rem", fontSize: "0.84rem", color: colors.body, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
+                          {selectedHistory.treatmentPerformed}
+                        </div>
+                      )}
                     </div>
 
                     {/* Materials Used */}
