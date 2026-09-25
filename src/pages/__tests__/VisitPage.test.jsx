@@ -9,7 +9,9 @@ const mockStockOutMany = jest.fn();
 const mockAddStockUsed = jest.fn();
 const mockShowError = jest.fn();
 const mockShowSuccess = jest.fn();
-const mockState = { appointment: null, role: "TECHNICIAN" };
+const mockFinishJobDay = jest.fn();
+const mockFinishJobHere = jest.fn();
+const mockState = { appointment: null, others: [], role: "TECHNICIAN" };
 
 jest.mock("react-router-dom", () => ({ ...jest.requireActual("react-router-dom"), useNavigate: () => mockNavigate }));
 jest.mock("../../hooks/useAuth", () => ({ __esModule: true, default: () => ({ currentUser: { id: "jun", role: mockState.role } }) }));
@@ -41,7 +43,8 @@ jest.mock("../../hooks/useServices", () => {
 });
 jest.mock("../../context/SchedulingContext", () => ({
   useScheduling: () => ({
-    appointments: mockState.appointment ? [mockState.appointment] : [],
+    appointments: mockState.appointment ? [mockState.appointment, ...mockState.others] : [],
+    planActions: { finishJobDay: mockFinishJobDay, finishJobHere: mockFinishJobHere },
     loading: false,
     startVisit: jest.fn(),
     submitReport: mockSubmitReport,
@@ -68,9 +71,10 @@ const visit = {
   stockUsed: [],
 };
 
-function renderVisit(appointment = visit, entry = "/visit/a1") {
+function renderVisit(appointment = visit, entry = "/visit/a1", others = []) {
   mockState.appointment = appointment;
-  [mockNavigate, mockSubmitReport, mockStockOutMany, mockAddStockUsed, mockShowError, mockShowSuccess].forEach((fn) => fn.mockReset());
+  mockState.others = others;
+  [mockNavigate, mockSubmitReport, mockStockOutMany, mockAddStockUsed, mockShowError, mockShowSuccess, mockFinishJobDay, mockFinishJobHere].forEach((fn) => fn.mockReset());
   localStorage.clear();
   return render(
     <MemoryRouter initialEntries={[entry]}>
@@ -205,6 +209,42 @@ describe("VisitPage", () => {
 
     await waitFor(() => expect(mockShowError).toHaveBeenCalledWith(expect.stringMatching(/^Report sent, but the materials weren't recorded/)));
     expect(mockNavigate).toHaveBeenCalledWith("/");
+  });
+
+  describe("a multi-day job (migration 052)", () => {
+    const day1 = { ...visit, planId: "job", planKind: "MULTI_DAY" };
+    const day2 = { ...visit, id: "a2", planId: "job", planKind: "MULTI_DAY", status: "Confirmed", scheduledAt: new Date(Date.now() + 86400000).toISOString() };
+
+    it("closes an earlier day with Day done: materials recorded, no report", async () => {
+      renderVisit(day1, "/visit/a1", [day2]);
+      mockStockOutMany.mockResolvedValue(true);
+      mockFinishJobDay.mockResolvedValue(true);
+
+      expect(screen.getByText(/Day 1\/2 of a multi-day job/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Findings/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("group", { name: "Services performed" })).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: /Next: Photos/ }));
+      await userEvent.click(screen.getByRole("button", { name: /Day done/ }));
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith("/"));
+      expect(mockStockOutMany).toHaveBeenCalled();
+      expect(mockFinishJobDay).toHaveBeenCalledWith("a1");
+      expect(mockSubmitReport).not.toHaveBeenCalled();
+    });
+
+    it("finishes the job early from an earlier day", async () => {
+      renderVisit(day1, "/visit/a1", [day2]);
+      mockFinishJobHere.mockResolvedValue(true);
+      await userEvent.click(screen.getByRole("button", { name: "This was the last day" }));
+      expect(mockFinishJobHere).toHaveBeenCalledWith("a1");
+    });
+
+    it("files the report on the last day", () => {
+      renderVisit({ ...day2, id: "a1" }, "/visit/a1", [{ ...day1, id: "a0", scheduledAt: new Date(Date.now() - 86400000).toISOString() }]);
+      expect(screen.getByText(/Last day: file the report for the whole job/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^Findings/ })).toBeInTheDocument();
+    });
   });
 
   it("refuses a visit that isn't the technician's", () => {

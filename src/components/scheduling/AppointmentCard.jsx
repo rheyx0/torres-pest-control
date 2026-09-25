@@ -48,10 +48,18 @@ function AppointmentCard({ appointment, height = null, columns = 1, placement = 
     onSelect,
     onDragStart,
     onDragEnd,
+    planLabelFor = () => "",
   } = useCalendar();
 
   const client = clients.find((entry) => entry.id === appointment.clientId);
   if (!client) return null;
+  // "3/6" for a recurring plan, "Day 1/2" for a multi-day job (migration 052).
+  const plan = planLabelFor(appointment);
+  const planTag = plan ? (
+    <span style={{ flex: "none", fontSize: "9.5px", lineHeight: "14px", padding: "0 4px", borderRadius: "3px", background: "rgba(33, 27, 21, 0.08)", color: neutral.saddle, fontVariantNumeric: "tabular-nums" }}>
+      {plan}
+    </span>
+  ) : null;
 
   const isSelected = appointment.id === selectedId;
   const visual = statusVisual(appointment.status);
@@ -88,7 +96,7 @@ function AppointmentCard({ appointment, height = null, columns = 1, placement = 
       onClick={() => onSelect(appointment)}
       aria-current={isSelected ? "true" : undefined}
       data-status={appointment.status}
-      title={`${client.name}
+      title={`${client.name}${plan ? ` (${plan})` : ""}
 ${startLabel} – ${endLabel} · ${formatDuration(appointment.durationMinutes || 60)}
 ${technicianName} · ${appointment.status}${appointment.pestConcern ? ` · ${appointment.pestConcern}` : ""}`}
       style={{
@@ -126,8 +134,11 @@ ${technicianName} · ${appointment.status}${appointment.pestConcern ? ` · ${app
 
       {tier === "medium" && (
         <>
-          <span style={{ ...nameStyle, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {client.name}
+          <span style={{ display: "flex", alignItems: "center", gap: "4px", minWidth: 0 }}>
+            <span style={{ ...nameStyle, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {client.name}
+            </span>
+            {planTag}
           </span>
           <span style={{ ...detailStyle, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {startLabel} – {endLabel}
@@ -139,6 +150,7 @@ ${technicianName} · ${appointment.status}${appointment.pestConcern ? ` · ${app
         <>
           <span style={{ display: "flex", alignItems: "flex-start", gap: "4px" }}>
             <span style={{ ...nameStyle, ...clampLines(2), flex: 1 }}>{client.name}</span>
+            {planTag}
             {needsSlot && <RotateCcw size={11} strokeWidth={2} color={visual.edge} aria-hidden="true" style={{ flex: "none", marginTop: "2px" }} />}
           </span>
           <span style={{ ...detailStyle, ...clampLines(1) }}>

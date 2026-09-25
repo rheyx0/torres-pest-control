@@ -66,7 +66,15 @@ function ServiceReportDocument({ appointment, client, technician, technicians = 
           <Row label="Client" value={[client.reference, client.name].filter(Boolean).join(" — ")} />
           <Row label="Service address" value={appointment.serviceLocation || client.address} />
           <Row label="Contact" value={[client.phone, client.email].filter(Boolean).join(" · ")} />
-          <Row label="Date of service" value={formatDateTime(appointment.scheduledAt)} />
+          {/* A multi-day job (052) prints once, with every day it took. */}
+          {appointment.jobDays?.length > 1 ? (
+            <Row
+              label={`Days of service (${appointment.jobDays.length})`}
+              value={appointment.jobDays.map((day, index) => `Day ${index + 1}: ${formatDateTime(day.scheduledAt)}`).join(" · ")}
+            />
+          ) : (
+            <Row label="Date of service" value={formatDateTime(appointment.scheduledAt)} />
+          )}
           <Row label={appointment.serviceType?.includes(", ") ? "Services performed" : "Service performed"} value={appointment.serviceType} />
           <Row label="Pest concern" value={appointment.pestConcern || client.pestConcern} />
           <Row label={crewNames.length > 1 ? "Technicians" : "Technician"} value={crewNames.join(", ") || technicianName} />

@@ -1,5 +1,6 @@
 import {
   attentionItems,
+  bookingReminders,
   dispatchLanes,
   localDate,
   nowPlacement,
@@ -185,6 +186,38 @@ describe("reserviceDue", () => {
     const appointments = [visit("j", at(15, 9), { clientId: "c1", status: "Completed", serviceFrequency: "Monthly" })];
     expect(reserviceDue(appointments, clients, now)).toEqual([]);
   });
+
+  // A plan books every visit up front and reminds through its own renewal.
+  it("leaves visits that belong to a plan to the plan", () => {
+    const appointments = [visit("j", at(20, 9, 0, 5), { clientId: "c1", status: "Completed", serviceFrequency: "Quarterly", planId: "p1", planKind: "RECURRING" })];
+    expect(reserviceDue(appointments, clients, now)).toEqual([]);
+  });
+
+  it("carries every service the last visit had", () => {
+    const appointments = [visit("j", at(20, 9, 0, 5), { clientId: "c1", status: "Completed", serviceFrequency: "Quarterly", serviceIds: ["s1", "s2"] })];
+    expect(reserviceDue(appointments, clients, now)[0].serviceIds).toEqual(["s1", "s2"]);
+  });
+});
+
+describe("bookingReminders", () => {
+  const clients = [{ id: "c1", name: "Cruz Bakery", status: "ACTIVE" }];
+
+  it("reminds to renew a plan with two visits or fewer left", () => {
+    const plan = [at(10, 9), at(10, 9, 0, 9)].map((scheduledAt, index) =>
+      visit(`p${index}`, scheduledAt, { planId: "p1", planKind: "RECURRING", planFrequency: "Monthly", status: index === 0 ? "Completed" : "Confirmed" }));
+    const [entry] = bookingReminders(plan, clients, now);
+    expect(entry).toMatchObject({ renewal: true, remaining: 1, frequency: "Monthly" });
+  });
+});
+
+describe("overdueReports and multi-day jobs", () => {
+  it("does not chase a report for a job day that was closed", () => {
+    const appointments = [
+      visit("closed-day", at(23, 9), { planId: "j1", planKind: "MULTI_DAY", dayDoneAt: at(23, 18) }),
+      visit("open", at(23, 9)),
+    ];
+    expect(overdueReports(appointments, now).map((entry) => entry.id)).toEqual(["open"]);
+  });
 });
 
 describe("attentionItems", () => {
@@ -241,6 +274,19 @@ describe("attentionItems", () => {
     const reservice = attentionItems({ appointments: due, clients }, { now, canBook: false }).find((item) => item.kind === "reservice");
     expect(reservice.action.label).toBe("View");
     expect(reservice.title).toBe("Cruz Bakery is due for re-service");
+  });
+
+  it("books straight from the last visit", () => {
+    const due = [visit("j", at(20, 9, 0, 5), { clientId: "c1", status: "Completed", serviceFrequency: "Quarterly", reportSubmitted: true, signaturePath: "s.png" })];
+    const reservice = attentionItems({ appointments: due, clients }, { now }).find((item) => item.kind === "reservice");
+    expect(reservice.action).toEqual({ label: "Book", to: "/scheduling?book=j" });
+  });
+
+  it("offers Renew for a plan running out", () => {
+    const plan = [visit("last", at(10, 9, 0, 9), { planId: "p1", planKind: "RECURRING", planFrequency: "Monthly" })];
+    const reservice = attentionItems({ appointments: plan, clients }, { now }).find((item) => item.kind === "reservice");
+    expect(reservice.title).toBe("Cruz Bakery's monthly plan ends in 1 visit");
+    expect(reservice.action).toEqual({ label: "Renew", to: "/scheduling?book=last" });
   });
 
   it("returns nothing when all is well", () => {

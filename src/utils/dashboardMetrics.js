@@ -11,7 +11,7 @@
 // record of what was actually collected, so revenue and margin cannot be
 // derived from it and nothing here tries to.
 
-import { crewOf, endOf, isAssignedTo } from "./scheduling";
+import { crewOf, endOf, isAssignedTo, reportOwed } from "./scheduling";
 
 const startOfDay = (date) => {
   const copy = new Date(date);
@@ -90,10 +90,10 @@ export function awaitingReschedule(appointments) {
   return appointments.filter((entry) => entry.status === "Reschedule").sort(byTime);
 }
 
-/** Today's visits for one technician that still have no report filed. */
+/** Today's visits for one technician still open (no report, day not closed). */
 export function remainingToday(appointments, technicianId) {
   return appointmentsToday(appointments)
-    .filter((entry) => onJob(entry, technicianId) && !entry.reportSubmitted);
+    .filter((entry) => onJob(entry, technicianId) && reportOwed(entry));
 }
 
 export function completedToday(appointments, technicianId) {
@@ -162,7 +162,7 @@ export function reportsDue(appointments, technicianId, now = new Date()) {
       (entry) =>
         live(entry) &&
         isAssignedTo(entry, technicianId) &&
-        !entry.reportSubmitted &&
+        reportOwed(entry) &&
         within(entry.scheduledAt, window) &&
         endOf(entry) <= now.getTime()
     )

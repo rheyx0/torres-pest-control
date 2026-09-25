@@ -46,6 +46,34 @@ export function SchedulingProvider({ children }) {
     return result.appointment;
   }, []);
 
+  // One visit with several services, a recurring series, or a multi-day job
+  // (book_appointments, migration 052). A plan touches several rows and their
+  // plan record, so the list is reloaded rather than patched. Returns the
+  // first visit booked, or the error message.
+  const bookAppointments = useCallback(async (booking) => {
+    const result = await appointmentService.bookAppointments(booking);
+    if (result.error) return result.error;
+    await refresh();
+    return result.appointments[0] || null;
+  }, [refresh]);
+
+  // Plan changes from the appointment panel and the visit flow. Each can move,
+  // cancel or add several visits, so they reload too. Returns true or the error.
+  const runPlanAction = useCallback(async (call) => {
+    const result = await call();
+    if (result.error) return result.error;
+    await refresh();
+    return true;
+  }, [refresh]);
+  const planActions = useMemo(() => ({
+    finishJobDay: (appointmentId) => runPlanAction(() => appointmentService.finishJobDay(appointmentId)),
+    finishJobHere: (appointmentId) => runPlanAction(() => appointmentService.finishJobHere(appointmentId)),
+    cancelPlanRemaining: (planId) => runPlanAction(() => appointmentService.cancelPlanRemaining(planId)),
+    setPlanRenewal: (planId, renew) => runPlanAction(() => appointmentService.setPlanRenewal(planId, renew)),
+    addPlanVisit: (planId, visit) => runPlanAction(() => appointmentService.addPlanVisit(planId, visit)),
+    updatePlanFuture: (planId, fromId, changes) => runPlanAction(() => appointmentService.updatePlanFuture(planId, fromId, changes)),
+  }), [runPlanAction]);
+
   // update_appointment returns the appointment row alone, so mapAppointmentRow
   // builds it with report = null and every report-derived field comes back
   // blank. Spreading that over local state wiped the treatment, follow-up,
@@ -133,8 +161,8 @@ export function SchedulingProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ appointments, loading, error, refresh, createAppointment, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl, uploadSignature: appointmentService.uploadSignature, getSignatureUrl: appointmentService.getSignatureUrl }),
-    [appointments, loading, error, refresh, createAppointment, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment]
+    () => ({ appointments, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl, uploadSignature: appointmentService.uploadSignature, getSignatureUrl: appointmentService.getSignatureUrl }),
+    [appointments, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment]
   );
   return <SchedulingContext.Provider value={value}>{children}</SchedulingContext.Provider>;
 }

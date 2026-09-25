@@ -29,6 +29,7 @@ import Button from "../components/ui/Button";
 import StatusPill from "../components/ui/StatusPill";
 import { REPORT_UPLOAD_CATEGORIES, ROLES } from "../utils/constants";
 import { combineServices, isAssignedTo, servicesOf } from "../utils/scheduling";
+import { isEarlierJobDay, isMultiDay, planLabel } from "../utils/plans";
 import { todayISO, validateAttachment } from "../utils/validators";
 import {
   VISIT_STEPS,
@@ -61,6 +62,9 @@ const field = {
 // photos and open the camera; proof and other files may be a PDF as well.
 const SHORT_LABELS = { BEFORE: "Before", AFTER: "After", INSPECTION: "Inspection", TREATMENT_PROOF: "Treatment proof", OTHER: "Other" };
 const CAMERA_CATEGORIES = new Set(["BEFORE", "AFTER", "INSPECTION"]);
+// A day of a multi-day job before its last: no findings or signature.
+const EARLIER_DAY_STEPS = ["Treatment", "Photos"];
+
 const PHOTO_CATEGORIES = REPORT_UPLOAD_CATEGORIES.map((category) => ({
   ...category,
   shortLabel: SHORT_LABELS[category.value] || category.label,
@@ -121,7 +125,7 @@ function VisitPage() {
   const { clients } = useClients();
   const { inventory, stockOutMany } = useInventory();
   const { activeServices, serviceById, serviceByName } = useServices();
-  const { appointments, loading, startVisit, submitReport, uploadSignature, addAttachment, removeAttachment, addStockUsed } = useScheduling();
+  const { appointments, loading, startVisit, submitReport, uploadSignature, addAttachment, removeAttachment, addStockUsed, planActions } = useScheduling();
   const { showError, showSuccess } = useToast();
 
   const appointment = appointments.find((entry) => entry.id === id) || null;
@@ -139,8 +143,8 @@ function VisitPage() {
   const mine = appointment && (!isTechnician || isAssignedTo(appointment, currentUser?.id));
   const alreadyStocked = (appointment?.stockUsed || []).length > 0;
 
-  const initialStep = VISIT_STEPS.includes(searchParams.get("step")) ? searchParams.get("step") : "Findings";
-  const [step, setStep] = useState(initialStep);
+  // The step asked for; which steps exist depends on the visit (below).
+  const [requestedStep, setStep] = useState(searchParams.get("step") || "");
   const [draft, setDraft] = useState(null);
   const [savedAt, setSavedAt] = useState(null);
   const [photoCategory, setPhotoCategory] = useState("BEFORE");
@@ -197,7 +201,13 @@ function VisitPage() {
   }
   if (!draft) return null;
 
-  const stepIndex = VISIT_STEPS.indexOf(step);
+  // A day of a multi-day job before its last (migration 052) has no report of
+  // its own: record the materials and photos, then close it with "Day done".
+  const earlierDay = isEarlierJobDay(appointment, appointments);
+  const steps = earlierDay ? EARLIER_DAY_STEPS : VISIT_STEPS;
+  const step = steps.includes(requestedStep) ? requestedStep : steps[0];
+  const stepIndex = steps.indexOf(step);
+  const isLastStep = stepIndex === steps.length - 1;
   const onSite = minutesOnSite(appointment, now);
   const photos = appointment.attachments || [];
   // A draft saved on this phone before multi-service had one serviceId, or
@@ -243,7 +253,8 @@ function VisitPage() {
 
   const stepProblem = (name) => {
     if (name === "Findings" && !draft.findings.trim()) return "Write what you found before moving on.";
-    if (name === "Treatment" && tickedIds.length === 0 && !legacyName) {
+    // An earlier day of a multi-day job ticks no services: the report does.
+    if (name === "Treatment" && !earlierDay && tickedIds.length === 0 && !legacyName) {
       return "Tick the services you performed.";
     }
     return null;
@@ -255,8 +266,61 @@ function VisitPage() {
       showError(problem);
       return;
     }
-    setStep(VISIT_STEPS[stepIndex + 1]);
+    setStep(steps[stepIndex + 1]);
     window.scrollTo?.(0, 0);
+  };
+
+  /**
+   * Records the materials on the draft as stock out against this visit.
+   * Returns an error message, or null. Skipped once stock was recorded.
+   */
+  const recordMaterials = async () => {
+    const entries = draft.materials.filter((material) => Number(material.amount) > 0).map((material) => ({ itemId: material.itemId, amount: Number(material.amount), batchNumber: "" }));
+    if (!entries.length || alreadyStocked) return null;
+    const stocked = await stockOutMany(appointment.id, entries, todayISO());
+    if (typeof stocked === "string") return stocked;
+    entries.forEach((entry) => {
+      const item = inventoryById.get(entry.itemId);
+      addStockUsed(appointment.id, { itemId: entry.itemId, name: item?.name || "Inventory item", amount: entry.amount, unit: item?.unit || "", batchNumber: "", date: todayISO() });
+    });
+    return null;
+  };
+
+  // "Day done" on a day of a multi-day job before its last: the materials are
+  // recorded, then the day is closed. The report waits for the last day.
+  const closeDay = async () => {
+    setSending(true);
+    try {
+      const stockProblem = await recordMaterials();
+      if (stockProblem) {
+        showError(`The materials weren't recorded: ${stockProblem} Fix the amounts and try again.`);
+        return;
+      }
+      const result = await planActions.finishJobDay(appointment.id);
+      if (result !== true) {
+        showError(result);
+        return;
+      }
+      clearDraft(appointment.id);
+      showSuccess("Day closed. The report is filed on the job's last day.");
+      navigate("/");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  // The job ended early: the days after this one are cancelled, so this day
+  // becomes the last and the full report flow opens on it.
+  const finishHere = async () => {
+    setSending(true);
+    const result = await planActions.finishJobHere(appointment.id);
+    setSending(false);
+    if (result !== true) {
+      showError(result);
+      return;
+    }
+    showSuccess("The job ends today. File the report to finish it.");
+    setStep("Findings");
   };
 
   const send = async () => {
@@ -312,17 +376,9 @@ function VisitPage() {
 
       // Materials last: a report is the record that matters, and a stock
       // problem (say, less on hand than typed) must not lose it.
-      const entries = draft.materials.filter((material) => Number(material.amount) > 0).map((material) => ({ itemId: material.itemId, amount: Number(material.amount), batchNumber: "" }));
-      if (entries.length && !alreadyStocked) {
-        const stocked = await stockOutMany(appointment.id, entries, todayISO());
-        if (typeof stocked === "string") {
-          showError(`Report sent, but the materials weren't recorded: ${stocked} Record them from the visit's Stock-Out tab.`);
-        } else {
-          entries.forEach((entry) => {
-            const item = inventoryById.get(entry.itemId);
-            addStockUsed(appointment.id, { itemId: entry.itemId, name: item?.name || "Inventory item", amount: entry.amount, unit: item?.unit || "", batchNumber: "", date: todayISO() });
-          });
-        }
+      const stockProblem = await recordMaterials();
+      if (stockProblem) {
+        showError(`Report sent, but the materials weren't recorded: ${stockProblem} Record them from the visit's Stock-Out tab.`);
       }
 
       clearDraft(appointment.id);
@@ -333,16 +389,19 @@ function VisitPage() {
     }
   };
 
-  const footerAction =
-    step === "Sign" ? (
-      <Button variant="primary" size="lg" loading={sending} onClick={send} icon={<Check size={18} />}>
-        {sending ? "Sending…" : "Send report"}
-      </Button>
-    ) : (
-      <Button variant="primary" size="lg" onClick={goNext}>
-        Next: {VISIT_STEPS[stepIndex + 1]} <ArrowRight size={18} aria-hidden="true" />
-      </Button>
-    );
+  const footerAction = !isLastStep ? (
+    <Button variant="primary" size="lg" onClick={goNext}>
+      Next: {steps[stepIndex + 1]} <ArrowRight size={18} aria-hidden="true" />
+    </Button>
+  ) : earlierDay ? (
+    <Button variant="primary" size="lg" loading={sending} onClick={closeDay} icon={<Check size={18} />}>
+      {sending ? "Closing…" : "Day done"}
+    </Button>
+  ) : (
+    <Button variant="primary" size="lg" loading={sending} onClick={send} icon={<Check size={18} />}>
+      {sending ? "Sending…" : "Send report"}
+    </Button>
+  );
 
   return (
     <div className="visit-page" style={{ maxWidth: "640px", margin: "0 auto", paddingBottom: "96px" }}>
@@ -372,8 +431,24 @@ function VisitPage() {
         </div>
       )}
 
-      <ol aria-label="Steps" style={{ listStyle: "none", margin: "18px 0 0", padding: 0, display: "grid", gridTemplateColumns: `repeat(${VISIT_STEPS.length}, 1fr)`, gap: "8px" }}>
-        {VISIT_STEPS.map((name, index) => {
+      {isMultiDay(appointment) && (
+        <div style={{ marginTop: "14px", padding: "12px 14px", borderRadius: radius.card, background: surface.sunken, display: "grid", gap: "8px" }}>
+          <span style={{ color: neutral.ink }}>
+            {planLabel(appointment, appointments)} of a multi-day job.{" "}
+            {earlierDay ? "Record today's materials and photos, then tap Day done. The report and signature come on the last day." : "Last day: file the report for the whole job."}
+          </span>
+          {earlierDay && (
+            <span>
+              <Button size="sm" variant="secondary" loading={sending} onClick={finishHere}>
+                This was the last day
+              </Button>
+            </span>
+          )}
+        </div>
+      )}
+
+      <ol aria-label="Steps" style={{ listStyle: "none", margin: "18px 0 0", padding: 0, display: "grid", gridTemplateColumns: `repeat(${steps.length}, 1fr)`, gap: "8px" }}>
+        {steps.map((name, index) => {
           const done = index < stepIndex;
           const current = index === stepIndex;
           return (
@@ -425,20 +500,24 @@ function VisitPage() {
 
         {step === "Treatment" && (
           <>
-            <p style={label}>Services performed · tick all that apply</p>
-            {legacyName && tickedIds.length === 0 && (
-              <p style={{ margin: "0 0 10px", color: neutral.bark, fontSize: "13px" }}>Booked as {legacyName}. Kept unless you tick a service.</p>
+            {!earlierDay && (
+              <>
+                <p style={label}>Services performed · tick all that apply</p>
+                {legacyName && tickedIds.length === 0 && (
+                  <p style={{ margin: "0 0 10px", color: neutral.bark, fontSize: "13px" }}>Booked as {legacyName}. Kept unless you tick a service.</p>
+                )}
+                <div role="group" aria-label="Services performed" style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginBottom: "24px" }}>
+                  {serviceChoices.map((choice) => (
+                    <Toggle key={choice.id} selected={tickedIds.includes(choice.id)} onClick={() => toggleService(choice.id)}>
+                      {choice.name}
+                    </Toggle>
+                  ))}
+                  {serviceChoices.length === 0 && <span style={{ color: neutral.bark }}>No services are set up. Ask the office to add them.</span>}
+                </div>
+              </>
             )}
-            <div role="group" aria-label="Services performed" style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-              {serviceChoices.map((choice) => (
-                <Toggle key={choice.id} selected={tickedIds.includes(choice.id)} onClick={() => toggleService(choice.id)}>
-                  {choice.name}
-                </Toggle>
-              ))}
-              {serviceChoices.length === 0 && <span style={{ color: neutral.bark }}>No services are set up. Ask the office to add them.</span>}
-            </div>
 
-            <p style={{ ...label, marginTop: "24px" }}>
+            <p style={label}>
               Materials used{tickedIds.some((entry) => serviceById(entry)?.materials?.length) && !alreadyStocked ? <span style={{ textTransform: "none", letterSpacing: 0, color: neutral.bark }}> · prefilled from the services</span> : null}
             </p>
             {alreadyStocked ? (

@@ -169,7 +169,7 @@ describe("NewAppointmentModal", () => {
       expect(screen.getByLabelText("Minutes")).toBeInTheDocument();
     });
 
-    it("keeps custom duration inside the 24-hour limit as the user edits it", async () => {
+    it("keeps custom duration inside its limits as the user edits it", async () => {
       renderModal();
 
       await userEvent.click(screen.getByRole("button", { name: "Custom" }));
@@ -177,11 +177,12 @@ describe("NewAppointmentModal", () => {
       const minutes = screen.getByLabelText("Minutes");
 
       await userEvent.clear(hours);
-      await userEvent.type(hours, "25");
+      await userEvent.type(hours, "80");
       await userEvent.clear(minutes);
       await userEvent.type(minutes, "90");
 
-      expect(hours).toHaveValue(24);
+      // 72 h: enough for a multi-day job; one visit still fits one working day.
+      expect(hours).toHaveValue(72);
       expect(minutes).toHaveValue(59);
     });
 
@@ -260,6 +261,7 @@ describe("NewAppointmentModal", () => {
         durationMinutes: 60,
         pestConcern: "Termites",
         serviceId: "",
+        serviceIds: [],
         serviceType: "",
         serviceLocation: "12 Mabini St",
         technicianIds: [],
@@ -283,17 +285,17 @@ describe("NewAppointmentModal", () => {
       expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ technicianIds: ["t2", "t1"] }));
     });
 
-    it("carries the visit's frequency and price", async () => {
+    it("carries the visit's price, and One-time stays a single visit", async () => {
       const { onCreate } = renderModal({ initialScheduledAt: `${TODAY}T14:00` });
 
       await userEvent.click(clientSearch());
       await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
-      await userEvent.selectOptions(screen.getByLabelText("Frequency"), "Quarterly");
+      await userEvent.selectOptions(screen.getByLabelText("Frequency"), "One-time");
       await userEvent.type(screen.getByLabelText(/Price/), "2500");
       await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
 
       expect(onCreate).toHaveBeenCalledWith(
-        expect.objectContaining({ serviceFrequency: "Quarterly", price: "2500" })
+        expect.objectContaining({ serviceFrequency: "One-time", price: "2500" })
       );
     });
 
@@ -355,12 +357,13 @@ describe("NewAppointmentModal", () => {
     });
 
     describe("service profiles", () => {
+      const serviceBox = (name) => within(screen.getByRole("group", { name: "Services" })).getByRole("checkbox", { name });
+
       it("lists the services it is given", () => {
         renderModal({ services });
 
-        const select = screen.getByLabelText(/Service type/);
-        expect(within(select).getByRole("option", { name: "Termite Control" })).toBeInTheDocument();
-        expect(within(select).getByRole("option", { name: "Fumigation" })).toBeInTheDocument();
+        expect(serviceBox("Termite Control")).toBeInTheDocument();
+        expect(serviceBox("Fumigation")).toBeInTheDocument();
       });
 
       it("fills the default price and duration, and sends the link and the name", async () => {
@@ -368,7 +371,7 @@ describe("NewAppointmentModal", () => {
 
         await userEvent.click(clientSearch());
         await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
-        await userEvent.selectOptions(screen.getByLabelText(/Service type/), "s1");
+        await userEvent.click(serviceBox("Termite Control"));
 
         expect(screen.getByLabelText(/Price/)).toHaveValue(4500);
         expect(screen.getByRole("button", { name: "2h" })).toHaveAttribute("aria-pressed", "true");
@@ -384,7 +387,7 @@ describe("NewAppointmentModal", () => {
         renderModal({ services, initialScheduledAt: `${TODAY}T08:00` });
 
         await userEvent.type(screen.getByLabelText(/Price/), "3000");
-        await userEvent.selectOptions(screen.getByLabelText(/Service type/), "s1");
+        await userEvent.click(serviceBox("Termite Control"));
 
         expect(screen.getByLabelText(/Price/)).toHaveValue(3000);
       });
@@ -392,10 +395,34 @@ describe("NewAppointmentModal", () => {
       it("switches to a custom duration for a non-preset default", async () => {
         renderModal({ services });
 
-        await userEvent.selectOptions(screen.getByLabelText(/Service type/), "s2");
+        await userEvent.click(serviceBox("Fumigation"));
 
         expect(screen.getByLabelText("Hours")).toHaveValue(2);
         expect(screen.getByLabelText("Minutes")).toHaveValue(30);
+      });
+
+      // Two services on one visit add up, and book through onBook (052).
+      it("adds up several services and books them together", async () => {
+        const onBook = jest.fn(async () => ({ id: "new" }));
+        const { onCreate } = renderModal({ services, onBook, initialScheduledAt: `${TODAY}T08:00` });
+
+        await userEvent.click(clientSearch());
+        await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
+        await userEvent.click(serviceBox("Termite Control"));
+        await userEvent.click(serviceBox("Fumigation"));
+
+        // 2h + 2h 30m; Fumigation has no default price, so only 4500 counts.
+        expect(screen.getByLabelText("Hours")).toHaveValue(4);
+        expect(screen.getByLabelText("Minutes")).toHaveValue(30);
+        expect(screen.getByLabelText(/Price/)).toHaveValue(4500);
+
+        await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+        expect(onCreate).not.toHaveBeenCalled();
+        expect(onBook).toHaveBeenCalledWith(expect.objectContaining({
+          kind: null,
+          serviceIds: ["s1", "s2"],
+          visits: [{ scheduledAt: `${TODAY}T08:00`, durationMinutes: 270 }],
+        }));
       });
     });
 
@@ -414,6 +441,109 @@ describe("NewAppointmentModal", () => {
 
       expect(screen.getByRole("button", { name: /Create appointment/ })).toBeDisabled();
     });
+  });
+});
+
+// Recurring plans and multi-day jobs (migration 052). A Thursday years ahead,
+// so nothing trips the past-date rule and the weekdays are fixed.
+describe("plans", () => {
+  const THU = "2031-01-16";
+  const pickClient = async () => {
+    await userEvent.click(clientSearch());
+    await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
+  };
+  const rows = () => within(screen.getByRole("list", { name: /Visits in the plan|Days of the job/ })).getAllByRole("listitem");
+
+  it("lists every date of a recurring plan and books them together", async () => {
+    const onBook = jest.fn(async () => ({ id: "new" }));
+    renderModal({ onBook, initialScheduledAt: `${THU}T09:00` });
+    await pickClient();
+
+    await userEvent.selectOptions(screen.getByLabelText("Frequency"), "Monthly");
+    expect(rows()).toHaveLength(6);
+    expect(rows()[1]).toHaveTextContent(/Feb 17, 2031/); // Feb 16 is a Sunday: moved to Monday
+
+    await userEvent.click(screen.getByRole("button", { name: "Book 6 visits" }));
+    expect(onBook).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "RECURRING",
+      serviceFrequency: "Monthly",
+      skipSundays: true,
+    }));
+    expect(onBook.mock.calls[0][0].visits).toHaveLength(6);
+  });
+
+  it("books until a date instead of a count", async () => {
+    renderModal({ initialScheduledAt: `${THU}T09:00` });
+    await userEvent.selectOptions(screen.getByLabelText("Frequency"), "Weekly");
+    await userEvent.click(screen.getByRole("button", { name: "Until a date" }));
+    await userEvent.type(screen.getByLabelText("Until"), "2031-02-06");
+
+    expect(rows()).toHaveLength(4);
+  });
+
+  it("flags a clash, blocks booking, and fixes the whole series in one click", async () => {
+    // Karl is out 9–10 every Thursday the plan lands on.
+    const standing = [0, 7, 14].map((days, index) => {
+      const date = new Date(`${THU}T09:00:00`);
+      date.setDate(date.getDate() + days);
+      return { id: `busy${index}`, clientId: "c2", technicianIds: ["t1"], scheduledAt: `${localDateKey(date)}T09:00:00`, durationMinutes: 60, status: "Confirmed" };
+    });
+    const onBook = jest.fn(async () => ({ id: "new" }));
+    renderModal({ onBook, appointments: standing, initialScheduledAt: `${THU}T09:00` });
+    await pickClient();
+    await userEvent.click(screen.getByRole("checkbox", { name: /Karl Hameed/ }));
+    await userEvent.selectOptions(screen.getByLabelText("Frequency"), "Weekly");
+    await userEvent.clear(screen.getByLabelText("Visits"));
+    await userEvent.type(screen.getByLabelText("Visits"), "3");
+
+    expect(rows().every((row) => /Karl already has a visit/.test(row.textContent))).toBe(true);
+    expect(screen.getByRole("button", { name: "Book 3 visits" })).toBeDisabled();
+
+    // Both whole-series fixes are offered: a free time, and a free technician.
+    expect(screen.getByRole("button", { name: "Use Bruce instead" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Move all to/ }));
+    expect(screen.getByText("All 3 dates are free.")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Book 3 visits" }));
+    expect(onBook).toHaveBeenCalled();
+    expect(onBook.mock.calls[0][0].visits.every((visit) => !visit.scheduledAt.endsWith("T09:00"))).toBe(true);
+  });
+
+  it("offers to split a job longer than one working day into days", async () => {
+    const onBook = jest.fn(async () => ({ id: "new" }));
+    renderModal({ onBook, initialScheduledAt: `${THU}T06:00` });
+    await pickClient();
+    await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+    await userEvent.clear(screen.getByLabelText("Hours"));
+    await userEvent.type(screen.getByLabelText("Hours"), "20");
+
+    expect(screen.getByText(/won't fit in one working day/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Split into a multi-day job" }));
+
+    expect(rows()).toHaveLength(2);
+    expect(screen.getByLabelText(/^Frequency/)).toBeDisabled();
+    expect(screen.getByLabelText(/Price for the whole job/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Book 2-day job" }));
+    expect(onBook).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "MULTI_DAY",
+      visits: [
+        { scheduledAt: `${THU}T06:00`, durationMinutes: 780 },
+        { scheduledAt: "2031-01-17T06:00", durationMinutes: 420 },
+      ],
+    }));
+  });
+
+  it("refuses an over-long single visit until it is split", async () => {
+    const { onCreate } = renderModal({ initialScheduledAt: `${THU}T06:00` });
+    await pickClient();
+    await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+    await userEvent.clear(screen.getByLabelText("Hours"));
+    await userEvent.type(screen.getByLabelText("Hours"), "20");
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Split it into a multi-day job/);
   });
 });
 
@@ -443,7 +573,7 @@ describe("service first and clash hints", () => {
   it("asks for the service before the date and time", () => {
     renderModal({ services });
 
-    const service = screen.getByRole("combobox", { name: /Service type/ });
+    const service = screen.getByRole("group", { name: "Services" });
     const when = screen.getByLabelText(/Date and time/);
     expect(service.compareDocumentPosition(when) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -462,17 +592,18 @@ describe("service first and clash hints", () => {
     expect(screen.getByText("All free at this time")).toBeInTheDocument();
   });
 
-  // Booking a re-service from the Schedule side panel.
-  it("carries the last visit's service, frequency and pest concern", () => {
+  // Booking a re-service, or renewing a plan, from the Schedule side panel:
+  // every service the last visit had comes along, not only the first.
+  it("carries the last visit's services, frequency and pest concern", () => {
     renderModal({
       services,
       initialClientId: "c1",
-      initialServiceId: "s1",
+      initialServiceIds: ["s1"],
       initialFrequency: "Quarterly",
       initialPestConcern: "Termites",
     });
 
-    expect(screen.getByRole("combobox", { name: /Service type/ })).toHaveValue("s1");
+    expect(within(screen.getByRole("group", { name: "Services" })).getByRole("checkbox", { name: "Termite Control" })).toBeChecked();
     expect(screen.getByRole("combobox", { name: "Frequency" })).toHaveValue("Quarterly");
     expect(screen.getByRole("combobox", { name: "Pest concern" })).toHaveValue("Termites");
     expect(screen.getByLabelText(/Price/)).toHaveValue(4500);

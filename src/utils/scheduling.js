@@ -21,6 +21,25 @@ export function appointmentReference(appointment) {
 }
 
 /**
+ * Whether a visit needs nothing more on site: completed, its report filed, or
+ * — for a day of a multi-day job, which never has a report of its own — the
+ * day closed (migration 052). Everything that asks "is a report still owed?"
+ * reads this, so the days of a job are not flagged as missing reports.
+ */
+export function visitClosed(appointment) {
+  return appointment?.status === "Completed" || Boolean(appointment?.reportSubmitted) || Boolean(appointment?.dayDoneAt);
+}
+
+/**
+ * Whether a report is still owed for this visit: none filed, and not a day of
+ * a multi-day job that was closed (its report belongs to the job's last day).
+ * Narrower than !visitClosed: a visit set to Completed by hand still owes one.
+ */
+export function reportOwed(appointment) {
+  return !appointment?.reportSubmitted && !appointment?.dayDoneAt;
+}
+
+/**
  * The service profiles on a visit, in order (migration 051). A visit booked
  * before 051 has one serviceId, or only a name; an exact name match adopts the
  * profile, as the Overview form always did. Unknown ids are dropped.

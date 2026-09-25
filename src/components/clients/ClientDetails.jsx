@@ -25,6 +25,7 @@ import useInventory from "../../hooks/useInventory";
 import { formatDate, formatDateTime, formatFileSize, formatTime } from "../../utils/formatters";
 import { DOCUMENT_CATEGORIES } from "../../utils/constants";
 import { appointmentReference, crewOf } from "../../utils/scheduling";
+import { printableJob } from "../../utils/plans";
 import { colors, pageShell, secondaryButton } from "../../styles/theme";
 
 
@@ -592,7 +593,8 @@ function ClientDetails({
                   <button
                     type="button"
                     onClick={() => setPrintRequest({
-                      appointment: selectedHistory,
+                      // A multi-day job prints as one report (migration 052).
+                      appointment: printableJob(selectedHistory, appointments),
                       client,
                       technician: technician || null,
                       technicians: crewOf(selectedHistory).map((id) => accounts.find((account) => account.id === id)).filter(Boolean),

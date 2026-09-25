@@ -40,13 +40,15 @@ import {
 import CalendarLegend from "../components/scheduling/CalendarLegend";
 import ScheduleSidePanel from "../components/scheduling/ScheduleSidePanel";
 import { awaitingReschedule } from "../utils/dashboardMetrics";
-import { reserviceDue } from "../utils/dispatch";
+import { bookingReminders } from "../utils/dispatch";
+import { dayOrderProblem, isEarlierJobDay, planLabel, planVisits, printableJob } from "../utils/plans";
 import { CalendarProvider } from "../components/scheduling/CalendarContext";
 import WeekGrid from "../components/scheduling/WeekGrid";
 import MonthGrid from "../components/scheduling/MonthGrid";
 import OverflowDialog from "../components/scheduling/OverflowDialog";
 import NewAppointmentModal from "../components/scheduling/NewAppointmentModal";
 import TechnicianPicker from "../components/scheduling/TechnicianPicker";
+import PlanPanel from "../components/scheduling/PlanPanel";
 import SchedulingToolbar, { MODES, isCalendarMode } from "../components/scheduling/SchedulingToolbar";
 import {
   fullDayWindow,
@@ -81,7 +83,7 @@ function SchedulingPage() {
   const { inventory, stockOutMany } = useInventory();
   const { staff, technicians } = useUsers();
   const { activeServices, serviceById, serviceByName } = useServices();
-  const { appointments, createAppointment, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
+  const { appointments, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState(MODES.WEEK);
@@ -155,6 +157,26 @@ function SchedulingPage() {
     next.delete("client");
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, isTechnician]);
+  // Clients to book next: re-service due, and recurring plans running out.
+  // The same list as Today's "Needs attention" (one window for both).
+  const reminders = useMemo(() => bookingReminders(appointments, clients, now), [appointments, clients, now]);
+
+  // Today's "Renew" / "Book" lands here as ?book=<visit id>: open the form
+  // copied from that visit, then drop the param so a refresh doesn't reopen it.
+  useEffect(() => {
+    const fromId = searchParams.get("book");
+    if (!fromId || isTechnician) return;
+    const entry = reminders.find((reminder) => reminder.last.id === fromId);
+    const visit = appointments.find((appointment) => appointment.id === fromId);
+    const client = clients.find((candidate) => candidate.id === visit?.clientId);
+    if (!visit || !client) return;
+    bookReservice(entry || { client, last: visit, frequency: visit.planFrequency || visit.serviceFrequency, serviceIds: visit.serviceIds, dueAt: new Date() }, "");
+    const next = new URLSearchParams(searchParams);
+    next.delete("book");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, appointments, clients, reminders, isTechnician]);
+
   // Every account, inactive included, for resolving names on visits already
   // booked. Booking itself only offers `bookableTechnicians`.
   const allAccounts = useMemo(() => [...staff, ...technicians], [staff, technicians]);
@@ -324,7 +346,7 @@ function SchedulingPage() {
       refuseMove(`A ${current.status.toLowerCase()} appointment cannot be moved.`);
       return;
     }
-    const dropRefusal = describeSlotConflict(appointments, movedAppointment);
+    const dropRefusal = dayOrderProblem(movedAppointment, appointments) || describeSlotConflict(appointments, movedAppointment);
     if (dropRefusal) {
       refuseMove(dropRefusal);
       return;
@@ -395,7 +417,7 @@ function SchedulingPage() {
     };
     // Cancelling a visit should not be blocked by the slot it used to hold.
     if (form.get("status") !== "Cancelled") {
-      const refusal = describeSlotConflict(appointments, candidate);
+      const refusal = dayOrderProblem(candidate, appointments) || describeSlotConflict(appointments, candidate);
       if (refusal) {
         showError(refusal);
         setMessage(refusal);
@@ -517,7 +539,8 @@ function SchedulingPage() {
       return;
     }
     setPrintRequest({
-      appointment,
+      // A multi-day job prints as one report: every day's photos and materials.
+      appointment: printableJob(appointment, appointments),
       client,
       technician: allAccounts.find((account) => account.id === appointment.technicianId) || null,
       technicians: crewOf(appointment)
@@ -566,32 +589,52 @@ function SchedulingPage() {
     return true;
   };
 
+  // After a booking lands: close the form, open the (first) new visit, and
+  // show it where it landed, in the day view if that's open.
+  const showBooked = (visit, message) => {
+    setCreateOpen(false);
+    setSelectedId(visit?.id || null);
+    setCreateScheduledAt("");
+    setCreateClientId("");
+    setCreatePrefill(null);
+    if (visit) {
+      if (mode !== MODES.DAY) setMode(MODES.WEEK);
+      setAnchorDate(mode === MODES.DAY ? new Date(visit.scheduledAt) : startOfWeek(new Date(visit.scheduledAt)));
+    }
+    setMessage(message);
+    return true;
+  };
+
   const handleCreate = async (fields) => {
     const refusal = describeSlotConflict(appointments, fields);
     if (refusal) return refusal;
     const result = await createAppointment(fields);
     if (typeof result === "string") return result;
-    setCreateOpen(false);
-    setSelectedId(result.id);
-    setCreateScheduledAt("");
-    setCreateClientId("");
-    setCreatePrefill(null);
-    // Show the new visit where it landed, in the day view if that's open.
-    if (mode !== MODES.DAY) setMode(MODES.WEEK);
-    setAnchorDate(mode === MODES.DAY ? new Date(result.scheduledAt) : startOfWeek(new Date(result.scheduledAt)));
-    setMessage("Appointment created.");
-    return true;
+    return showBooked(result, "Appointment created.");
   };
 
-  // Book the next visit for a client due for re-service: their last visit's
-  // service, frequency and pest concern come along; the time is where the
-  // card was dropped, or the form's default when it was clicked.
+  // A plan, or one visit with several services (migration 052). The form has
+  // already checked every date against the schedule; the server checks again.
+  const handleBook = async (booking) => {
+    const result = await bookAppointments(booking);
+    if (typeof result === "string") return result;
+    const count = booking.visits.length;
+    return showBooked(result, booking.kind === "MULTI_DAY"
+      ? `${count}-day job booked.`
+      : booking.kind ? `${count} visits booked.` : "Appointment created.");
+  };
+
+  // Book the next visit for a client due for re-service, or renew a plan that
+  // is running out: the last visit's services, frequency and pest concern come
+  // along; the time is where the card was dropped, else the due date at the
+  // last visit's time of day.
   const bookReservice = (entry, scheduledAt) => {
+    const lastTime = toDateTimeLocal(entry.last.scheduledAt).slice(11);
     setCreateClientId(entry.client.id);
-    setCreateScheduledAt(scheduledAt);
+    setCreateScheduledAt(scheduledAt || (entry.dueAt > new Date() ? `${localDateKey(entry.dueAt)}T${lastTime}` : ""));
     setCreatePrefill({
-      serviceId: entry.last.serviceId || "",
-      frequency: entry.last.serviceFrequency || "",
+      serviceIds: entry.serviceIds?.length ? entry.serviceIds : [entry.last.serviceId].filter(Boolean),
+      frequency: entry.frequency || entry.last.serviceFrequency || "",
       pestConcern: entry.last.pestConcern || "",
     });
     setCreateOpen(true);
@@ -641,9 +684,11 @@ function SchedulingPage() {
         draggedCardRef.current = true;
         setDraggedId(null);
       },
+      // "3/6" or "Day 1/2" on a card that belongs to a plan (migration 052).
+      planLabelFor: (appointment) => planLabel(appointment, appointments),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [clients, allAccounts, selectedId, draggedId, canReschedule]
+    [clients, allAccounts, selectedId, draggedId, canReschedule, appointments]
   );
 
   const appointmentsOnDay = (dateKey) =>
@@ -786,7 +831,7 @@ function SchedulingPage() {
               {showSidePanel && (
                 <ScheduleSidePanel
                   reschedule={awaitingReschedule(visibleAppointments)}
-                  reservice={reserviceDue(appointments, clients, now, 14)}
+                  reservice={reminders}
                   load={activeTechnicians.map((technician) => ({
                     technician,
                     hours: technicianHours(appointments, technician.id, { start: weekStart, end: addDays(weekStart, 7) }),
@@ -810,6 +855,11 @@ function SchedulingPage() {
                     setTab("Overview");
                   }}
                   onBookReservice={(entry) => bookReservice(entry, "")}
+                  onDeclineRenewal={canReschedule ? async (entry) => {
+                    const result = await planActions.setPlanRenewal(entry.last.planId, false);
+                    if (result === true) setMessage(`${entry.client.name}'s plan won't be renewed. Undo from any of its visits.`);
+                    else showError(result);
+                  } : undefined}
                 />
               )}
               </div>
@@ -855,7 +905,7 @@ function SchedulingPage() {
           client={selectedClient}
           appointments={appointments}
           activeAccounts={bookableTechnicians(technicians, crewOf(selected))}
-          ui={{ tab, setTab, onClose: () => setSelectedId(null) }}
+          ui={{ tab, setTab, onClose: () => setSelectedId(null), onOpen: setSelectedId }}
           access={{
             canReschedule,
             canFileService: ownsAppointment(selected),
@@ -887,6 +937,18 @@ function SchedulingPage() {
             onProblem: showError,
           }}
           stock={{ inventory, service: combineServices(servicesOf(selected, serviceById, serviceByName)), services: activeServices, serviceById, serviceByName }}
+          plan={{
+            visits: planVisits(selected, appointments),
+            // The office manages a plan; the crew on a job may also end it early.
+            canManage: canReschedule,
+            canFinish: ownsAppointment(selected),
+            onAction: async (name, ...args) => {
+              const result = await planActions[name](...args);
+              if (result === true) setMessage("Plan updated.");
+              else showError(result);
+              return result;
+            },
+          }}
         />
       )}
       <ServiceReportPrinter request={printRequest} onDone={() => setPrintRequest(null)} onProblem={showError} getAttachmentUrl={getAttachmentUrl} getSignatureUrl={getSignatureUrl} />
@@ -898,7 +960,7 @@ function SchedulingPage() {
           services={activeServices}
           initialClientId={createClientId}
           initialScheduledAt={createScheduledAt}
-          initialServiceId={createPrefill?.serviceId || ""}
+          initialServiceIds={createPrefill?.serviceIds || []}
           initialFrequency={createPrefill?.frequency || ""}
           initialPestConcern={createPrefill?.pestConcern || ""}
           onClose={() => {
@@ -908,6 +970,7 @@ function SchedulingPage() {
             setCreatePrefill(null);
           }}
           onCreate={handleCreate}
+          onBook={handleBook}
         />
       )}
       {/* The "+N more" tile's contents. Cards carry the same technician
@@ -1450,6 +1513,7 @@ function AppointmentPanel({
   files,
   actions,
   stock,
+  plan,
 }) {
   const { tab, setTab, onClose } = ui;
   const {
@@ -1476,6 +1540,12 @@ function AppointmentPanel({
   const { inventory, service, services, serviceById, serviceByName } = stock;
 
   const busyTechnicians = busyTechnicianIds(appointments, appointment);
+  // A day of a multi-day job before its last: no report of its own (052).
+  const earlierJobDay = isEarlierJobDay(appointment, appointments);
+  const lastDay = plan.visits[plan.visits.length - 1];
+  const lastDayLabel = lastDay
+    ? `Day ${plan.visits.length} (${new Date(lastDay.scheduledAt).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })})`
+    : "the last day";
   const notice = (text) => (
     <div style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", padding: "0.7rem 0.8rem", marginBottom: "1rem", borderRadius: "3.75px", background: "#faf0e2", border: "1px solid #fed7aa", color: "#9a3412", fontSize: "0.76rem", fontWeight: 500 }}>
       <Lock size={14} style={{ flex: "none", marginTop: "0.1rem" }} />
@@ -1504,6 +1574,7 @@ function AppointmentPanel({
               Appointment detail
               <span style={{ marginLeft: "0.5rem", color: "#96897b", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", letterSpacing: 0 }}>
                 {appointmentReference(appointment)}
+                {planLabel(appointment, appointments) && ` · ${planLabel(appointment, appointments)}`}
               </span>
             </div>
             <h2
@@ -1579,6 +1650,19 @@ function AppointmentPanel({
         >
           {tab === "Overview" && (
             <>
+              {/* Outside the office-only fieldset: the crew may finish a job early. */}
+              {appointment.planId && plan.visits.length > 0 && (
+                <PlanPanel
+                  appointment={appointment}
+                  visits={plan.visits}
+                  canManage={plan.canManage}
+                  canFinish={plan.canFinish}
+                  accounts={activeAccounts}
+                  services={services}
+                  onOpen={ui.onOpen}
+                  onAction={plan.onAction}
+                />
+              )}
               {scheduleNotice}
               <fieldset disabled={!canReschedule} style={fieldsetReset}>
                 <AppointmentOverviewForm
@@ -1624,7 +1708,16 @@ function AppointmentPanel({
                   </div>
                 )}
 
-                {tab === "Report" && (
+                {tab === "Report" && earlierJobDay && (
+                  <div role="status" style={{ padding: "0.9rem 1rem", borderRadius: "0.75rem", background: "#efe9e0", color: colors.body, fontSize: "0.82rem", lineHeight: 1.5 }}>
+                    <strong style={{ fontWeight: 500 }}>This job's report is filed on {lastDayLabel}.</strong>{" "}
+                    A multi-day job has one report and one signature, on its last day. On this day, record the materials
+                    used in the Stock-Out tab; the technician closes the day with "Day done" in the visit flow.
+                    {appointment.dayDoneAt && <div style={{ marginTop: "0.4rem", color: colors.success }}>Day closed {new Date(appointment.dayDoneAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.</div>}
+                  </div>
+                )}
+
+                {tab === "Report" && !earlierJobDay && (
                   <>
                     {/* Information callout banner */}
                     <div
@@ -1761,7 +1854,7 @@ function AppointmentPanel({
         </div>
 
         {/* 7. Sticky Footer Actions (Report tab) */}
-        {tab === "Report" && (
+        {tab === "Report" && !earlierJobDay && (
           <div
             className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0"
             style={{ padding: "0.875rem 1.5rem", background: "#efe9e0", borderTop: "1px solid #efe9e0", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}

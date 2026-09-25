@@ -7,7 +7,7 @@ const ATTACHMENT_BUCKET = "report-attachments";
 const ATTACHMENT_COLUMNS = "id, appointment_id, name, mime_type, size_bytes, storage_path, category, uploaded_at";
 const SIGNED_URL_TTL_SECONDS = 60;
 
-const APPOINTMENT_COLUMNS = "id, reference, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, created_at, updated_at";
+const APPOINTMENT_COLUMNS = "id, reference, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, plan_id, plan_position, day_done_at, created_at, updated_at";
 const REPORT_COLUMNS = "appointment_id, findings, treatment_performed, recommendations, follow_up_date, submitted_by, submitted_at, customer_name, signature_path, signed_at, completion_note, technician_signature_path, technician_signed_at";
 
 function describeError(error) {
@@ -47,6 +47,17 @@ export function mapAppointmentRow(row, report = null) {
     status: row.status,
     // When a technician started the visit on site (migration 048).
     startedAt: row.started_at || "",
+    // The recurring plan or multi-day job this visit belongs to (migration
+    // 052). planKind / planFrequency come from the plan row; read the rest
+    // through utils/plans.js (planLabel, isLastJobDay, …).
+    planId: row.plan_id || "",
+    planPosition: row.plan_position ?? null,
+    planKind: row.planKind || "",
+    planFrequency: row.planFrequency || "",
+    // The office chose not to renew this recurring plan (migration 053).
+    planRenewalDeclinedAt: row.planRenewalDeclinedAt || "",
+    // A multi-day job's day closed on site ("Day done").
+    dayDoneAt: row.day_done_at || "",
     notes: row.notes || "",
     serviceFrequency: row.service_frequency || "",
     price: row.price === null || row.price === undefined ? "" : Number(row.price),
@@ -69,11 +80,12 @@ export function mapAppointmentRow(row, report = null) {
   };
 }
 
-// Before migration 048 there is no started_at column, and before 050 no
-// reference, and PostgREST refuses a select naming a column that doesn't
-// exist. Rather than blank the whole schedule when the app is deployed ahead
-// of a migration, retry without whichever column it named.
-const OPTIONAL_COLUMNS = ["reference", "started_at"];
+// Before migration 048 there is no started_at column, before 050 no
+// reference, before 052 no plan columns, and PostgREST refuses a select
+// naming a column that doesn't exist. Rather than blank the whole schedule
+// when the app is deployed ahead of a migration, retry without whichever
+// column it named.
+const OPTIONAL_COLUMNS = ["reference", "started_at", "plan_id", "plan_position", "day_done_at"];
 
 async function selectAppointments() {
   let columns = APPOINTMENT_COLUMNS;
@@ -88,27 +100,39 @@ async function selectAppointments() {
   }
 }
 
-// The services list arrives with migration 051. Before it, the table does not
-// exist, and each visit's single service_id stands in (mapAppointmentRow).
-async function selectAppointmentServices() {
-  const result = await supabase.from("appointment_services").select("appointment_id, position, service_id");
-  if (result.error && /appointment_services/.test(`${result.error.message || ""} ${result.error.details || ""}`)) {
+// Tables added by later migrations: before the migration runs the table does
+// not exist, and the app carries on without it rather than failing to load.
+async function selectOptionalTable(table, columns) {
+  const result = await supabase.from(table).select(columns);
+  if (result.error && new RegExp(table).test(`${result.error.message || ""} ${result.error.details || ""}`)) {
     return { data: [], error: null };
   }
   return result;
 }
 
+// The services list (051); before it, each visit's single service_id stands in.
+const selectAppointmentServices = () => selectOptionalTable("appointment_services", "appointment_id, position, service_id");
+// Recurring plans and multi-day jobs (052). renewal_declined_at is 053's; any
+// error retries without it, since the missing-column error names the table and
+// selectOptionalTable alone would take that as "no plans at all".
+async function selectAppointmentPlans() {
+  const result = await supabase.from("appointment_plans").select("id, kind, frequency, renewal_declined_at");
+  return result.error ? selectOptionalTable("appointment_plans", "id, kind, frequency") : result;
+}
+
 export async function fetchAppointments() {
-  const [appointmentsResult, reportsResult, stockResult, attachmentsResult, crewResult, servicesResult] = await Promise.all([
+  const [appointmentsResult, reportsResult, stockResult, attachmentsResult, crewResult, servicesResult, plansResult] = await Promise.all([
     selectAppointments(),
     supabase.from("appointment_reports").select(REPORT_COLUMNS),
     supabase.from("inventory_movements").select("item_id, appointment_id, amount, movement_date, batch_number, inventory(name, unit)").eq("movement_type", "OUT").not("appointment_id", "is", null),
     supabase.from("appointment_report_attachments").select(ATTACHMENT_COLUMNS).order("uploaded_at", { ascending: false }),
     supabase.from("appointment_technicians").select("appointment_id, technician_id, is_lead, assigned_at"),
     selectAppointmentServices(),
+    selectAppointmentPlans(),
   ]);
-  const error = appointmentsResult.error || reportsResult.error || stockResult.error || attachmentsResult.error || crewResult.error || servicesResult.error;
+  const error = appointmentsResult.error || reportsResult.error || stockResult.error || attachmentsResult.error || crewResult.error || servicesResult.error || plansResult.error;
   if (error) return { error: describeError(error), appointments: [] };
+  const plans = new Map((plansResult.data || []).map((plan) => [plan.id, plan]));
   // In the order ticked. A service since deleted from the catalog has no id
   // left and is skipped; its name survives in the visit's service_type.
   const servicesByAppointment = new Map();
@@ -153,6 +177,9 @@ export async function fetchAppointments() {
       attachments: attachmentsByAppointment.get(row.id) || [],
       technicianIds: crewByAppointment.get(row.id) || (row.technician_id ? [row.technician_id] : []),
       serviceIds: servicesByAppointment.get(row.id) || (row.service_id ? [row.service_id] : []),
+      planKind: plans.get(row.plan_id)?.kind || "",
+      planFrequency: plans.get(row.plan_id)?.frequency || "",
+      planRenewalDeclinedAt: plans.get(row.plan_id)?.renewal_declined_at || "",
     }, reports.get(row.id))),
   };
 }
@@ -215,6 +242,78 @@ export async function updateAppointment(appointment) {
   if (error) return { error: describeError(error) };
   return { appointment: mapAppointmentRow({ ...(Array.isArray(data) ? data[0] : data), technicianIds: crew }) };
 }
+
+// ---------------------------------------------------------------------------
+// Plans (migration 052)
+// ---------------------------------------------------------------------------
+
+/**
+ * Books one visit, a recurring series, or a multi-day job in one transaction
+ * (book_appointments). `kind` is null for a single visit, else RECURRING or
+ * MULTI_DAY; `visits` is the list the form showed — [{ scheduledAt,
+ * durationMinutes }] — booked as is. Returns the new rows; the caller reloads
+ * to pick up the plan they belong to.
+ */
+export async function bookAppointments({ kind = null, visits, clientId, pestConcern, serviceIds = [], serviceLocation, technicianIds = [], notes, serviceFrequency, price, skipSundays = true }) {
+  const crew = crewFrom({ technicianIds });
+  const { data, error } = await supabase.rpc("book_appointments", {
+    p_kind: kind,
+    p_visits: visits.map((visit) => ({
+      scheduled_at: new Date(visit.scheduledAt).toISOString(),
+      duration_minutes: Number(visit.durationMinutes),
+    })),
+    p_client_id: clientId,
+    p_pest_concern: pestConcern?.trim() || null,
+    p_service_ids: serviceIds.length ? serviceIds : null,
+    p_service_location: serviceLocation?.trim() || null,
+    p_technician_ids: crew,
+    p_notes: notes || null,
+    p_service_frequency: serviceFrequency?.trim() || null,
+    p_price: price === "" || price === undefined || price === null ? null : Number(price),
+    p_skip_sundays: skipSundays,
+  });
+  if (error) return { error: describeError(error) };
+  const rows = Array.isArray(data) ? data : data ? [data] : [];
+  return { appointments: rows.map((row) => mapAppointmentRow({ ...row, technicianIds: crew, serviceIds })) };
+}
+
+/** Runs a plan RPC that answers with a count or a row; `{ error }` or `{ ok, data }`. */
+async function planCall(name, params) {
+  const { data, error } = await supabase.rpc(name, params);
+  if (error) return { error: describeError(error) };
+  return { ok: true, data };
+}
+
+/** A multi-day job's day closed on site ("Day done"). */
+export const finishJobDay = (appointmentId) => planCall("finish_job_day", { p_appointment_id: appointmentId });
+
+/** Ends a multi-day job on this day; the days after it are cancelled. */
+export const finishJobHere = (appointmentId) => planCall("finish_job_here", { p_appointment_id: appointmentId });
+
+/** Cancels every visit of the plan still to come. */
+export const cancelPlanRemaining = (planId) => planCall("cancel_plan_remaining", { p_plan_id: planId });
+
+/** "Don't renew" (renew = false) or undo it (true); a recurring plan only (migration 053). */
+export const setPlanRenewal = (planId, renew) => planCall("set_plan_renewal", { p_plan_id: planId, p_renew: renew });
+
+/** One more day after the plan's last live one. */
+export const addPlanVisit = (planId, { scheduledAt, durationMinutes }) => planCall("add_plan_visit", {
+  p_plan_id: planId,
+  p_scheduled_at: new Date(scheduledAt).toISOString(),
+  p_duration_minutes: Number(durationMinutes),
+});
+
+/**
+ * Changes every visit from `fromAppointmentId` on. Pass only what changes:
+ * `startTime` ("HH:MM", recurring plans only), `technicianIds`, `serviceIds`.
+ */
+export const updatePlanFuture = (planId, fromAppointmentId, { startTime = null, technicianIds = null, serviceIds = null } = {}) => planCall("update_plan_future", {
+  p_plan_id: planId,
+  p_from_appointment_id: fromAppointmentId,
+  p_start_time: startTime || null,
+  p_technician_ids: technicianIds ? crewFrom({ technicianIds }) : null,
+  p_service_ids: serviceIds && serviceIds.length ? serviceIds : null,
+});
 
 /**
  * Uploads the customer's signature and returns its object key.

@@ -4,8 +4,11 @@
 // Unscheduled lists two kinds of thing, both draggable onto the grid:
 //   - visits in Reschedule — moving one keeps its status and offers Undo,
 //     the same as dragging it on the grid;
-//   - clients due for re-service with nothing booked — dropping one on a
-//     slot opens the New appointment form for that client at that time.
+//   - clients due for re-service with nothing booked, and recurring plans
+//     about to run out (migration 052) — dropping one on a slot opens the New
+//     appointment form for that client at that time, copied from their last
+//     visit. A plan the client is not continuing gets "Don't renew", which
+//     silences its reminder (migration 053; undone from the plan's panel).
 
 import { font, neutral, radius, status as semantic, surface, weight } from "../../styles/tokens";
 import { colors } from "../../styles/theme";
@@ -57,8 +60,9 @@ function SlotCard({ status, title, detail, draggable, onDragStart, onDragEnd, on
 
 /**
  * @param reschedule  appointments in Reschedule
- * @param reservice   rows from reserviceDue(): { client, last, dueAt, frequency }
+ * @param reservice   rows from bookingReminders(): { client, last, dueAt, frequency, renewal?, remaining? }
  * @param load        [{ technician, hours }] for the visible week
+ * @param onDeclineRenewal  optional; shown on renewal rows for the office
  */
 function ScheduleSidePanel({
   reschedule,
@@ -71,6 +75,7 @@ function ScheduleSidePanel({
   onDragEnd,
   onOpenAppointment,
   onBookReservice,
+  onDeclineRenewal,
   weeklyHours = 40,
 }) {
   const nothingWaiting = reschedule.length === 0 && reservice.length === 0;
@@ -101,16 +106,28 @@ function ScheduleSidePanel({
                 </li>
               ))}
               {reservice.map((entry) => (
-                <li key={`reservice-${entry.client.id}`}>
+                <li key={`reservice-${entry.last.id}`}>
                   <SlotCard
                     status="Pending"
                     title={entry.client.name}
-                    detail={`Re-service · ${entry.frequency.toLowerCase()} · due ${entry.dueAt.toLocaleDateString([], { month: "short", day: "numeric" })}`}
+                    detail={entry.renewal
+                      ? `Renew ${entry.frequency.toLowerCase()} plan · ${entry.remaining === 0 ? "ended" : `${entry.remaining} left`} · from ${entry.dueAt.toLocaleDateString([], { month: "short", day: "numeric" })}`
+                      : `Re-service · ${entry.frequency.toLowerCase()} · due ${entry.dueAt.toLocaleDateString([], { month: "short", day: "numeric" })}`}
                     draggable={canDrag}
                     onDragStart={() => onDragReservice(entry)}
                     onDragEnd={onDragEnd}
                     onClick={() => onBookReservice(entry)}
                   />
+                  {entry.renewal && onDeclineRenewal && (
+                    <button
+                      type="button"
+                      onClick={() => onDeclineRenewal(entry)}
+                      aria-label={`Don't renew ${entry.client.name}'s ${entry.frequency.toLowerCase()} plan`}
+                      style={{ border: 0, background: "none", padding: "2px 0 0 11px", fontSize: "11.5px", color: neutral.bark, textDecoration: "underline", cursor: "pointer" }}
+                    >
+                      Don't renew
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

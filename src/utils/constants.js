@@ -100,9 +100,11 @@ export const STOCK_OUT_REASON_LABELS = {
 };
 
 // How often a service recurs. Mirrors the appointments_service_frequency_check
-// constraint in migration 041 — changing one side needs a migration on the other.
+// constraint (migration 041, "Daily" added by 052) — changing one side needs a
+// migration on the other.
 export const SERVICE_FREQUENCIES = [
   "One-time",
+  "Daily",
   "Weekly",
   "Every 2 weeks",
   "Monthly",

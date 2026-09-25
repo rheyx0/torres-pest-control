@@ -14,7 +14,8 @@
 // reads those as UTC midnight, which is the previous day east of Greenwich's
 // evening and west of it all day, so they are parsed as local dates here.
 
-import { crewOf, endOf, isAssignedTo, startOf } from "./scheduling";
+import { crewOf, endOf, isAssignedTo, reportOwed, startOf } from "./scheduling";
+import { plansEnding } from "./plans";
 import { byTime, dayKey, weekWindow } from "./dashboardMetrics";
 
 export const BOARD_START_HOUR = 7;
@@ -115,7 +116,7 @@ export function overdueReports(appointments, now = new Date(), { graceHours = 24
   const cutoff = now.getTime() - graceHours * 3600000;
   const floor = now.getTime() - lookbackDays * DAY_MS;
   return appointments
-    .filter((entry) => live(entry) && !entry.reportSubmitted && endOf(entry) <= cutoff && endOf(entry) >= floor)
+    .filter((entry) => live(entry) && reportOwed(entry) && endOf(entry) <= cutoff && endOf(entry) >= floor)
     .sort(byTime);
 }
 
@@ -171,8 +172,16 @@ export function recentVisits(appointments, now = new Date(), { limit = 5, lookba
 // Re-service
 // ---------------------------------------------------------------------------
 
+/**
+ * How far ahead a re-service or renewal reminder appears. One number for the
+ * Today queue and the Schedule side panel, so a client never shows in one and
+ * not the other.
+ */
+export const RESERVICE_WINDOW_DAYS = 14;
+
 /** Days between visits for each frequency in SERVICE_FREQUENCIES (constants.js). */
 export const FREQUENCY_DAYS = {
+  Daily: 1,
   Weekly: 7,
   "Every 2 weeks": 14,
   Monthly: 30,
@@ -185,8 +194,12 @@ export const FREQUENCY_DAYS = {
  * Clients on a recurring plan who are due (or due within `withinDays`) and
  * have nothing booked. "Due" is the last completed visit plus its frequency;
  * any live visit after that one means the next is already booked.
+ *
+ * This is the reminder for visits booked one at a time, before plans existed
+ * (migration 052). A visit that belongs to a plan is skipped here — its plan
+ * books every visit up front and reminds through plansEnding() instead.
  */
-export function reserviceDue(appointments, clients, now = new Date(), withinDays = 7) {
+export function reserviceDue(appointments, clients, now = new Date(), withinDays = RESERVICE_WINDOW_DAYS) {
   const horizon = startOfDay(now).getTime() + (withinDays + 1) * DAY_MS;
   const byClient = new Map();
   appointments.forEach((entry) => {
@@ -201,15 +214,26 @@ export function reserviceDue(appointments, clients, now = new Date(), withinDays
     const last = visits
       .filter((entry) => entry.status === "Completed" || entry.reportSubmitted)
       .sort((a, b) => byTime(b, a))[0];
-    const days = last && FREQUENCY_DAYS[last.serviceFrequency];
+    const days = last && !last.planId && FREQUENCY_DAYS[last.serviceFrequency];
     if (!days) return;
     // Anything live booked after the last finished visit IS the next visit,
     // even if it is earlier today or still waiting on its report.
     if (visits.some((entry) => entry !== last && live(entry) && startOf(entry) > startOf(last))) return;
     const dueAt = startOf(last) + days * DAY_MS;
-    if (dueAt < horizon) due.push({ client, last, dueAt: new Date(dueAt), frequency: last.serviceFrequency });
+    if (dueAt < horizon) due.push({ client, last, dueAt: new Date(dueAt), frequency: last.serviceFrequency, serviceIds: last.serviceIds || [] });
   });
   return due.sort((a, b) => a.dueAt - b.dueAt);
+}
+
+/**
+ * Everything the office should book next, soonest first: clients due for
+ * re-service (visits booked one at a time) and recurring plans about to run
+ * out (plansEnding, marked `renewal: true`). Both lists carry the client, the
+ * visit to copy from (`last`), a due date and the frequency.
+ */
+export function bookingReminders(appointments, clients, now = new Date(), withinDays = RESERVICE_WINDOW_DAYS) {
+  return [...reserviceDue(appointments, clients, now, withinDays), ...plansEnding(appointments, clients, now)]
+    .sort((a, b) => a.dueAt - b.dueAt);
 }
 
 // ---------------------------------------------------------------------------
@@ -308,21 +332,28 @@ export function attentionItems(
       });
   }
 
-  const reservice = reserviceDue(appointments, clients, now);
+  const reservice = bookingReminders(appointments, clients, now);
   if (reservice.length) {
     const plans = [...new Set(reservice.map((entry) => entry.frequency.toLowerCase()))];
+    const [first] = reservice;
+    const renewalTitle = first.remaining === 0
+      ? `${first.client.name}'s ${first.frequency.toLowerCase()} plan has ended`
+      : `${first.client.name}'s ${first.frequency.toLowerCase()} plan ends in ${first.remaining} visit${first.remaining === 1 ? "" : "s"}`;
     items.push({
       key: "reservice",
       kind: "reservice",
       tone: "neutral",
-      title: reservice.length === 1 ? `${reservice[0].client.name} is due for re-service` : `${reservice.length} clients due for re-service`,
+      title: reservice.length === 1
+        ? (first.renewal ? renewalTitle : `${first.client.name} is due for re-service`)
+        : `${reservice.length} clients to book next`,
       detail:
         reservice.length === 1
-          ? `${reservice[0].frequency} plan · due ${shortDate(reservice[0].dueAt)} · nothing booked`
+          ? (first.renewal ? `Renew from ${shortDate(first.dueAt)} · nothing booked after it` : `${first.frequency} plan · due ${shortDate(first.dueAt)} · nothing booked`)
           : `${listNames(reservice.map((entry) => entry.client.name), 2)} · ${plans.join(", ")} plans with no visit booked`,
+      // ?book= opens New appointment copied from that visit (Schedule page).
       action: canBook
-        ? { label: "Book", to: `/scheduling?new=1&client=${encodeURIComponent(reservice[0].client.id)}` }
-        : { label: "View", to: `/clients/${encodeURIComponent(reservice[0].client.id)}` },
+        ? { label: first.renewal ? "Renew" : "Book", to: `/scheduling?book=${encodeURIComponent(first.last.id)}` }
+        : { label: "View", to: `/clients/${encodeURIComponent(first.client.id)}` },
     });
   }
 

@@ -1,10 +1,11 @@
 // A technician's day, for the phone Today screen and the visit flow.
 // Pure, so the rules (what is "up next", what counts as done) are tested.
 
-import { crewOf, endOf, isAssignedTo, startOf } from "./scheduling";
+import { crewOf, endOf, isAssignedTo, startOf, visitClosed } from "./scheduling";
 import { dayKey } from "./dashboardMetrics";
 
-export const isDone = (entry) => entry.status === "Completed" || Boolean(entry.reportSubmitted);
+// Completed, reported, or a multi-day job's day closed with "Day done".
+export const isDone = visitClosed;
 
 /**
  * Today's visits for one technician, split the way the Today screen shows
