@@ -58,7 +58,9 @@ export function SchedulingProvider({ children }) {
     const result = await appointmentService.bookAppointments(booking);
     if (result.error) return result.error;
     await refresh();
-    return result.appointments[0] || null;
+    // bookedIds: every visit the booking made, for linking them to a quote.
+    const first = result.appointments[0];
+    return first ? { ...first, bookedIds: result.appointments.map((visit) => visit.id) } : null;
   }, [refresh]);
 
   // Plan changes from the appointment panel and the visit flow. Each can move,
@@ -130,6 +132,10 @@ export function SchedulingProvider({ children }) {
       ...(reportFields.serviceIds?.length
         ? { serviceIds: reportFields.serviceIds, serviceId: reportFields.serviceIds[0], serviceType: reportFields.serviceType || entry.serviceType }
         : {}),
+      // Site monitoring (063) is saved alongside the report; without this the
+      // form and the printed report kept the old values until a reload.
+      ...(reportFields.activityLevel !== undefined ? { activityLevel: reportFields.activityLevel || "" } : {}),
+      ...(reportFields.openIssues !== undefined ? { openIssues: reportFields.openIssues || "" } : {}),
     } : entry));
     return result.report;
   }, []);
@@ -179,4 +185,9 @@ export function useScheduling() {
   const context = useContext(SchedulingContext);
   if (!context) throw new Error("useScheduling must be used inside <SchedulingProvider>.");
   return context;
+}
+
+/** The scheduling context, or null outside a SchedulingProvider. */
+export function useOptionalScheduling() {
+  return useContext(SchedulingContext);
 }

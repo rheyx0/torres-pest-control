@@ -8,6 +8,7 @@
 //     action that closes it;
 //   - visits per day this week, and the visits that just finished with their
 //     report / signature state;
+//   - billing: owed, overdue, collected, and the loose ends (Sprint 3);
 //   - for admins, the cost & stock figures.
 //
 // Every figure is computed in utils/dispatch.js from lists already in
@@ -15,7 +16,7 @@
 //
 // On money: "Booked this week" is the sum of appointments.price (migration
 // 041) for this week's live visits — what was agreed, not what was
-// collected. There is still no invoice or payment record.
+// collected. What was collected is the Billing panel's (invoices, payments).
 
 import { useMemo, useState } from "react";
 import useAuth from "../../hooks/useAuth";
@@ -58,6 +59,7 @@ import { neutral } from "../../styles/tokens";
 import StatusPill from "../ui/StatusPill";
 import { Panel, RankedBars, StatTile, TileRow, whenLabel } from "./DashboardParts";
 import { AttentionList, DispatchBoard, KpiCard, RecentList, WeekBarsCard } from "./TodayParts";
+import BillingPanel from "./BillingPanel";
 
 /**
  * The detail line under a recently completed visit. "Signed by" only when a
@@ -203,8 +205,9 @@ function OfficeDashboard() {
         </div>
       )}
 
-      <div style={{ display: "grid", gap: "18px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px" }}>
+      {/* One board, no gaps: every widget shares its edges (.dash-joined). */}
+      <div className="dash-joined">
+        <div className="dash-joined dash-kpis">
           <KpiCard
             label="Visits today"
             value={dash ?? today.length}
@@ -255,14 +258,15 @@ function OfficeDashboard() {
           onDayChange={setDayChoice}
         />
 
-        <div className="today-columns">
+        <div className="today-columns dash-joined">
           <AttentionList items={attention} loading={loading} />
-          <div style={{ display: "grid", gap: "18px", alignContent: "start" }}>
+          <div className="dash-joined">
             <WeekBarsCard bars={bars} rangeLabel={rangeLabel} />
             <RecentList rows={recent} />
           </div>
         </div>
 
+        <BillingPanel />
         {isAdmin && <CostPanel inventory={inventory} movements={movements} appointments={appointments} />}
       </div>
     </div>

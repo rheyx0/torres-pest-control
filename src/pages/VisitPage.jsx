@@ -27,7 +27,7 @@ import { useToast } from "../context/ToastContext";
 import SignaturePad from "../components/scheduling/SignaturePad";
 import Button from "../components/ui/Button";
 import StatusPill from "../components/ui/StatusPill";
-import { REPORT_UPLOAD_CATEGORIES, ROLES } from "../utils/constants";
+import { ACTIVITY_LEVELS, REPORT_UPLOAD_CATEGORIES, ROLES } from "../utils/constants";
 import { combineServices, crewOf, isAssignedTo, servicesOf } from "../utils/scheduling";
 import { heldBy, openCheckouts } from "../utils/custody";
 import BatchSelect from "../components/inventory/BatchSelect";
@@ -166,6 +166,8 @@ function VisitPage() {
       stored || {
         findings: appointment.report || "",
         recommendations: appointment.recommendations || "",
+        activityLevel: appointment.activityLevel || "",
+        openIssues: appointment.openIssues || "",
         serviceIds: visitServiceIds,
         materials: alreadyStocked ? [] : materialsFromService(service, inventory),
         customerName: appointment.customerName || "",
@@ -347,6 +349,9 @@ function VisitPage() {
         treatmentPerformed: appointment.treatmentPerformed || "",
         recommendations: draft.recommendations.trim(),
         followUpDate: appointment.followUpDate || "",
+        // Site monitoring (063). A draft saved before these fields has neither.
+        activityLevel: draft.activityLevel || "",
+        openIssues: (draft.openIssues || "").trim(),
       };
       // Sent only when the technician changed the list (migration 051).
       if (tickedIds.length && tickedIds.join() !== visitServiceIds.join()) {
@@ -528,6 +533,26 @@ function VisitPage() {
                 value={draft.findings}
                 onChange={(event) => update({ findings: event.target.value })}
                 placeholder="Activity, harborage, entry points…"
+                style={field}
+              />
+            </label>
+            <p style={{ ...label, marginTop: "18px" }}>How much pest activity?</p>
+            <div role="group" aria-label="Pest activity" style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+              {ACTIVITY_LEVELS.map((level) => (
+                <Toggle key={level.value} selected={draft.activityLevel === level.value} onClick={() => update({ activityLevel: draft.activityLevel === level.value ? "" : level.value })}>
+                  {level.label}
+                </Toggle>
+              ))}
+            </div>
+            <label style={{ display: "block", marginTop: "18px" }}>
+              <p style={label}>Anything still open at the site?</p>
+              <textarea
+                aria-label="Open issues"
+                rows={2}
+                maxLength={2000}
+                value={draft.openIssues || ""}
+                onChange={(event) => update({ openIssues: event.target.value })}
+                placeholder="Leaking pipe under the sink, gap under the door…"
                 style={field}
               />
             </label>

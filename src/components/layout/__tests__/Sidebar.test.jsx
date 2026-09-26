@@ -98,7 +98,7 @@ describe("Sidebar groups", () => {
     renderSidebar("/", "ADMIN");
 
     const lists = screen.getAllByRole("list");
-    expect(lists).toHaveLength(2);
+    expect(lists).toHaveLength(5);
     lists.forEach((list) => {
       const headingId = list.getAttribute("aria-labelledby");
       expect(document.getElementById(headingId)).toBeInTheDocument();
@@ -106,6 +106,21 @@ describe("Sidebar groups", () => {
 
     const setup = lists.find((list) => list.getAttribute("aria-labelledby") === groupHeadingId("Setup"));
     expect(within(setup).getAllByRole("link")).toHaveLength(3);
+  });
+});
+
+describe("Sidebar categories", () => {
+  it("gives an admin every category, with Home on its own", () => {
+    renderSidebar("/", "ADMIN");
+    ["Home", "Work", "Stock", "Money", "Setup"].forEach((label) => expect(screen.getByText(label)).toBeInTheDocument());
+    const home = screen.getAllByRole("list").find((list) => list.getAttribute("aria-labelledby") === groupHeadingId("Home"));
+    expect(within(home).getAllByRole("link").map((link) => link.textContent)).toEqual(["Today"]);
+  });
+
+  it("gives a technician Home, Work and Stock only", () => {
+    renderSidebar("/", "TECHNICIAN");
+    ["Home", "Work", "Stock"].forEach((label) => expect(screen.getByText(label)).toBeInTheDocument());
+    ["Money", "Setup"].forEach((label) => expect(screen.queryByText(label)).not.toBeInTheDocument());
   });
 });
 

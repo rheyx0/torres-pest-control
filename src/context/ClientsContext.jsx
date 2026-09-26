@@ -123,7 +123,9 @@ export function ClientsProvider({ children }) {
     [actor, allowed]
   );
 
-  const addDocument = useCallback(
+  // Resolves to the new document, or the error message. A signed contract
+  // (Sprint 3) needs the document itself, to attach it.
+  const uploadDocumentRecord = useCallback(
     async (clientId, file, category) => {
       if (!allowed(SUBSYSTEMS.CLIENT_DOCUMENTS, "create")) return "You do not have permission to upload documents.";
       const { document, error: uploadError } = await clientService.uploadDocument(clientId, file, category);
@@ -137,9 +139,17 @@ export function ClientsProvider({ children }) {
         )
       );
       addLog(actor, `Uploaded "${document.name}".`, LOG_TYPES.DOCUMENT);
-      return true;
+      return document;
     },
     [actor, allowed]
+  );
+
+  const addDocument = useCallback(
+    async (clientId, file, category) => {
+      const result = await uploadDocumentRecord(clientId, file, category);
+      return typeof result === "string" ? result : true;
+    },
+    [uploadDocumentRecord]
   );
 
   const removeDocument = useCallback(
@@ -175,6 +185,7 @@ export function ClientsProvider({ children }) {
       addClient,
       updateClient,
       addDocument,
+      uploadDocumentRecord,
       removeDocument,
       archiveClient,
       restoreClient,
@@ -182,7 +193,7 @@ export function ClientsProvider({ children }) {
       getClient,
       getDocumentUrl: clientService.getDocumentUrl,
     }),
-    [clients, loading, error, refresh, addClient, updateClient, addDocument, removeDocument, archiveClient, restoreClient, deleteClient, getClient]
+    [clients, loading, error, refresh, addClient, updateClient, addDocument, uploadDocumentRecord, removeDocument, archiveClient, restoreClient, deleteClient, getClient]
   );
 
   return <ClientsContext.Provider value={value}>{children}</ClientsContext.Provider>;

@@ -12,6 +12,7 @@ import { InventoryProvider } from "./context/InventoryContext";
 import { ServicesProvider } from "./context/ServicesContext";
 import { SchedulingProvider } from "./context/SchedulingContext";
 import { NotificationsProvider } from "./context/NotificationsContext";
+import { BillingProvider } from "./context/BillingContext";
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import RoleBasedRoute from "./components/auth/RoleBasedRoute";
@@ -33,6 +34,7 @@ import ClientDetailPage from "./pages/ClientDetailPage";
 import InventoryPage from "./pages/InventoryPage";
 import SchedulingPage from "./pages/SchedulingPage";
 import ServicesPage from "./pages/ServicesPage";
+import BillingPage from "./pages/BillingPage";
 
 import { SUBSYSTEMS } from "./utils/permissions";
 import { isSupabaseConfigured } from "./services/supabaseClient";
@@ -79,6 +81,7 @@ function App() {
             <InventoryProvider>
               <ServicesProvider>
               <SchedulingProvider>
+                <BillingProvider>
                 <NotificationsProvider>
                 <Routes>
                 <Route path="/login" element={<LoginPage />} />
@@ -118,6 +121,10 @@ function App() {
                   element={<Guarded subsystem={SUBSYSTEMS.SCHEDULING} action="view"><SchedulingPage /></Guarded>}
                 />
                 <Route
+                  path="/billing"
+                  element={<Guarded subsystem={SUBSYSTEMS.BILLING} action="view"><BillingPage /></Guarded>}
+                />
+                <Route
                   path="/services"
                   element={<Guarded subsystem={SUBSYSTEMS.SETTINGS} action="view"><ServicesPage /></Guarded>}
                 />
@@ -132,6 +139,7 @@ function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
                 </NotificationsProvider>
+                </BillingProvider>
               </SchedulingProvider>
               </ServicesProvider>
             </InventoryProvider>

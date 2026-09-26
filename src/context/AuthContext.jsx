@@ -123,14 +123,13 @@ export function AuthProvider({ children }) {
     refreshAccounts();
   }, [session, sessionVerified, refreshAccounts]);
 
+  // Keyed on the token, like the check above: verifying merges the profile into
+  // `session`, and keying on the object reset sessionVerified to false straight
+  // after it had been verified, leaving it there (billing then sat on
+  // "Loading…" for good).
   useEffect(() => {
-    if (!session) {
-      setSessionVerified(true);
-      return;
-    }
-
-    setSessionVerified(false);
-  }, [session]);
+    setSessionVerified(!sessionToken);
+  }, [sessionToken]);
 
   const login = useCallback(async (email, password, { remember = false } = {}) => {
     const { session: nextSession, profile, error: loginError } = await authService.login(email, password);

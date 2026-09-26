@@ -1,21 +1,27 @@
 // Technician view: "Your day". Phone first, and a proper two-column page on a
 // computer, in the same parchment-and-maroon theme as the office dashboard.
 //
-//   - four figures for the day: visits, done, work left, reports to file;
-//   - the day as a timeline of points, one per visit: done, now, later;
+//   - a plain header: the date, the greeting, and a thin bar for the day's
+//     progress;
+//   - four figures for the day in one joined strip: visits, done, work left,
+//     reports to file;
+//   - the next seven days as a strip, with how many visits each holds;
+//   - Today's visits, always there: the day as a timeline of points (done,
+//     now, later), or "No visits today" with the next one booked;
 //   - the Up next card: where, what, the site note, Directions, Call site, and
 //     the one big action — Start visit, or Continue once it is under way;
 //   - Later today, Done (with a "Sign" nudge where the customer has not
 //     signed), and any reports still owed from earlier this week;
-//   - beside them on a wide screen (below on a phone): the rest of the week,
-//     stock they have checked out (migration 054) and their time off (057).
+//   - beside them on a wide screen (below on a phone), joined into one panel:
+//     their month so far, the rest of the week, stock they have checked out
+//     (migration 054) and their time off (057).
 //
 // Appointment reads are scoped to the signed-in technician by migration 030,
 // so every figure here is theirs.
 
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Bug, CalendarDays, Check, MapPin, Navigation, Package, Phone, Plane } from "lucide-react";
+import { ArrowRight, BarChart3, Bug, CalendarDays, CalendarX2, Check, MapPin, Navigation, Package, Phone, Plane } from "lucide-react";
 import useAuth from "../../hooks/useAuth";
 import useClients from "../../hooks/useClients";
 import useInventory from "../../hooks/useInventory";
@@ -69,7 +75,7 @@ function VisitRow({ time, title, detail, badge, to }) {
 /** One figure for the day. */
 function Stat({ label, value, tone }) {
   return (
-    <div style={{ ...card, padding: "12px 14px" }}>
+    <div style={{ background: surface.panel, padding: "14px 16px" }}>
       <div style={{ fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: neutral.bark }}>{label}</div>
       <div style={{ marginTop: "2px", font: `500 24px/1.2 ${font.display}`, color: tone === "danger" ? semantic.danger : neutral.ink }}>{value}</div>
     </div>
@@ -121,6 +127,61 @@ function DayTimeline({ visits, upNext, clientName }) {
           </li>
         );
       })}
+    </ol>
+  );
+}
+
+/** Today's visits, always shown: the timeline, or an empty day with the next visit. */
+function TodaysVisits({ visits, upNext, clientName, nextVisit, loading }) {
+  return (
+    <section aria-label="Today's visits" style={{ ...card, marginTop: "18px", padding: "16px 18px 18px" }}>
+      <h2 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px", font: `500 17px/1.3 ${font.display}`, color: neutral.ink }}>
+        <CalendarDays size={17} aria-hidden="true" style={{ color: brand.base }} /> Today's visits
+        {visits.length > 0 && <span style={{ marginLeft: "auto", fontSize: "13px", fontFamily: "inherit", color: neutral.saddle }}>{visits.filter(isDone).length} of {visits.length} done</span>}
+      </h2>
+      {visits.length > 0 ? (
+        <DayTimeline visits={visits} upNext={upNext} clientName={clientName} />
+      ) : (
+        <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "14px", padding: "14px 16px", borderRadius: radius.control, background: surface.sunken }}>
+          <span aria-hidden="true" style={{ width: "40px", height: "40px", borderRadius: "50%", display: "grid", placeItems: "center", background: surface.panel, color: brand.base, flexShrink: 0 }}>
+            <CalendarX2 size={20} />
+          </span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: "block", font: `500 16px/1.3 ${font.display}`, color: neutral.ink }}>{loading ? "Loading…" : "No visits today"}</span>
+            <span style={{ display: "block", fontSize: "13px", color: neutral.saddle }}>
+              {nextVisit
+                ? <>Next: <Link to={`/scheduling?appointment=${encodeURIComponent(nextVisit.id)}`} style={{ color: brand.base }}>{clientName(nextVisit)}</Link>, {new Date(nextVisit.scheduledAt).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })} at {clock(nextVisit.scheduledAt)}</>
+                : <>Nothing else booked for you yet. New visits show up here and on the <Link to="/scheduling" style={{ color: brand.base }}>schedule</Link>.</>}
+            </span>
+          </span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** The next seven days, starting today: how many visits each one holds. */
+function WeekStrip({ days }) {
+  return (
+    <ol aria-label="Your next seven days" className="dash-joined" style={{ listStyle: "none", padding: 0, marginTop: "14px", gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
+      {days.map((day) => (
+        <li
+          key={day.key}
+          aria-label={`${day.date.toLocaleDateString([], { weekday: "long" })}: ${day.count} ${day.count === 1 ? "visit" : "visits"}`}
+          style={{ background: day.isToday ? brand.wash : surface.panel, color: day.isToday ? brand.base : neutral.ink, boxShadow: day.isToday ? `inset 0 -2px 0 ${brand.base}` : "none", padding: "10px 4px", display: "grid", justifyItems: "center", gap: "2px" }}
+        >
+          <span style={{ fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: day.isToday ? "inherit" : neutral.bark }}>
+            {day.date.toLocaleDateString([], { weekday: "short" })}
+          </span>
+          <span style={{ font: `500 20px/1.2 ${font.display}` }}>{day.date.getDate()}</span>
+          <span aria-hidden="true" style={{ display: "flex", gap: "3px", minHeight: "6px" }}>
+            {Array.from({ length: Math.min(day.count, 4) }, (_, index) => (
+              <span key={index} style={{ width: "5px", height: "5px", borderRadius: "50%", background: brand.base }} />
+            ))}
+          </span>
+          <span style={{ fontSize: "11px", color: day.isToday ? "inherit" : neutral.saddle }}>{day.count ? `${day.count} visit${day.count === 1 ? "" : "s"}` : "Free"}</span>
+        </li>
+      ))}
     </ol>
   );
 }
@@ -221,7 +282,7 @@ function UpNextCard({ appointment, client, crewNames, me, onStart, starting, now
 /** A card in the side column. */
 function SideCard({ title, Icon, children }) {
   return (
-    <section aria-label={title} style={{ ...card, padding: "14px 16px" }}>
+    <section aria-label={title} style={{ background: surface.panel, padding: "14px 16px" }}>
       <h3 style={{ margin: "0 0 8px", display: "flex", alignItems: "center", gap: "8px", font: `500 15px/1.3 ${font.display}`, color: neutral.ink }}>
         <Icon size={16} aria-hidden="true" style={{ color: brand.base }} /> {title}
       </h3>
@@ -229,6 +290,15 @@ function SideCard({ title, Icon, children }) {
     </section>
   );
 }
+
+const plainLink = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "5px",
+  color: brand.base,
+  textDecoration: "none",
+  fontWeight: weight.medium,
+};
 
 const sideEmpty = { margin: 0, color: neutral.bark, fontSize: "13px" };
 const sideRow = { display: "flex", justifyContent: "space-between", gap: "10px", padding: "7px 0", borderTop: `1px solid ${colors.line}`, fontSize: "13px" };
@@ -268,6 +338,23 @@ function TechnicianDashboard() {
   const carrying = openCheckouts(movements).filter(({ checkout }) => checkout.technicianId === me);
   const timeOff = currentAndUpcoming(absences.filter((absence) => absence.technicianId === me), todayKey);
 
+  // Their live visits, for the week strip, the next visit and the month.
+  const mine = appointments.filter((entry) => isAssignedTo(entry, me) && entry.status !== "Cancelled");
+  const nextVisit = mine
+    .filter((entry) => !isDone(entry) && dayKey(entry.scheduledAt) > todayKey)
+    .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))[0] || null;
+  const weekDays = Array.from({ length: 7 }, (_, offset) => {
+    const date = new Date(now);
+    date.setDate(date.getDate() + offset);
+    const key = dayKey(date);
+    return { key, date, isToday: offset === 0, count: mine.filter((entry) => dayKey(entry.scheduledAt) === key).length };
+  });
+  const monthKey = todayKey.slice(0, 7);
+  const thisMonth = mine.filter((entry) => dayKey(entry.scheduledAt).slice(0, 7) === monthKey);
+  const monthDone = thisMonth.filter(isDone).length;
+  const monthReports = thisMonth.filter((entry) => entry.reportSubmitted).length;
+  const dayProgress = today.length ? Math.round((done.length / today.length) * 100) : 0;
+
   const handleStart = async () => {
     if (!upNext) return;
     if (upNext.status === "In progress") {
@@ -292,22 +379,42 @@ function TechnicianDashboard() {
 
   return (
     <div style={{ maxWidth: "1120px", margin: "0 auto" }}>
-      <p style={{ margin: 0, fontSize: "11.5px", letterSpacing: "0.09em", textTransform: "uppercase", color: neutral.saddle }}>
-        {now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}
-      </p>
-      <h1 style={{ margin: "4px 0 0", font: `500 30px/1.2 ${font.display}`, letterSpacing: "-0.33px" }}>
-        Your day{firstName(currentUser) ? `, ${firstName(currentUser)}` : ""}
-      </h1>
-      <p style={{ margin: "8px 0 0", color: neutral.saddle }}>{summary}</p>
+      <header>
+        <p style={{ margin: 0, fontSize: "11.5px", letterSpacing: "0.09em", textTransform: "uppercase", color: neutral.saddle }}>
+          {now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}
+        </p>
+        <div style={{ display: "flex", alignItems: "baseline", gap: "12px", flexWrap: "wrap" }}>
+          <h1 style={{ margin: "4px 0 0", font: `500 30px/1.2 ${font.display}`, letterSpacing: "-0.33px" }}>
+            Your day{firstName(currentUser) ? `, ${firstName(currentUser)}` : ""}
+          </h1>
+          <span style={{ display: "flex", gap: "14px", marginLeft: "auto", fontSize: "13px" }}>
+            <Link to="/scheduling" style={plainLink}><CalendarDays size={14} aria-hidden="true" /> Schedule</Link>
+            <Link to="/inventory" style={plainLink}><Package size={14} aria-hidden="true" /> Stock</Link>
+          </span>
+        </div>
+        <p style={{ margin: "6px 0 0", color: neutral.saddle }}>{summary}</p>
+        <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
+          <div
+            role="progressbar"
+            aria-label="Today's visits done"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={dayProgress}
+            style={{ flex: 1, height: "4px", borderRadius: "2px", background: surface.sunken, overflow: "hidden" }}
+          >
+            <span style={{ display: "block", height: "100%", width: `${dayProgress}%`, background: brand.base }} />
+          </div>
+          <span style={{ fontSize: "12px", color: neutral.bark, whiteSpace: "nowrap" }}>{today.length ? `${dayProgress}% of today done` : "A free day"}</span>
+        </div>
+      </header>
 
-      <div className="tech-day-stats" style={{ marginTop: "16px" }}>
+      <div className="tech-day-stats dash-joined" style={{ marginTop: "14px" }}>
         <Stat label="Visits today" value={today.length} />
         <Stat label="Done" value={done.length} />
         <Stat label="Work left" value={minutesLeft ? formatDuration(minutesLeft) : "—"} />
         <Stat label="Reports to file" value={owed.length + today.filter((entry) => isDone(entry) && !entry.reportSubmitted).length} tone={owed.length ? "danger" : undefined} />
       </div>
 
-      <DayTimeline visits={today} upNext={upNext} clientName={clientName} />
 
       {error && (
         <p role="alert" style={{ margin: "16px 0 0", padding: "10px 12px", borderRadius: radius.control, background: semantic.dangerSurface, color: semantic.danger }}>
@@ -315,8 +422,12 @@ function TechnicianDashboard() {
         </p>
       )}
 
+      <WeekStrip days={weekDays} />
+
       <div className="tech-day-grid">
         <div style={{ minWidth: 0 }}>
+          <TodaysVisits visits={today} upNext={upNext} clientName={clientName} nextVisit={nextVisit} loading={loading} />
+
           {upNext && (
             <UpNextCard
               appointment={upNext}
@@ -389,18 +500,20 @@ function TechnicianDashboard() {
             </>
           )}
 
-          {!loading && today.length === 0 && owed.length === 0 && (
-            <p style={{ marginTop: "20px", color: neutral.bark }}>
-              Nothing waiting. Your upcoming visits are on the{" "}
-              <Link to="/scheduling" style={{ color: brand.base }}>
-                schedule
-              </Link>
-              .
-            </p>
-          )}
         </div>
 
-        <aside aria-label="More about your week" style={{ display: "grid", gap: "14px", alignContent: "start", marginTop: "18px" }}>
+        <aside aria-label="More about your week" className="dash-joined" style={{ alignContent: "start", marginTop: "18px" }}>
+          <SideCard title="Your month" Icon={BarChart3}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "8px", textAlign: "center" }}>
+              {[["Visits", thisMonth.length], ["Done", monthDone], ["Reports", monthReports]].map(([label, value]) => (
+                <div key={label} style={{ padding: "8px 4px", borderRadius: radius.control, background: surface.sunken }}>
+                  <div style={{ font: `500 20px/1.2 ${font.display}`, color: neutral.ink }}>{value}</div>
+                  <div style={{ fontSize: "11px", letterSpacing: "0.06em", textTransform: "uppercase", color: neutral.bark }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </SideCard>
+
           <SideCard title="This week" Icon={CalendarDays}>
             {thisWeek.length === 0 ? (
               <p style={sideEmpty}>No more visits booked this week.</p>

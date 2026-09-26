@@ -63,11 +63,10 @@ export function StatTile({ label, value, note, tone = "plain", title }) {
   );
 }
 
+/** Tiles side by side, joined: shared hairline edges, no gaps between them. */
 export function TileRow({ children, min = "170px" }) {
-  return <div style={{
-    display: "grid",
+  return <div className="dash-joined" style={{
     gridTemplateColumns: `repeat(auto-fit, minmax(${min}, 1fr))`,
-    gap: "0.75rem",
   }}>{children}</div>;
 }
 

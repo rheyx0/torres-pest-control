@@ -8,9 +8,11 @@
 //
 // The person printing picks "Save as PDF" in the browser's print dialog.
 
-import { COMPANY } from "../../utils/constants";
+import { ACTIVITY_LEVELS, COMPANY } from "../../utils/constants";
 import { formatDate, formatDateTime, formatPeso } from "../../utils/formatters";
 import { appointmentReference } from "../../utils/scheduling";
+
+const activityLabel = (value) => ACTIVITY_LEVELS.find((level) => level.value === value)?.label || value;
 
 function Row({ label, value }) {
   return (
@@ -82,6 +84,11 @@ function ServiceReportDocument({ appointment, client, technician, technicians = 
       </table>
 
       <Block title="Inspection findings">{appointment.report}</Block>
+      {(appointment.activityLevel || appointment.openIssues) && (
+        <Block title="Site monitoring">
+          {[appointment.activityLevel && `Pest activity: ${activityLabel(appointment.activityLevel)}`, appointment.openIssues && `Open issues: ${appointment.openIssues}`].filter(Boolean).join("\n")}
+        </Block>
+      )}
       {/* The services performed are the row above. Treatment notes are no
           longer taken; a report filed with some still prints them. */}
       {appointment.treatmentPerformed && <Block title="Treatment notes">{appointment.treatmentPerformed}</Block>}

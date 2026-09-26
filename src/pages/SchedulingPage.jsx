@@ -23,9 +23,11 @@ import useClients from "../hooks/useClients";
 import useInventory from "../hooks/useInventory";
 import useUsers from "../hooks/useUsers";
 import useServices from "../hooks/useServices";
+import { useOptionalBilling } from "../hooks/useBilling";
+import { canBookFromQuote } from "../utils/billing";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
-import { APPOINTMENT_STATUSES, ATTACHMENT_CATEGORIES, DOCUMENT_CATEGORIES, PEST_CONCERN_SUGGESTIONS, REPORT_UPLOAD_CATEGORIES, ROLES, LIMITS, SERVICE_FREQUENCIES } from "../utils/constants";
+import { ACTIVITY_LEVELS, APPOINTMENT_STATUSES, ATTACHMENT_CATEGORIES, DOCUMENT_CATEGORIES, PEST_CONCERN_SUGGESTIONS, REPORT_UPLOAD_CATEGORIES, ROLES, LIMITS, SERVICE_FREQUENCIES } from "../utils/constants";
 import useNow from "../hooks/useNow";
 import { CALENDAR_END_HOUR, DAY_END_HOUR, DAY_START_HOUR, SCHEDULE_END_HOUR, allowedNextStatuses, appointmentReference, combineServices, servicesOf, bookableTechnicians, busyTechnicianIds, canTransition, crewOf, dayLoad, describeSlotConflict, findTechnicianConflicts, isAssignedTo, endOf, layoutDayAppointments, moveSteps, startOf, technicianHours } from "../utils/scheduling";
 import {
@@ -56,6 +58,8 @@ import NewAppointmentModal from "../components/scheduling/NewAppointmentModal";
 import TechnicianUnavailableModal from "../components/scheduling/TechnicianUnavailableModal";
 import TechnicianPicker from "../components/scheduling/TechnicianPicker";
 import PlanPanel from "../components/scheduling/PlanPanel";
+import VisitExtras from "../components/billing/VisitExtras";
+import VisitBillingLink from "../components/billing/VisitBillingLink";
 import SchedulingToolbar, { MODES, isCalendarMode } from "../components/scheduling/SchedulingToolbar";
 import {
   fullDayWindow,
@@ -93,6 +97,7 @@ function SchedulingPage() {
   const { staff, technicians } = useUsers();
   const { activeServices, serviceById, serviceByName } = useServices();
   const { appointments, absences, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
+  const billing = useOptionalBilling();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState(MODES.WEEK);
@@ -168,6 +173,66 @@ function SchedulingPage() {
     next.delete("client");
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, isTechnician]);
+  // Billing's "Book visit" lands here as ?quote=<id> (Sprint 3): open the form
+  // with the quote's client, services and price. The visits are linked to the
+  // quote once booked. Waits for billing to load; drops the param after.
+  useEffect(() => {
+    const quoteId = searchParams.get("quote");
+    if (!quoteId || isTechnician || !billing || billing.loading) return;
+    const quote = billing.quoteById(quoteId);
+    const booking = quote ? canBookFromQuote(quote, billing.paymentsForQuote(quote.id)) : { ok: false, reason: "That quote was not found." };
+    if (booking.ok) {
+      setCreateClientId(quote.clientId);
+      setCreateScheduledAt("");
+      setCreatePrefill({
+        quoteId: quote.id,
+        quoteReference: quote.reference,
+        serviceIds: quote.lines.filter((line) => line.kind === "SERVICE" && line.serviceId).map((line) => line.serviceId),
+        price: quote.total,
+      });
+      setCreateOpen(true);
+    } else {
+      showError(booking.reason);
+      setMessage(booking.reason);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("quote");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, billing?.loading, billing?.quotes, isTechnician]);
+
+  // A contract's "Book visits" lands here as ?contract=<id> (migration 063):
+  // the form opens as a recurring plan with its services, frequency, price
+  // per visit and length; once booked, the plan is linked to the contract.
+  useEffect(() => {
+    const contractId = searchParams.get("contract");
+    if (!contractId || isTechnician || !billing || billing.loading) return;
+    const contract = billing.contractById(contractId);
+    if (contract?.status === "ACTIVE") {
+      const today = localDateKey(new Date());
+      setCreateClientId(contract.clientId);
+      setCreateScheduledAt(contract.startsOn > today ? `${contract.startsOn}T09:00` : "");
+      setCreatePrefill({
+        contractId: contract.id,
+        contractReference: contract.reference,
+        serviceIds: contract.serviceIds,
+        frequency: contract.frequency,
+        price: contract.pricePerVisit,
+        visitCount: contract.visitCount,
+        until: contract.endsOn,
+      });
+      setCreateOpen(true);
+    } else {
+      const reason = contract ? `Contract ${contract.reference} is not active.` : "That contract was not found.";
+      showError(reason);
+      setMessage(reason);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("contract");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, billing?.loading, billing?.contracts, isTechnician]);
+
   // Clients to book next: re-service due, and recurring plans running out.
   // The same list as Today's "Needs attention" (one window for both).
   const reminders = useMemo(() => bookingReminders(appointments, clients, now), [appointments, clients, now]);
@@ -487,6 +552,8 @@ function SchedulingPage() {
       treatmentPerformed: selected.treatmentPerformed || "",
       recommendations: (form.get("recommendations") || "").trim(),
       followUpDate: form.get("followUpDate") || "",
+      activityLevel: form.get("activityLevel") || "",
+      openIssues: (form.get("openIssues") || "").trim(),
     };
     if (!report.findings) {
       showError("Inspection findings are required.");
@@ -538,9 +605,13 @@ function SchedulingPage() {
       setMessage(result);
       return;
     }
-    setMessage(confirmation
+    const message = confirmation
       ? "Completion confirmed. Service marked Completed."
-      : "Report saved. Confirm completion with the customer's signature to close this visit.");
+      : selected.status === "Completed"
+        ? "Report updated."
+        : "Report saved. Confirm completion with the customer's signature to close this visit.";
+    setMessage(message);
+    showSuccess(message);
   };
 
   const printServiceForm = (appointment) => {
@@ -622,7 +693,7 @@ function SchedulingPage() {
     if (refusal) return refusal;
     const result = await createAppointment(fields);
     if (typeof result === "string") return result;
-    return showBooked(result, "Appointment created.");
+    return showBooked(result, await linkToSource(fields.source, [result.id], "Appointment created."));
   };
 
   // A plan, or one visit with several services (migration 052). The form has
@@ -631,10 +702,54 @@ function SchedulingPage() {
     const result = await bookAppointments(booking);
     if (typeof result === "string") return result;
     const count = booking.visits.length;
-    return showBooked(result, booking.kind === "MULTI_DAY"
+    return showBooked(result, await linkToSource(booking.source, result?.bookedIds || [], booking.kind === "MULTI_DAY"
       ? `${count}-day job booked.`
-      : booking.kind ? `${count} visits booked.` : "Appointment created.");
+      : booking.kind ? `${count} visits booked.` : "Appointment created."));
   };
+
+  // Booked under a quote or contract (picked in the form, or arriving from the
+  // Billing page): tie the new visits to it. The visits stand either way; a
+  // failed link is reported so the office can see it and link it later from
+  // the visit's Overview.
+  const linkToSource = async (source, ids, message) => {
+    if (!source || !billing || ids.length === 0) return message;
+    const record = source.type === "contract" ? billing.contractById(source.id) : billing.quoteById(source.id);
+    const reference = record?.reference || (source.type === "contract" ? "the contract" : "the quote");
+    const linked = source.type === "contract"
+      ? await billing.linkContractPlan(source.id, ids[0])
+      : await billing.linkQuoteAppointments(source.id, ids);
+    if (typeof linked === "string") {
+      showError(`Booked, but not linked to ${reference}: ${linked}`);
+      return `${message} Not linked to ${reference}: ${linked}`;
+    }
+    return `${message} Linked to ${source.type} ${reference}.`;
+  };
+
+  // What the booking form offers to book under: the client's approved quotes
+  // (only those whose down payment is in can be picked) and active contracts
+  // not yet booked. Null without billing, so the form shows no picker.
+  const billingSources = useMemo(() => {
+    if (!billing?.office || !billing.available) return null;
+    return {
+      quotes: billing.quotes
+        .filter((quote) => quote.status === "APPROVED")
+        .map((quote) => {
+          const check = canBookFromQuote(quote, billing.paymentsForQuote(quote.id));
+          return {
+            id: quote.id, clientId: quote.clientId, label: `${quote.reference} · ${formatPeso(quote.total)}`, bookable: check.ok, reason: check.reason,
+            // What picking it fills in on the form.
+            serviceIds: quote.lines.filter((line) => line.kind === "SERVICE" && line.serviceId).map((line) => line.serviceId),
+            price: quote.total,
+          };
+        }),
+      contracts: (billing.contracts || [])
+        .filter((contract) => contract.status === "ACTIVE" && !contract.planId)
+        .map((contract) => ({
+          id: contract.id, clientId: contract.clientId, label: `${contract.reference} · ${contract.title}`,
+          serviceIds: contract.serviceIds, frequency: contract.frequency, visitCount: contract.visitCount, until: contract.endsOn, price: contract.pricePerVisit,
+        })),
+    };
+  }, [billing]);
 
   // Book the next visit for a client due for re-service, or renew a plan that
   // is running out: the last visit's services, frequency and pest concern come
@@ -1018,6 +1133,11 @@ function SchedulingPage() {
           initialServiceIds={createPrefill?.serviceIds || []}
           initialFrequency={createPrefill?.frequency || ""}
           initialPestConcern={createPrefill?.pestConcern || ""}
+          initialPrice={createPrefill?.price ?? ""}
+          initialVisitCount={createPrefill?.visitCount || null}
+          initialUntil={createPrefill?.until || ""}
+          billingSources={billingSources}
+          initialSource={createPrefill?.quoteId ? `quote:${createPrefill.quoteId}` : createPrefill?.contractId ? `contract:${createPrefill.contractId}` : ""}
           onClose={() => {
             setCreateOpen(false);
             setCreateClientId("");
@@ -1735,6 +1855,8 @@ function AppointmentPanel({
                   onSave={onSave}
                 />
               </fieldset>
+              <VisitBillingLink appointment={appointment} />
+              <VisitExtras appointment={appointment} />
             </>
           )}
 
@@ -1805,6 +1927,27 @@ function AppointmentPanel({
                               placeholder="What did the technician observe?"
                               style={{ ...inputStyle, resize: "vertical", whiteSpace: "pre-wrap", width: "100%" }}
                               required
+                            />
+                          </label>
+
+                          {/* Site monitoring (migration 063): tracked over time on the client profile. */}
+                          <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 500, fontSize: "0.82rem" }}>
+                            Pest activity found
+                            <select name="activityLevel" defaultValue={appointment.activityLevel || ""} style={{ ...inputStyle, width: "100%" }}>
+                              <option value="">Not recorded</option>
+                              {ACTIVITY_LEVELS.map((level) => <option key={level.value} value={level.value}>{level.label}</option>)}
+                            </select>
+                          </label>
+
+                          <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 500, fontSize: "0.82rem" }}>
+                            Open issues at the site
+                            <textarea
+                              name="openIssues"
+                              defaultValue={appointment.openIssues}
+                              rows={2}
+                              maxLength={2000}
+                              placeholder="e.g. Leaking pipe under the sink feeding the termites"
+                              style={{ ...inputStyle, resize: "vertical", width: "100%" }}
                             />
                           </label>
 

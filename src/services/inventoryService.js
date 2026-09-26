@@ -18,7 +18,7 @@ export const INVENTORY_STATUS = {
   DISABLED: "DISABLED",
 };
 
-const COLUMNS = `
+const BASE_COLUMNS = `
   id, name, type, quantity, unit, cost, supplier, storage_location, reorder_level, status,
   purchase_unit, usage_unit, conversion_multiplier, created_by, intake_branch_or_station,
   created_at, updated_at,
@@ -26,6 +26,14 @@ const COLUMNS = `
   serial_number, condition, last_maintenance_date, next_maintenance_date, manufacturer, model,
   material_category, description
 `;
+
+// The customer price (migration 060). Read and written only once the database
+// has the columns: the first load finds out, and the item list still loads on
+// a database the migration has not reached.
+const PRICING_COLUMNS = "price_mode, customer_price, markup_percent";
+let pricingAvailable = true;
+const COLUMNS_NOW = () => (pricingAvailable ? `${BASE_COLUMNS}, ${PRICING_COLUMNS}` : BASE_COLUMNS);
+const mentionsPricing = (error) => /price_mode|customer_price|markup_percent/.test(`${error?.message || ""} ${error?.details || ""}`);
 
 const MOVEMENT_COLUMNS = `
   id, item_id, amount, quantity_delta, movement_date, reference, actor, intake_branch_or_station, movement_type, appointment_id, unit_cost, total_cost, created_at,
@@ -94,6 +102,11 @@ export function mapInventoryRow(row) {
     description: row.description,
     createdBy: row.created_by,
     intakeBranchOrStation: row.intake_branch_or_station || "",
+
+    // What the client pays per unit (migration 060); see utils/pricing.js.
+    priceMode: row.price_mode || "MARKUP",
+    customerPrice: row.customer_price === null || row.customer_price === undefined ? null : Number(row.customer_price),
+    markupPercent: Number(row.markup_percent) || 0,
   };
 }
 
@@ -137,6 +150,13 @@ function buildPayload(item) {
     intake_branch_or_station: nullIfBlank(item.intakeBranchOrStation),
   };
 
+  // The customer price (060), only when the form sent it and the columns exist.
+  if (pricingAvailable && item.priceMode) {
+    payload.price_mode = item.priceMode === "FIXED" ? "FIXED" : "MARKUP";
+    payload.customer_price = item.priceMode === "FIXED" ? Number(item.customerPrice) || 0 : null;
+    payload.markup_percent = item.priceMode === "FIXED" ? 0 : Number(item.markupPercent) || 0;
+  }
+
   // Only send the block that matches the type, so switching type doesn't leave
   // stale values from another sub-type behind.
   if (item.type === "CHEMICAL") {
@@ -166,10 +186,13 @@ function buildPayload(item) {
 // ---------------------------------------------------------------------------
 
 export async function fetchInventory() {
-  const { data, error } = await supabase
-    .from("inventory")
-    .select(COLUMNS)
-    .order("created_at", { ascending: false });
+  const select = () => supabase.from("inventory").select(COLUMNS_NOW()).order("created_at", { ascending: false });
+  let { data, error } = await select();
+  // Before migration 060: read (and later write) items without the customer price.
+  if (error && pricingAvailable && mentionsPricing(error)) {
+    pricingAvailable = false;
+    ({ data, error } = await select());
+  }
 
   if (error) return { error: describeError(error), inventory: [] };
   return { error: null, inventory: (data || []).map(mapInventoryRow) };
@@ -178,7 +201,7 @@ export async function fetchInventory() {
 export async function createItem(item, actorId, inventory) {
   const { data: currentRows, error: inventoryError } = await supabase
     .from("inventory")
-    .select(COLUMNS);
+    .select(COLUMNS_NOW());
 
   if (inventoryError) return { error: describeError(inventoryError) };
 
@@ -192,7 +215,7 @@ export async function createItem(item, actorId, inventory) {
     // Quantity starts at zero by design. It is never supplied by the form;
     // Stock In is the only user-facing operation that can increase it.
     .insert({ ...buildPayload(item), quantity: 0, created_by: actorId || null })
-    .select(COLUMNS)
+    .select(COLUMNS_NOW())
     .single();
 
   if (error) return { error: describeError(error) };
@@ -202,7 +225,7 @@ export async function createItem(item, actorId, inventory) {
 export async function updateItem(itemId, item, inventory) {
   const { data: currentRows, error: inventoryError } = await supabase
     .from("inventory")
-    .select(COLUMNS);
+    .select(COLUMNS_NOW());
 
   if (inventoryError) return { error: describeError(inventoryError) };
 
@@ -215,7 +238,7 @@ export async function updateItem(itemId, item, inventory) {
     .from("inventory")
     .update(buildPayload(item))
     .eq("id", itemId)
-    .select(COLUMNS)
+    .select(COLUMNS_NOW())
     .single();
 
   if (error) return { error: describeError(error) };
@@ -239,7 +262,7 @@ export async function updateItemBasics(itemId, { name, type, unit }) {
     .from("inventory")
     .update({ name: name?.trim(), type, unit })
     .eq("id", itemId)
-    .select(COLUMNS)
+    .select(COLUMNS_NOW())
     .single();
 
   if (error) return { error: describeError(error) };
@@ -251,7 +274,7 @@ export async function setItemStatus(itemId, status) {
     .from("inventory")
     .update({ status })
     .eq("id", itemId)
-    .select(COLUMNS)
+    .select(COLUMNS_NOW())
     .single();
 
   if (error) return { error: describeError(error) };

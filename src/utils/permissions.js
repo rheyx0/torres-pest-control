@@ -22,6 +22,10 @@ export const SUBSYSTEMS = {
   SCHEDULING: "scheduling",
   LOGS: "logs",
   SETTINGS: "settings",
+  // Quotes, invoices and payments (Sprint 3). Mirrors the database: the office
+  // reads and writes billing (assert_billing_office), only an admin reverses
+  // or voids ("delete" here), and technicians have none.
+  BILLING: "billing",
 };
 
 const ALL = ["view", "create", "edit", "delete"];
@@ -37,6 +41,7 @@ const MATRIX = {
     scheduling: ALL,
     logs: READ_ONLY,
     settings: ALL,
+    billing: ALL,
   },
   [ROLES.STAFF]: {
     users: NONE,
@@ -46,6 +51,7 @@ const MATRIX = {
     scheduling: ["view", "edit"],
     logs: NONE,
     settings: NONE,
+    billing: ["view", "create", "edit"],
   },
   [ROLES.TECHNICIAN]: {
     users: NONE,
@@ -55,6 +61,7 @@ const MATRIX = {
     scheduling: ["view", "edit"],
     logs: NONE,
     settings: NONE,
+    billing: NONE,
   },
 };
 

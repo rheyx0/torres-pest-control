@@ -31,6 +31,7 @@ import { INVENTORY_STATUS } from "../services/inventoryService";
 import { ACCOUNT_STATUS, LIMITS, RETURN_REASONS, RETURN_REASON_LABELS, STOCK_OUT_REASONS, STOCK_OUT_REASON_LABELS } from "../utils/constants";
 import { checkoutOf, heldByItem, openCheckouts } from "../utils/custody";
 import { usableBatches } from "../utils/batches";
+import { customerPrice, itemMargin } from "../utils/pricing";
 import BatchSelect from "../components/inventory/BatchSelect";
 import BatchList from "../components/inventory/BatchList";
 import { crewOf } from "../utils/scheduling";
@@ -70,7 +71,68 @@ const CREATE_FORM_DEFAULTS = {
   model: "",
   materialCategory: "SUPPLIES",
   description: "",
+  // What the client pays per unit (migration 060): a markup on cost, or fixed.
+  priceMode: "MARKUP",
+  markupPercent: "",
+  customerPrice: "",
 };
+
+/**
+ * The customer-price inputs of the Add and Edit item forms, exported for
+ * tests. Returns an error string, or null.
+ */
+export function validateCustomerPrice(values) {
+  if (values.priceMode === "FIXED") {
+    if (values.customerPrice === "" || values.customerPrice === null || values.customerPrice === undefined) {
+      return "Enter the customer price, or price it as a markup on cost.";
+    }
+    return validateMoney(values.customerPrice, { max: LIMITS.MAX_UNIT_COST, label: "Customer price" });
+  }
+  if (values.markupPercent === "" || values.markupPercent === null || values.markupPercent === undefined) return null;
+  const percent = Number(values.markupPercent);
+  if (!Number.isFinite(percent) || percent < 0 || percent > 1000) return "Enter a markup from 0 to 1000%.";
+  return null;
+}
+
+/**
+ * How much the client pays per unit: a markup on the internal cost, or a
+ * fixed price. Shows the price and the profit it leaves as the numbers change.
+ */
+function CustomerPriceFields({ values, onChange }) {
+  const item = {
+    cost: Number(values.cost) || 0,
+    priceMode: values.priceMode,
+    markupPercent: Number(values.markupPercent) || 0,
+    customerPrice: Number(values.customerPrice) || 0,
+  };
+  const { price, profit, percent } = itemMargin(item);
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", alignItems: "start", marginTop: "1rem" }}>
+      <Field label="Customer price" hint="What a client is charged per unit, e.g. for extra materials.">
+        <select name="priceMode" aria-label="Customer price type" value={values.priceMode} onChange={onChange} style={inputStyle}>
+          <option value="MARKUP">Markup on cost</option>
+          <option value="FIXED">Fixed price</option>
+        </select>
+      </Field>
+      {values.priceMode === "FIXED" ? (
+        <Field label="Price per unit (₱) *">
+          <input name="customerPrice" aria-label="Customer price per unit" type="number" min="0" max={LIMITS.MAX_UNIT_COST} step="0.01" value={values.customerPrice} onChange={onChange} style={inputStyle} placeholder="0.00" />
+        </Field>
+      ) : (
+        <Field label="Markup (%)">
+          <input name="markupPercent" aria-label="Markup percent" type="number" min="0" max="1000" step="1" value={values.markupPercent} onChange={onChange} style={inputStyle} placeholder="0" />
+        </Field>
+      )}
+      <div role="status" style={{ alignSelf: "center", color: "#50463c", fontSize: "0.82rem", lineHeight: 1.5 }}>
+        Client pays <strong style={{ color: "#211b15" }}>{formatPeso(price)}</strong> per unit
+        <br />
+        <span style={{ color: profit < 0 ? "#9a2d24" : "#4a6b4a" }}>
+          {profit < 0 ? "Loss" : "Profit"} {formatPeso(Math.abs(profit))} ({percent}%)
+        </span>
+      </div>
+    </div>
+  );
+}
 
 const UNIT_OPTIONS = ["L", "mL", "kg", "g", "pcs", "boxes", "bottles", "sachets"];
 
@@ -594,6 +656,9 @@ function InventoryPage() {
       supplier: form.supplier || null,
       storageLocation: form.storageLocation || null,
       reorderLevel: form.reorderLevel ? Number(form.reorderLevel) : null,
+      priceMode: form.priceMode,
+      markupPercent: form.markupPercent,
+      customerPrice: form.customerPrice,
     };
 
     if (form.type === "CHEMICAL") {
@@ -617,6 +682,7 @@ function InventoryPage() {
     if (!newItem.name || !newItem.unit || Number.isNaN(newItem.cost)) return;
     const limitError =
       validateMoney(form.cost, { max: LIMITS.MAX_UNIT_COST, label: "Cost per unit" }) ||
+      validateCustomerPrice(form) ||
       (newItem.reorderLevel !== null && newItem.reorderLevel > LIMITS.MAX_MOVEMENT_QTY
         ? `Reorder level cannot be more than ${LIMITS.MAX_MOVEMENT_QTY.toLocaleString()}.`
         : null);
@@ -709,6 +775,7 @@ function InventoryPage() {
                     <input name="reorderLevel" type="number" min="0" max={LIMITS.MAX_MOVEMENT_QTY} step="0.1" value={form.reorderLevel} onChange={handleChange} style={inputStyle} placeholder="0" />
                   </Field>
                 </div>
+                <CustomerPriceFields values={form} onChange={handleChange} />
               </div>
 
               {form.type === "CHEMICAL" && (
@@ -1520,6 +1587,9 @@ function EditItemModal({ item, onClose, onSave }) {
     model: item.model || "",
     materialCategory: item.materialCategory || "SUPPLIES",
     description: item.description || "",
+    priceMode: item.priceMode || "MARKUP",
+    markupPercent: item.markupPercent ?? "",
+    customerPrice: item.customerPrice ?? "",
   });
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState("");
@@ -1535,6 +1605,7 @@ function EditItemModal({ item, onClose, onSave }) {
     if (!values.name.trim() || !values.unit.trim() || values.cost === "") return;
     const limitError =
       validateMoney(values.cost, { max: LIMITS.MAX_UNIT_COST, label: "Cost per unit" }) ||
+      validateCustomerPrice(values) ||
       (values.reorderLevel !== "" && Number(values.reorderLevel) > LIMITS.MAX_MOVEMENT_QTY
         ? `Reorder level cannot be more than ${LIMITS.MAX_MOVEMENT_QTY.toLocaleString()}.`
         : null);
@@ -1584,6 +1655,7 @@ function EditItemModal({ item, onClose, onSave }) {
             <input name="reorderLevel" type="number" min="0" max={LIMITS.MAX_MOVEMENT_QTY} step="0.1" value={values.reorderLevel} onChange={handleChange} style={inputStyle} />
           </Field>
         </div>
+        <CustomerPriceFields values={values} onChange={handleChange} />
 
         {values.type === "CHEMICAL" && (
           <section style={editSectionStyle}>
@@ -2575,6 +2647,10 @@ function InventoryDetailModal({ item, batches = [], canManage, batchActions, onC
           <DetailRow label="Status" value={item.status === "DISABLED" ? "Disabled" : "Active"} />
           <DetailRow label="Quantity" value={`${item.quantity} ${item.unit}`} />
           {item.cost !== undefined && item.cost !== null ? <DetailRow label="Cost per Unit" value={peso(item.cost)} /> : null}
+          <DetailRow
+            label="Customer price"
+            value={`${peso(customerPrice(item))} · ${item.priceMode === "FIXED" ? "fixed" : `${item.markupPercent || 0}% markup`} · ${itemMargin(item).percent}% margin`}
+          />
           {item.cost !== undefined && item.cost !== null && item.quantity ? <DetailRow label="Total Value" value={peso(item.quantity * Number(item.cost))} /> : null}
           {item.supplier && <DetailRow label="Supplier" value={item.supplier} />}
           {item.reorderLevel && <DetailRow label="Reorder Level" value={item.reorderLevel} />}

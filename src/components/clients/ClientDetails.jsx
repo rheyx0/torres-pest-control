@@ -16,8 +16,10 @@ import SignaturePreview from "../common/SignaturePreview";
 import ServiceReportPrinter from "../scheduling/ServiceReportPrinter";
 import DataTable from "../ui/DataTable";
 import StatusPill from "../ui/StatusPill";
-import { ClientFacts, ClientHeader, ClientTimeline, NextVisitBanner, Tabs } from "./ClientProfileParts";
-import { clientVisits, currentPlan, lifetimeValue, nextVisit, timelineEvents } from "../../utils/clientTimeline";
+import { ActivityTrend, ClientFacts, ClientHeader, ClientTimeline, NextVisitBanner, Tabs } from "./ClientProfileParts";
+import { activityTrend, clientVisits, currentPlan, lifetimeValue, nextVisit, timelineEvents } from "../../utils/clientTimeline";
+import { clientBalance, clientBillingEvents } from "../../utils/billing";
+import { useOptionalBilling } from "../../hooks/useBilling";
 import { signatureState } from "../../utils/dashboardMetrics";
 import { useScheduling } from "../../context/SchedulingContext";
 import useUsers from "../../hooks/useUsers";
@@ -355,7 +357,19 @@ function ClientDetails({
   const upcoming = nextVisit(visits);
   const value = lifetimeValue(visits);
   const plan = currentPlan(visits);
-  const events = useMemo(() => timelineEvents(client, visits), [client, visits]);
+  // Billing (Sprint 3): office only, and only once billing is set up.
+  const billing = useOptionalBilling();
+  const hasBilling = Boolean(billing?.office && billing.available);
+  const billingRecords = useMemo(() => (hasBilling ? {
+    quotes: billing.quotesForClient(client.id),
+    invoices: billing.invoicesForClient(client.id),
+    payments: billing.paymentsForClient(client.id),
+    contracts: billing.contractsForClient(client.id),
+  } : null), [hasBilling, billing, client.id]);
+  const billingEvents = useMemo(() => (billingRecords ? clientBillingEvents(billingRecords) : []), [billingRecords]);
+  const balance = billingRecords ? clientBalance(billingRecords) : null;
+  const trend = useMemo(() => activityTrend(visits), [visits]);
+  const events = useMemo(() => timelineEvents(client, visits, new Date(), billingEvents), [client, visits, billingEvents]);
   const [printRequest, setPrintRequest] = useState(null);
   const [signatureUrl, setSignatureUrl] = useState("");
   const [technicianSignatureUrl, setTechnicianSignatureUrl] = useState("");
@@ -423,6 +437,8 @@ function ClientDetails({
     { value: "visits", label: "Visits", count: visits.length },
     { value: "reports", label: "Reports", count: reports.length },
     { value: "documents", label: "Documents", count: (client.documents || []).length },
+    { value: "monitoring", label: "Monitoring", count: trend.points.length || undefined },
+    ...(hasBilling ? [{ value: "billing", label: "Billing", count: billingEvents.length || undefined }] : []),
   ];
 
   const visitColumns = [
@@ -502,6 +518,51 @@ function ClientDetails({
           {tab === "reports" && (
             <div style={{ padding: "12px 18px 16px" }}>
               <DataTable caption="Service reports" columns={reportColumns} rows={reports} onRowClick={openReport} empty="No service reports filed yet." />
+            </div>
+          )}
+
+          {tab === "monitoring" && (
+            <div style={{ padding: "14px 18px 18px", display: "grid", gap: "16px" }}>
+              <section aria-label="Pest activity trend">
+                <h3 style={{ margin: "0 0 10px", fontSize: "14px", color: colors.ink }}>Pest activity</h3>
+                <ActivityTrend trend={trend} />
+              </section>
+              <section aria-label="Open issues">
+                <h3 style={{ margin: "0 0 6px", fontSize: "14px", color: colors.ink }}>Open issues</h3>
+                {trend.openIssues ? (
+                  <p style={{ margin: 0, color: colors.body, whiteSpace: "pre-wrap" }}>
+                    {trend.openIssues}
+                    <span style={{ display: "block", color: colors.muted, fontSize: "12.5px", marginTop: "4px" }}>
+                      Recorded {formatDate(trend.issuesFrom.scheduledAt)} · {appointmentReference(trend.issuesFrom)}
+                    </span>
+                  </p>
+                ) : (
+                  <p style={{ margin: 0, color: colors.muted, fontSize: "13px" }}>None recorded.</p>
+                )}
+              </section>
+            </div>
+          )}
+
+          {tab === "billing" && balance && (
+            <div style={{ padding: "14px 18px 18px", display: "grid", gap: "14px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "10px" }}>
+                {[
+                  { label: "Outstanding", value: balance.outstanding, tone: balance.outstanding > 0 ? colors.ink : colors.muted },
+                  { label: "Overdue", value: balance.overdue, tone: balance.overdue > 0 ? colors.danger : colors.muted },
+                  { label: "Paid to date", value: balance.paid, tone: colors.ink },
+                  { label: "Down payments held", value: balance.depositsHeld, tone: colors.ink },
+                ].map((tile) => (
+                  <div key={tile.label} style={{ padding: "10px 12px", border: `1px solid ${colors.line}`, borderRadius: "7.5px" }}>
+                    <div style={{ fontSize: "12px", color: colors.muted }}>{tile.label}</div>
+                    <div style={{ fontSize: "17px", fontWeight: 600, color: tile.tone, fontVariantNumeric: "tabular-nums" }}>{formatPeso(tile.value)}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button type="button" style={secondaryButton} onClick={() => navigate(`/billing?new=1&client=${encodeURIComponent(client.id)}`)}>New quote</button>
+                <button type="button" style={secondaryButton} onClick={() => navigate("/billing")}>Open billing</button>
+              </div>
+              <ClientTimeline events={[...billingEvents].sort((a, b) => new Date(b.at) - new Date(a.at))} nameOf={nameOf} onOpenReport={openReport} />
             </div>
           )}
 

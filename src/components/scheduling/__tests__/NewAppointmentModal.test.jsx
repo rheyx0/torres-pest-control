@@ -281,6 +281,7 @@ describe("NewAppointmentModal", () => {
         serviceFrequency: "",
         price: "",
         notes: "Back garden access",
+        source: null,
       });
     });
 
@@ -621,5 +622,63 @@ describe("service first and clash hints", () => {
     expect(screen.getByRole("combobox", { name: "Pest concern" })).toHaveValue("Termites");
     expect(screen.getByLabelText(/Price/)).toHaveValue(4500);
     expect(screen.getByRole("button", { name: "2h" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+describe("booking under a quote or contract (Sprint 3)", () => {
+  const billingSources = {
+    quotes: [
+      { id: "q1", clientId: "c1", label: "TPC-Q-00001 · ₱4,480.00", bookable: true, reason: "", serviceIds: ["s1"], price: 4480 },
+      { id: "q2", clientId: "c1", label: "TPC-Q-00002 · ₱1,680.00", bookable: false, reason: "The down payment has not been received yet." },
+      { id: "q3", clientId: "c2", label: "TPC-Q-00003 · ₱900.00", bookable: true, reason: "" },
+    ],
+    contracts: [{ id: "k1", clientId: "c1", label: "TPC-K-00001 · Quarterly termite", serviceIds: ["s1"], frequency: "Quarterly", visitCount: 4, until: "", price: 2500 }],
+  };
+
+  it("warns when nothing is linked, and sends the quote picked", async () => {
+    const { onCreate } = renderModal({ billingSources, initialClientId: "c1", initialScheduledAt: `${TODAY}T14:00` });
+    expect(screen.getByText(/No quote or contract linked/)).toBeInTheDocument();
+
+    const picker = screen.getByLabelText("Quote or contract");
+    // Only this client's; an unpaid quote can't be picked.
+    expect(within(picker).queryByText(/TPC-Q-00003/)).not.toBeInTheDocument();
+    expect(within(picker).getByText(/TPC-Q-00002/)).toBeDisabled();
+
+    await userEvent.selectOptions(picker, "quote:q1");
+    expect(screen.queryByText(/No quote or contract linked/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ source: { type: "quote", id: "q1" } }));
+  });
+
+  it("picking a quote fills in its services and total", async () => {
+    renderModal({ billingSources, services, initialClientId: "c1", initialScheduledAt: `${TODAY}T14:00` });
+    await userEvent.selectOptions(screen.getByLabelText("Quote or contract"), "quote:q1");
+    expect(screen.getByRole("checkbox", { name: "Termite Control" })).toBeChecked();
+    // The quote's total, not the service's own ₱4,500.
+    expect(screen.getByRole("spinbutton", { name: /Price/ })).toHaveValue(4480);
+  });
+
+  it("picking a contract fills in its services, frequency, visits and price per visit", async () => {
+    renderModal({ billingSources, services, initialClientId: "c1", initialScheduledAt: `${TODAY}T14:00` });
+    await userEvent.selectOptions(screen.getByLabelText("Quote or contract"), "contract:k1");
+    expect(screen.getByRole("checkbox", { name: "Termite Control" })).toBeChecked();
+    expect(screen.getByLabelText("Frequency")).toHaveValue("Quarterly");
+    expect(screen.getByRole("spinbutton", { name: /Price per visit/ })).toHaveValue(2500);
+    expect(screen.getByRole("button", { name: "Book 4 visits" })).toBeInTheDocument();
+  });
+
+  it("a contract still needs a recurring plan if the frequency is taken off", async () => {
+    const { onCreate } = renderModal({ billingSources, initialClientId: "c1", initialScheduledAt: `${TODAY}T14:00` });
+    await userEvent.selectOptions(screen.getByLabelText("Quote or contract"), "contract:k1");
+    await userEvent.selectOptions(screen.getByLabelText("Frequency"), "");
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/recurring plan/);
+  });
+
+  it("without billing there is no picker and no warning", () => {
+    renderModal({ initialClientId: "c1" });
+    expect(screen.queryByLabelText("Quote or contract")).not.toBeInTheDocument();
+    expect(screen.queryByText(/No quote or contract linked/)).not.toBeInTheDocument();
   });
 });

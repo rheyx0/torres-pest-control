@@ -46,6 +46,18 @@ const STATUS_TONES = {
   Signed: "success",
   "No signature": "warning",
   "Report due": "danger",
+  // Billing (Sprint 3).
+  Draft: "neutral",
+  Sent: "brand",
+  Approved: "success",
+  Rejected: "danger",
+  Expired: "neutral",
+  Received: "success",
+  "Pending check": "warning",
+  Bounced: "danger",
+  Reversed: "neutral",
+  "Down payment due": "warning",
+  "Down payment paid": "success",
 };
 
 /** The tone for a status or role string, falling back to neutral. */

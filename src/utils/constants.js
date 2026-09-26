@@ -116,6 +116,56 @@ export const RETURN_REASONS = [
 
 export const RETURN_REASON_LABELS = Object.fromEntries(RETURN_REASONS.map((entry) => [entry.value, entry.label]));
 
+// Billing (Sprint 3, migration 061). Each list mirrors a CHECK constraint on
+// quotes / payments — changing one side needs a migration on the other.
+// "EXPIRED" is not stored: a sent quote past its validity date shows as it.
+export const QUOTE_STATUS_LABELS = {
+  DRAFT: "Draft",
+  SENT: "Sent",
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+  EXPIRED: "Expired",
+};
+
+// Invoices (migration 062). Only ISSUED and VOID are stored; the rest follow
+// from the payments and the due date (invoiceBalance() in utils/billing.js).
+export const INVOICE_STATE_LABELS = {
+  VOID: "Void",
+  PAID: "Paid",
+  PARTIAL: "Partly paid",
+  OVERDUE: "Overdue",
+  UNPAID: "Unpaid",
+};
+
+export const EXTRA_STATUS_LABELS = {
+  PROPOSED: "Awaiting client",
+  APPROVED: "Approved",
+  DECLINED: "Declined",
+};
+
+export const PAYMENT_TERMS = [
+  { value: "DUE_ON_RECEIPT", label: "Due on receipt", days: 0 },
+  { value: "NET_15", label: "15 days", days: 15 },
+  { value: "NET_30", label: "30 days", days: 30 },
+];
+
+export const VAT_MODES = [
+  { value: "ADDED", label: "VAT added on top" },
+  { value: "INCLUSIVE", label: "VAT included in the prices" },
+  { value: "NONE", label: "No VAT" },
+];
+
+export const VAT_RATE = 12;
+
+export const PAYMENT_METHODS = [
+  { value: "CASH", label: "Cash" },
+  { value: "BANK_TRANSFER", label: "Bank transfer" },
+  { value: "GCASH", label: "GCash" },
+  { value: "CHECK", label: "Check" },
+];
+
+export const PAYMENT_METHOD_LABELS = Object.fromEntries(PAYMENT_METHODS.map((entry) => [entry.value, entry.label]));
+
 // How often a service recurs. Mirrors the appointments_service_frequency_check
 // constraint (migration 041, "Daily" added by 052) — changing one side needs a
 // migration on the other.
@@ -256,3 +306,26 @@ export const STORAGE_KEYS = {
   INVENTORY: "torres_inventory",
   LOGS: "torres_logs",
 };
+
+// Site monitoring (migration 063): how much pest activity a visit found.
+// Mirrors the check constraint on appointments.activity_level.
+export const ACTIVITY_LEVELS = [
+  { value: "NONE", label: "None", score: 0 },
+  { value: "LOW", label: "Low", score: 1 },
+  { value: "MEDIUM", label: "Medium", score: 2 },
+  { value: "HIGH", label: "High", score: 3 },
+];
+
+// Service contracts (migration 063).
+export const CONTRACT_STATUS_LABELS = {
+  DRAFT: "Draft",
+  ACTIVE: "Active",
+  ENDED: "Ended",
+  CANCELLED: "Cancelled",
+};
+
+export const BILLING_SCHEDULES = [
+  { value: "PER_VISIT", label: "Per visit" },
+  { value: "MONTHLY", label: "Monthly" },
+  { value: "UPFRONT", label: "Whole contract up front" },
+];

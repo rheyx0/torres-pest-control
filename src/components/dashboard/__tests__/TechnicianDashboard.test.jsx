@@ -138,3 +138,39 @@ describe("TechnicianDashboard — Your day", () => {
     expect(done).toHaveAttribute("href", "/visit/done?step=Sign");
   });
 });
+
+describe("TechnicianDashboard — an empty day still shows its visits section", () => {
+  const inDays = (days) => {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    date.setHours(9, 0, 0, 0);
+    return date.toISOString();
+  };
+
+  it("says there are no visits today and names the next one", () => {
+    renderDay([visit("next", "c2", inDays(2))]);
+    const section = screen.getByRole("region", { name: "Today's visits" });
+    expect(within(section).getByText("No visits today")).toBeInTheDocument();
+    expect(within(section).getByRole("link", { name: "Mendoza Poultry Farm" })).toBeInTheDocument();
+    expect(screen.getByText("A free day")).toBeInTheDocument();
+  });
+
+  it("with nothing booked at all it points to the schedule", () => {
+    renderDay([]);
+    expect(within(screen.getByRole("region", { name: "Today's visits" })).getByText(/Nothing else booked for you yet/)).toBeInTheDocument();
+  });
+
+  it("shows the next seven days with their visit counts, today first", () => {
+    renderDay([visit("next", "c2", inDays(2)), visit("next2", "c1", inDays(2))]);
+    const days = within(screen.getByRole("list", { name: "Your next seven days" })).getAllByRole("listitem");
+    expect(days).toHaveLength(7);
+    expect(days[2]).toHaveAccessibleName(/2 visits/);
+    expect(days[0]).toHaveAccessibleName(/0 visits/);
+  });
+
+  it("counts the month in the side panel", () => {
+    renderDay([visit("done", "c3", new Date().toISOString(), { status: "Completed", reportSubmitted: true })]);
+    const month = screen.getByRole("region", { name: "Your month" });
+    expect(within(month).getByText("Reports").previousSibling).toHaveTextContent("1");
+  });
+});

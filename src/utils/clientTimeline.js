@@ -6,11 +6,13 @@
 //   nextVisit      the next live visit still to happen
 //   lifetimeValue  agreed prices of visits that happened, and how many
 //   currentPlan    the frequency of the most recent visit that has one
-//   timelineEvents reports filed, visits missed or due, documents added and
-//                  the client's creation, newest first
+//   timelineEvents reports filed, visits missed or due, documents added, the
+//                  client's billing (passed in) and their creation, newest first
+//   activityTrend  the pest activity found visit by visit (migration 063)
 
 import { endOf, startOf } from "./scheduling";
 import { hasPlausiblePrice } from "./dashboardMetrics";
+import { ACTIVITY_LEVELS } from "./constants";
 
 const live = (entry) => entry.status !== "Cancelled";
 const done = (entry) => entry.status === "Completed" || entry.reportSubmitted;
@@ -48,7 +50,7 @@ export function currentPlan(visits) {
  * A visit that ended with no report is "missed" (a report is due); visits
  * still ahead are not history and are left to the Next visit banner.
  */
-export function timelineEvents(client, visits, now = new Date()) {
+export function timelineEvents(client, visits, now = new Date(), extra = []) {
   const events = [];
   visits.forEach((entry) => {
     if (entry.status === "Cancelled") {
@@ -64,6 +66,8 @@ export function timelineEvents(client, visits, now = new Date()) {
     if (document.uploadedAt) events.push({ key: `document-${document.id}`, kind: "document", at: document.uploadedAt, document });
   });
   if (client.createdAt) events.push({ key: "created", kind: "created", at: client.createdAt });
+  // Billing records (Sprint 3) and anything else a caller adds, on the same line.
+  events.push(...extra);
   return events.sort((a, b) => new Date(b.at) - new Date(a.at));
 }
 
@@ -97,4 +101,32 @@ export function visitDatesByClient(appointments, now = new Date()) {
     dates.set(entry.clientId, current);
   });
   return dates;
+}
+
+/**
+ * Site monitoring (migration 063): the pest activity each visit found, oldest
+ * first, the last `limit` of them, and whether the latest is better or worse
+ * than the one before. `openIssues` is what the most recent visit that
+ * recorded any left open.
+ *   { points: [{ id, at, level, label, score }], direction: none | better | worse | steady, openIssues, issuesFrom }
+ */
+export function activityTrend(visits, limit = 12) {
+  const byLevel = new Map(ACTIVITY_LEVELS.map((level) => [level.value, level]));
+  const recorded = visits
+    .filter((entry) => live(entry) && byLevel.has(entry.activityLevel))
+    .sort((a, b) => startOf(a) - startOf(b));
+  const points = recorded.slice(-limit).map((entry) => ({
+    id: entry.id,
+    at: entry.scheduledAt,
+    level: entry.activityLevel,
+    label: byLevel.get(entry.activityLevel).label,
+    score: byLevel.get(entry.activityLevel).score,
+  }));
+  let direction = "none";
+  if (points.length >= 2) {
+    const [previous, latest] = points.slice(-2);
+    direction = latest.score < previous.score ? "better" : latest.score > previous.score ? "worse" : "steady";
+  }
+  const withIssues = visits.filter((entry) => live(entry) && entry.openIssues).sort((a, b) => startOf(b) - startOf(a))[0] || null;
+  return { points, direction, openIssues: withIssues?.openIssues || "", issuesFrom: withIssues };
 }

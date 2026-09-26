@@ -7,7 +7,7 @@ const ATTACHMENT_BUCKET = "report-attachments";
 const ATTACHMENT_COLUMNS = "id, appointment_id, name, mime_type, size_bytes, storage_path, category, uploaded_at";
 const SIGNED_URL_TTL_SECONDS = 60;
 
-const APPOINTMENT_COLUMNS = "id, reference, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, plan_id, plan_position, day_done_at, created_at, updated_at";
+const APPOINTMENT_COLUMNS = "id, reference, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, plan_id, plan_position, day_done_at, quote_id, invoice_id, activity_level, open_issues, created_at, updated_at";
 const REPORT_COLUMNS = "appointment_id, findings, treatment_performed, recommendations, follow_up_date, submitted_by, submitted_at, customer_name, signature_path, signed_at, completion_note, technician_signature_path, technician_signed_at";
 
 function describeError(error) {
@@ -51,6 +51,10 @@ export function mapAppointmentRow(row, report = null) {
     // 052). planKind / planFrequency come from the plan row; read the rest
     // through utils/plans.js (planLabel, isLastJobDay, …).
     planId: row.plan_id || "",
+    quoteId: row.quote_id || "",
+    invoiceId: row.invoice_id || "",
+    activityLevel: row.activity_level || "",
+    openIssues: row.open_issues || "",
     planPosition: row.plan_position ?? null,
     planKind: row.planKind || "",
     planFrequency: row.planFrequency || "",
@@ -81,11 +85,12 @@ export function mapAppointmentRow(row, report = null) {
 }
 
 // Before migration 048 there is no started_at column, before 050 no
-// reference, before 052 no plan columns, and PostgREST refuses a select
+// reference, before 052 no plan columns (061-063 add quote_id, invoice_id and
+// the monitoring columns the same way), and PostgREST refuses a select
 // naming a column that doesn't exist. Rather than blank the whole schedule
 // when the app is deployed ahead of a migration, retry without whichever
 // column it named.
-const OPTIONAL_COLUMNS = ["reference", "started_at", "plan_id", "plan_position", "day_done_at"];
+const OPTIONAL_COLUMNS = ["reference", "started_at", "plan_id", "plan_position", "day_done_at", "quote_id", "invoice_id", "activity_level", "open_issues"];
 
 async function selectAppointments() {
   let columns = APPOINTMENT_COLUMNS;
@@ -418,7 +423,19 @@ export async function startVisit(appointmentId) {
  * parameter is not sent at all, so a report that doesn't change them still
  * files before 051 is applied.
  */
-export async function submitReport(appointmentId, { findings, treatmentPerformed, recommendations, followUpDate, customerName, signaturePath, completionNote, technicianSignaturePath, serviceIds }) {
+export async function submitReport(appointmentId, { findings, treatmentPerformed, recommendations, followUpDate, customerName, signaturePath, completionNote, technicianSignaturePath, serviceIds, activityLevel, openIssues }) {
+  // Site monitoring (063) first, through its own RPC so the report function
+  // stays 052's. Before 063 the function doesn't exist; the report still saves.
+  if (activityLevel !== undefined || openIssues !== undefined) {
+    const monitoring = await supabase.rpc("record_site_monitoring", {
+      p_appointment_id: appointmentId,
+      p_activity_level: activityLevel || null,
+      p_open_issues: openIssues || null,
+    });
+    if (monitoring.error && !/record_site_monitoring|schema cache|does not exist/i.test(`${monitoring.error.message || ""} ${monitoring.error.details || ""}`)) {
+      return { error: describeError(monitoring.error) };
+    }
+  }
   const { data, error } = await supabase.rpc("submit_appointment_report", {
     p_appointment_id: appointmentId,
     p_findings: findings,

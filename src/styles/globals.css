@@ -955,6 +955,29 @@ a {
   font-size: 9.5px; color: #9ca3af; text-align: center;
 }
 
+/* Quotes, invoices and receipts (Sprint 3) share the letterhead above. */
+.bd-lines { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11.5px; }
+.bd-lines th {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280;
+  font-weight: 700; text-align: left; padding: 4px 8px 4px 0; border-bottom: 1px solid #e5e7eb;
+}
+.bd-lines td { padding: 5px 8px 5px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.bd-lines th:first-child, .bd-lines td:first-child { width: 52%; }
+.bd-lines th.sf-num { text-align: right; }
+.bd-lines th:last-child, .bd-lines td:last-child { padding-right: 0; }
+
+.bd-totals { margin: 10px 0 0 auto; border-collapse: collapse; font-size: 11.5px; min-width: 300px; break-inside: avoid; }
+.bd-totals th { text-align: left; font-weight: 400; color: #4b5563; padding: 3px 24px 3px 0; }
+.bd-totals td { text-align: right; font-variant-numeric: tabular-nums; padding: 3px 0; }
+.bd-totals .bd-strong th, .bd-totals .bd-strong td { font-weight: 800; color: #111827; border-top: 1px solid #e5e7eb; }
+
+.bd-amount { margin-top: 16px; padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 4px; }
+.bd-amount-cap { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; font-weight: 700; }
+.bd-amount-value { font-size: 24px; font-weight: 800; color: #7f1111; font-variant-numeric: tabular-nums; }
+
+.bd-void { margin: 12px 0 0; padding: 6px 10px; border: 2px solid #b91c1c; color: #b91c1c; font-weight: 800; letter-spacing: 0.04em; }
+.bd-fine { font-size: 9.5px; color: #6b7280; }
+
 @media print {
   @page { size: A4; margin: 12mm; }
 
@@ -1060,8 +1083,42 @@ a {
   align-items: start;
 }
 
+/* Joined boxes: one board with hairline dividers instead of floating cards
+   with gaps between them. The 1px gap shows the container's line colour
+   through, which draws the dividers; the boxes inside lose their own border
+   and corners. Nests: a joined row inside a joined board has no second edge. */
+.dash-joined {
+  display: grid;
+  gap: 1px !important;
+  background: #e6dfd3;
+  border: 1px solid #e6dfd3;
+  border-radius: 7.5px;
+  overflow: hidden;
+}
+.dash-joined > * {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  min-width: 0;
+}
+.dash-joined .dash-joined {
+  border: 0;
+  border-radius: 0;
+}
+.today-columns.dash-joined {
+  align-items: stretch;
+}
+
 @media (max-width: 1000px) {
   .today-columns {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+/* The four figures on Today: two by two on a narrow screen, one row on a
+   wide one — never 3 + 1, which would leave empty cells in a joined row. */
+.dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 900px) {
+  .dash-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

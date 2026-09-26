@@ -52,7 +52,14 @@ export function ServicesProvider({ children }) {
         return `The service was saved, but its materials were not: ${materialsResult.error}`;
       }
     }
-    replaceOne({ ...saved.service, materials: materials ? materials.map((m) => ({ itemId: m.itemId, defaultAmount: Number(m.defaultAmount) })) : saved.service.materials });
+    // billingMode (060) is kept too: dropping it made every material read as
+    // Included until a reload, so "Charge extra" never reached the invoice.
+    replaceOne({
+      ...saved.service,
+      materials: materials
+        ? materials.map((m) => ({ itemId: m.itemId, defaultAmount: Number(m.defaultAmount), billingMode: m.billingMode === "EXTRA_CHARGED" ? "EXTRA_CHARGED" : "INCLUDED" }))
+        : saved.service.materials,
+    });
     return true;
   }, []);
 

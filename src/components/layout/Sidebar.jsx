@@ -19,6 +19,7 @@ import {
   Home,
   Lock,
   Package,
+  Receipt,
   Tag,
   Users,
 } from "lucide-react";
@@ -29,22 +30,35 @@ import { colors } from "../../styles/theme";
 import ProfileMenu from "./ProfileMenu";
 
 /**
- * Navigation, grouped. The main group carries no visible heading — its four
- * items are the day's work and read as the rail's top level — but it keeps a
- * visually hidden one so a screen reader still announces the grouping.
+ * Navigation, grouped by what the work is. Home stands alone at the top; a
+ * group shows only when the role can open something in it, so a technician
+ * sees Home, Work and Stock, and an admin sees every group.
  *
  * `badge` names a key in the `badges` prop; a count of 0 shows nothing.
  */
 const NAV_GROUPS = [
   {
-    label: "Main",
-    hidden: true,
+    label: "Home",
+    // The dashboard is the only exact match — "/" prefixes every other route.
+    items: [{ label: "Today", path: "/", exact: true, subsystem: null, Icon: Home }],
+  },
+  {
+    label: "Work",
     items: [
-      // The dashboard is the only exact match — "/" prefixes every other route.
-      { label: "Today", path: "/", exact: true, subsystem: null, Icon: Home },
       { label: "Schedule", path: "/scheduling", subsystem: SUBSYSTEMS.SCHEDULING, action: "view", Icon: CalendarDays, badge: "scheduling" },
       { label: "Clients", path: "/clients", subsystem: SUBSYSTEMS.CLIENTS, action: "view", Icon: Users },
+    ],
+  },
+  {
+    label: "Stock",
+    items: [
       { label: "Inventory", path: "/inventory", subsystem: SUBSYSTEMS.INVENTORY, action: "view", Icon: Package, badge: "inventory" },
+    ],
+  },
+  {
+    label: "Money",
+    items: [
+      { label: "Billing", path: "/billing", subsystem: SUBSYSTEMS.BILLING, action: "view", Icon: Receipt },
     ],
   },
   {
@@ -244,11 +258,12 @@ function Sidebar({ badges = {}, open = false, onClose = () => {} }) {
       </Link>
 
       <div style={styles.navGroups}>
-        {navGroups.map((group) => {
+        {navGroups.map((group, index) => {
           const headingId = groupHeadingId(group.label);
 
           return (
-            <div key={group.label}>
+            // Space between categories, so the rail reads as sections.
+            <div key={group.label} style={index > 0 ? { marginTop: "8px" } : undefined}>
               <p id={headingId} style={group.hidden ? visuallyHidden : styles.groupLabel}>
                 {group.label}
               </p>

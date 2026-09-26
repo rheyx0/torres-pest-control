@@ -21,7 +21,7 @@ import { brand, font, neutral, radius, status as semantic, surface, weight } fro
 import { colors, quietButton } from "../../styles/theme";
 import Button from "../ui/Button";
 import StatusPill from "../ui/StatusPill";
-import { DOCUMENT_CATEGORIES } from "../../utils/constants";
+import { ACTIVITY_LEVELS, DOCUMENT_CATEGORIES } from "../../utils/constants";
 import { formatPeso, humanizeEnum } from "../../utils/formatters";
 import { crewOf } from "../../utils/scheduling";
 import { directionsUrl, telUrl } from "../../utils/clientTimeline";
@@ -334,9 +334,11 @@ const DOT = {
   cancelled: { border: neutral.loam, background: surface.panel },
   document: { border: neutral.loam, background: surface.panel },
   created: { border: neutral.loam, background: surface.panel },
+  billing: { border: brand.base, background: surface.panel },
 };
 
 const categoryLabel = (value) => DOCUMENT_CATEGORIES.find((entry) => entry.value === value)?.label || humanizeEnum(value);
+const activityLabel = (value) => ACTIVITY_LEVELS.find((level) => level.value === value)?.label || value;
 
 function EventBody({ event, nameOf, onOpenReport }) {
   const appointment = event.appointment;
@@ -369,6 +371,7 @@ function EventBody({ event, nameOf, onOpenReport }) {
           {[
             crew.join(", ") || null,
             appointment.serviceType || appointment.pestConcern || null,
+            appointment.activityLevel ? `Activity: ${activityLabel(appointment.activityLevel)}` : null,
             materials.length ? materials.join(", ") : null,
             photos ? `${photos} ${photos === 1 ? "photo" : "photos"}` : null,
             appointment.price !== "" && appointment.price !== null && appointment.price !== undefined ? peso(appointment.price) : null,
@@ -403,6 +406,19 @@ function EventBody({ event, nameOf, onOpenReport }) {
         <div style={{ fontSize: "12.5px", color: neutral.bark, marginTop: "3px" }}>
           {[appointment.cancellationReason, appointment.serviceType || appointment.pestConcern].filter(Boolean).join(" · ") || "No reason recorded"}
         </div>
+      </>
+    );
+  }
+
+  // A quote, invoice, payment or contract (Sprint 3), opening on the Billing page.
+  if (event.kind === "billing") {
+    return (
+      <>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+          <Link to={event.to} style={{ fontWeight: weight.medium, color: neutral.ink, textDecoration: "none" }}>{event.title}</Link>
+          {event.pill?.status && <StatusPill tone={event.pill.tone}>{event.pill.status}</StatusPill>}
+        </div>
+        {event.detail && <div style={{ fontSize: "12.5px", color: neutral.bark, marginTop: "3px" }}>{event.detail}</div>}
       </>
     );
   }
@@ -485,3 +501,36 @@ export function Tabs({ tabs, value, onChange }) {
 }
 
 export { shortDate, clock };
+
+// ---------------------------------------------------------------------------
+// Site monitoring (migration 063)
+// ---------------------------------------------------------------------------
+
+const TREND_WORDS = {
+  better: { text: "Less activity than the visit before", tone: "success" },
+  worse: { text: "More activity than the visit before", tone: "danger" },
+  steady: { text: "Same as the visit before", tone: "neutral" },
+};
+const LEVEL_COLORS = ["#9ca3af", semantic.success, semantic.warning, semantic.danger];
+
+/** The activity each visit found, oldest to newest, as bars. From activityTrend(). */
+export function ActivityTrend({ trend }) {
+  if (trend.points.length === 0) {
+    return <p style={{ margin: 0, color: neutral.bark, fontSize: "13px" }}>No activity recorded yet. The technician records it with each report.</p>;
+  }
+  const words = TREND_WORDS[trend.direction];
+  return (
+    <div style={{ display: "grid", gap: "10px" }}>
+      {words && <div><StatusPill tone={words.tone}>{words.text}</StatusPill></div>}
+      <ol aria-label="Pest activity by visit" style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", alignItems: "flex-end", gap: "8px", height: "110px", overflowX: "auto" }}>
+        {trend.points.map((point) => (
+          <li key={point.id} title={`${shortDate(point.at)}: ${point.label}`} style={{ display: "grid", justifyItems: "center", gap: "4px", minWidth: "38px", alignSelf: "stretch", alignContent: "end" }}>
+            <span style={{ fontSize: "11px", color: neutral.saddle }}>{point.label}</span>
+            <span aria-hidden="true" style={{ width: "22px", height: `${8 + point.score * 22}px`, borderRadius: "3px 3px 0 0", background: LEVEL_COLORS[point.score] }} />
+            <span style={{ fontSize: "11px", color: neutral.bark, whiteSpace: "nowrap" }}>{shortDate(point.at)}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}

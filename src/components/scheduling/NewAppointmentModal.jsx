@@ -112,8 +112,19 @@ function NewAppointmentModal({
   initialServiceIds = [],
   initialFrequency = "",
   initialPestConcern = "",
+  // Booking from an approved quote (Sprint 3): the quoted price, kept as typed.
+  initialPrice = "",
+  // Booking a contract's visits (063): its length, as a number of visits or an end date.
+  initialVisitCount = null,
+  initialUntil = "",
   // Technicians who are out (migration 057): they cannot be booked.
   absences = [],
+  // Billing (Sprint 3): the quotes and contracts this visit can be booked
+  // under, { quotes: [{ id, clientId, label, bookable, reason }], contracts:
+  // [{ id, clientId, label }] }. Null when billing isn't in use: no picker, no
+  // warning. initialSource is "quote:<id>" or "contract:<id>".
+  billingSources = null,
+  initialSource = "",
   onClose,
   onCreate,
   onBook,
@@ -133,17 +144,17 @@ function NewAppointmentModal({
   const [customMinutes, setCustomMinutes] = useState(0);
   const [technicianIds, setTechnicianIds] = useState([]);
   const [serviceIds, setServiceIds] = useState([]);
-  const [price, setPrice] = useState("");
+  const [price, setPrice] = useState(initialPrice === "" || initialPrice == null ? "" : String(initialPrice));
   // Once the office types a price it is theirs: ticking services no longer
   // replaces it with the services' defaults.
-  const [priceTouched, setPriceTouched] = useState(false);
+  const [priceTouched, setPriceTouched] = useState(initialPrice !== "" && initialPrice != null);
 
   // The plan. A recurring frequency makes it RECURRING; accepting the split
   // offered for an over-long job makes it MULTI_DAY; otherwise a single visit.
   const [frequency, setFrequency] = useState(initialFrequency);
-  const [repeatBy, setRepeatBy] = useState("count");
-  const [visitCount, setVisitCount] = useState(DEFAULT_PLAN_VISITS);
-  const [until, setUntil] = useState("");
+  const [repeatBy, setRepeatBy] = useState(initialUntil && !initialVisitCount ? "until" : "count");
+  const [visitCount, setVisitCount] = useState(initialVisitCount || DEFAULT_PLAN_VISITS);
+  const [until, setUntil] = useState(initialUntil || "");
   const [skipSundays, setSkipSundays] = useState(true);
   const [multiDay, setMultiDay] = useState(false);
   // Dates the office changed by hand, and visits removed, by row key.
@@ -151,6 +162,9 @@ function NewAppointmentModal({
   const [removed, setRemoved] = useState([]);
 
   const selectedClient = clients.find((client) => client.id === clientId) || null;
+  const [source, setSource] = useState(initialSource);
+  const sourceQuotes = (billingSources?.quotes || []).filter((quote) => quote.clientId === clientId);
+  const sourceContracts = (billingSources?.contracts || []).filter((contract) => contract.clientId === clientId);
 
   const durationMinutes =
     durationChoice === CUSTOM
@@ -216,6 +230,34 @@ function NewAppointmentModal({
     }
   };
   const toggleService = (id) => applyServices(serviceIds.includes(id) ? serviceIds.filter((entry) => entry !== id) : [...serviceIds, id]);
+
+  // Picking a quote or contract fills the form from it, as ticking the
+  // services by hand would, then its agreed price: a quote's total, or a
+  // contract's price per visit with its frequency and length. Everything stays
+  // editable; choosing "None" leaves the form as it is.
+  const chooseSource = (value) => {
+    setSource(value);
+    setFormError("");
+    const [type, id] = value ? value.split(":") : ["", ""];
+    const picked = type === "quote" ? sourceQuotes.find((entry) => entry.id === id) : type === "contract" ? sourceContracts.find((entry) => entry.id === id) : null;
+    if (!picked) return;
+    const known = (picked.serviceIds || []).filter((serviceId) => services.some((service) => service.id === serviceId));
+    if (known.length) applyServices(known);
+    if (picked.price !== undefined && picked.price !== null) {
+      setPrice(String(picked.price));
+      setPriceTouched(true);
+    }
+    if (type === "contract") {
+      if (picked.frequency) setFrequency(picked.frequency);
+      if (picked.visitCount) {
+        setRepeatBy("count");
+        setVisitCount(picked.visitCount);
+      } else if (picked.until) {
+        setRepeatBy("until");
+        setUntil(picked.until);
+      }
+    }
+  };
 
   // A re-service or renewal arrives with the last visit's services: apply
   // their defaults once, exactly as ticking them by hand would.
@@ -311,6 +353,11 @@ function NewAppointmentModal({
       setFormError(`Fix the ${planProblems} flagged ${planProblems === 1 ? "date" : "dates"} first.`);
       return;
     }
+    const [sourceType, sourceId] = source ? source.split(":") : ["", ""];
+    if (sourceType === "contract" && kind !== PLAN_KINDS.RECURRING) {
+      setFormError("A contract's visits are booked as a recurring plan: choose how often, and the number of visits.");
+      return;
+    }
     const away = technicianIds.find((id) => outIds.has(id));
     if (away) {
       setFormError(`${nameOf(away)} is ${describeOut(outIds.get(away))}. Choose someone else.`);
@@ -331,6 +378,8 @@ function NewAppointmentModal({
       serviceFrequency: kind === PLAN_KINDS.MULTI_DAY ? "One-time" : frequency,
       price,
       notes: values.get("notes"),
+      // Linked once booked (SchedulingPage): quote_id, or the contract's plan.
+      source: sourceId ? { type: sourceType, id: sourceId } : null,
     };
     // A plan, or one visit carrying several services, is booked in one go
     // (book_appointments, 052). A plain single visit keeps the older path,
@@ -402,6 +451,8 @@ function NewAppointmentModal({
               onChange={(id, client) => {
                 setClientId(id);
                 setServiceLocation(client?.address || "");
+                // A quote or contract belongs to one client.
+                if (id !== clientId) setSource("");
               }}
             />
           </Field>
@@ -467,6 +518,28 @@ function NewAppointmentModal({
               />
             </Field>
           </div>
+
+          {billingSources && clientId && (
+            <Field label="Quote or contract" hint="Booked under it, the visit is linked for billing.">
+              <Select aria-label="Quote or contract" value={source} onChange={(event) => chooseSource(event.target.value)}>
+                <option value="">None</option>
+                {sourceQuotes.length > 0 && (
+                  <optgroup label="Approved quotes">
+                    {sourceQuotes.map((quote) => (
+                      <option key={quote.id} value={`quote:${quote.id}`} disabled={!quote.bookable}>
+                        {quote.label}{quote.bookable ? "" : ` — ${quote.reason}`}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {sourceContracts.length > 0 && (
+                  <optgroup label="Active contracts">
+                    {sourceContracts.map((contract) => <option key={contract.id} value={`contract:${contract.id}`}>{contract.label}</option>)}
+                  </optgroup>
+                )}
+              </Select>
+            </Field>
+          )}
         </Section>
 
         <Section legend="When">
@@ -678,6 +751,29 @@ function NewAppointmentModal({
               />
             )}
           </Section>
+        )}
+
+        {/* Skipping billing is allowed (an inspection, a follow-up), but it
+            should be a choice, not an accident. */}
+        {billingSources && clientId && !source && (
+          <p
+            role="status"
+            style={{
+              gridColumn: "1 / -1",
+              display: "flex",
+              alignItems: "center",
+              gap: "7px",
+              margin: 0,
+              padding: "9px 12px",
+              background: status.warningSurface,
+              color: status.warning,
+              borderRadius: radius.control,
+              ...text.small,
+            }}
+          >
+            <AlertTriangle size={14} aria-hidden="true" />
+            No quote or contract linked. No down payment is collected; the visit is billed later from its price.
+          </p>
         )}
 
         {/* Advisory, not blocking: the server is still the authority, and a

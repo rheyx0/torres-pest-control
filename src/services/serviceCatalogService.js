@@ -4,8 +4,16 @@
 
 import { supabase } from "./supabaseClient";
 
-const SERVICE_COLUMNS =
-  "id, name, description, default_price, default_duration_minutes, sort_order, is_active, created_at, updated_at, service_materials(item_id, default_amount)";
+const BASE_COLUMNS = "id, name, description, default_price, default_duration_minutes, sort_order, is_active, created_at, updated_at";
+
+// Pricing (migration 060): flat or by area, the default down payment, and each
+// material's billing mode. Read only once the database has the columns.
+let pricingAvailable = true;
+const serviceColumns = () => (pricingAvailable
+  ? `${BASE_COLUMNS}, pricing_mode, area_rate, minimum_charge, deposit_percent, service_materials(item_id, default_amount, billing_mode)`
+  : `${BASE_COLUMNS}, service_materials(item_id, default_amount)`);
+const mentionsPricing = (error) =>
+  /pricing_mode|area_rate|minimum_charge|deposit_percent|billing_mode/.test(`${error?.message || ""} ${error?.details || ""}`);
 
 export function describeError(error) {
   if (!error) return "Unknown error";
@@ -31,16 +39,24 @@ export function mapServiceRow(row) {
     defaultDurationMinutes: numberOrNull(row.default_duration_minutes),
     sortOrder: Number(row.sort_order) || 0,
     isActive: row.is_active !== false,
+    // Pricing (060): see utils/pricing.js.
+    pricingMode: row.pricing_mode || "FLAT",
+    areaRate: numberOrNull(row.area_rate),
+    minimumCharge: numberOrNull(row.minimum_charge),
+    depositPercent: Number(row.deposit_percent) || 0,
     materials: (row.service_materials || []).map((material) => ({
       itemId: material.item_id,
+      // The included quantity: prefills the Stock-Out, and above it an
+      // EXTRA_CHARGED material is billed.
       defaultAmount: Number(material.default_amount),
+      billingMode: material.billing_mode || "INCLUDED",
     })),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
-function toServiceRow({ name, description, defaultPrice, defaultDurationMinutes, sortOrder, isActive }) {
+function toServiceRow({ name, description, defaultPrice, defaultDurationMinutes, sortOrder, isActive, pricingMode, areaRate, minimumCharge, depositPercent }) {
   const row = {};
   if (name !== undefined) row.name = String(name).trim();
   if (description !== undefined) row.description = String(description || "").trim() || null;
@@ -48,16 +64,27 @@ function toServiceRow({ name, description, defaultPrice, defaultDurationMinutes,
   if (defaultDurationMinutes !== undefined) row.default_duration_minutes = numberOrNull(defaultDurationMinutes);
   if (sortOrder !== undefined) row.sort_order = Number(sortOrder) || 0;
   if (isActive !== undefined) row.is_active = Boolean(isActive);
+  if (pricingAvailable) {
+    if (pricingMode !== undefined) row.pricing_mode = pricingMode === "AREA" ? "AREA" : "FLAT";
+    if (areaRate !== undefined) row.area_rate = numberOrNull(areaRate);
+    if (minimumCharge !== undefined) row.minimum_charge = numberOrNull(minimumCharge);
+    if (depositPercent !== undefined) row.deposit_percent = Number(depositPercent) || 0;
+  }
   return row;
 }
 
 /** Every service, retired ones included; callers filter for the booking form. */
 export async function fetchServices() {
-  const { data, error } = await supabase
+  const select = () => supabase
     .from("services")
-    .select(SERVICE_COLUMNS)
+    .select(serviceColumns())
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
+  let { data, error } = await select();
+  if (error && pricingAvailable && mentionsPricing(error)) {
+    pricingAvailable = false;
+    ({ data, error } = await select());
+  }
   if (error) return { error: describeError(error), services: [] };
   return { error: null, services: (data || []).map(mapServiceRow) };
 }
@@ -66,7 +93,7 @@ export async function createService(fields) {
   const { data, error } = await supabase
     .from("services")
     .insert(toServiceRow(fields))
-    .select(SERVICE_COLUMNS)
+    .select(serviceColumns())
     .single();
   if (error) return { error: friendlyError(error) };
   return { error: null, service: mapServiceRow(data) };
@@ -77,7 +104,7 @@ export async function updateService(id, fields) {
     .from("services")
     .update(toServiceRow(fields))
     .eq("id", id)
-    .select(SERVICE_COLUMNS)
+    .select(serviceColumns())
     .single();
   if (error) return { error: friendlyError(error) };
   return { error: null, service: mapServiceRow(data) };
@@ -89,9 +116,9 @@ export async function setServiceActive(id, isActive) {
 }
 
 /**
- * Permanently delete a service and its materials list. Appointments booked
- * under it keep their service name (appointments.service_type); only the
- * service_id link is cleared, by the foreign key's `on delete set null`.
+ * Permanently delete a service and its materials list. Since migration 060 a
+ * service any visit has used is refused ("Retire it instead") by a trigger;
+ * only one never used can go.
  */
 export async function deleteService(id) {
   const { error } = await supabase.from("services").delete().eq("id", id);
@@ -106,6 +133,8 @@ export async function saveServiceMaterials(serviceId, materials) {
     p_materials: (materials || []).map((material) => ({
       item_id: material.itemId,
       default_amount: Number(material.defaultAmount),
+      // Ignored by 047's function; read by 060's.
+      billing_mode: material.billingMode === "EXTRA_CHARGED" ? "EXTRA_CHARGED" : "INCLUDED",
     })),
   });
   if (error) return { error: describeError(error) };
