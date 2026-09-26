@@ -19,6 +19,8 @@ export function InventoryProvider({ children }) {
   const [movements, setMovements] = useState([]);
   const [movementsLoading, setMovementsLoading] = useState(false);
   const [movementsError, setMovementsError] = useState("");
+  // Chemical batches (migration 055); empty before it.
+  const [batches, setBatches] = useState([]);
 
   const actor = currentUser?.name;
 
@@ -34,16 +36,43 @@ export function InventoryProvider({ children }) {
     return result;
   }, []);
 
+  const refreshMovements = useCallback(async () => {
+    setMovementsLoading(true);
+    setMovementsError("");
+
+    const result = await inventoryService.fetchMovements();
+    if (result.error) setMovementsError(result.error);
+    else setMovements(result.movements);
+
+    setMovementsLoading(false);
+    return result;
+  }, []);
+
+  const refreshBatches = useCallback(async () => {
+    const result = await inventoryService.fetchBatches();
+    if (!result.error) setBatches(result.batches);
+    return result;
+  }, []);
+
+  // After anything that moves stock: the shelf, the log and the batches all
+  // changed, and a chemical's movement can be several rows.
+  const reloadStock = useCallback(
+    () => Promise.all([refresh(), refreshMovements(), refreshBatches()]),
+    [refresh, refreshMovements, refreshBatches]
+  );
+
   useEffect(() => {
     if (!session || !sessionVerified) {
       setInventory([]);
       setMovements([]);
+      setBatches([]);
       setError("");
       setMovementsError("");
       return;
     }
     refresh();
-  }, [session, sessionVerified, refresh]);
+    refreshBatches();
+  }, [session, sessionVerified, refresh, refreshBatches]);
 
   const addItem = useCallback(
     async (form) => {
@@ -146,6 +175,9 @@ export function InventoryProvider({ children }) {
         ...previous,
       ]);
 
+      // A chemical line became a batch (migration 055).
+      refreshBatches();
+
       addLog(
         actor,
         `Stocked in ${result.movements.length} item${result.movements.length === 1 ? "" : "s"} against ${reference}.`,
@@ -153,150 +185,112 @@ export function InventoryProvider({ children }) {
       );
       return true;
     },
-    [actor, inventory]
+    [actor, inventory, refreshBatches]
   );
 
-  /** Stock leaving for a reason other than an appointment. */
+  /**
+   * Stock leaving for a reason other than an appointment. A chemical leaves by
+   * batch (migration 055), so one stock-out can be several rows: the lists
+   * are reloaded rather than patched.
+   */
   const stockOutManual = useCallback(
-    async (itemId, { amount, date, reason, technicianId, note }) => {
+    async (itemId, { amount, date, reason, technicianId, note, forAppointmentId, batchId }) => {
       const target = inventory.find((entry) => entry.id === itemId);
       if (!target) return "Inventory item not found.";
       if (!Number.isFinite(Number(amount)) || Number(amount) <= 0) return "Enter a quantity greater than zero.";
       if (Number(amount) > Number(target.quantity)) return "Requested quantity exceeds available stock.";
       if (reason === "TECHNICIAN_CHECKOUT" && !technicianId) return "Select the technician the stock was checked out to.";
 
-      const result = await inventoryService.stockOutManual(itemId, { amount, date, reason, technicianId, note });
+      const result = await inventoryService.stockOutManual(itemId, { amount, date, reason, technicianId, note, forAppointmentId, batchId });
       if (result.error) return result.error;
 
-      setInventory((previous) => previous.map((entry) =>
-        entry.id === itemId ? { ...entry, quantity: result.newQuantity } : entry));
-      setMovements((previous) => [
-        {
-          ...result.movement,
-          // The server writes a fuller label ("Checked out by Ana Cruz"); this is
-          // the same sentence without a second round trip to fetch the name.
-          reference: STOCK_OUT_REASON_LABELS[reason] || "",
-          itemName: target.name,
-          itemUnit: target.unit,
-        },
-        ...previous,
-      ]);
-      addLog(actor, `Stocked out ${amount} ${target.unit} of "${target.name}".`, LOG_TYPES.INVENTORY);
+      await reloadStock();
+      addLog(actor, `Stocked out ${amount} ${target.unit} of "${target.name}" (${STOCK_OUT_REASON_LABELS[reason] || reason}).`, LOG_TYPES.INVENTORY);
       return true;
     },
-    [actor, inventory]
+    [actor, inventory, reloadStock]
   );
 
-  const stockOut = useCallback(
-    async (itemId, appointmentId, amount) => {
-      const target = inventory.find((entry) => entry.id === itemId);
-      if (!target) return "Inventory item not found.";
-      if (Number(amount) > Number(target.quantity)) return "Requested quantity exceeds available stock.";
-      const result = await appointmentService.stockOut(itemId, appointmentId, amount);
-      if (result.error) return result.error;
-
-      setInventory((previous) => previous.map((entry) => entry.id === itemId ? { ...entry, quantity: result.newQuantity } : entry));
-      setMovements((previous) => [{
-        id: result.movement.movement_id,
-        itemId,
-        amount: Number(result.movement.amount),
-        quantityDelta: -Number(result.movement.amount),
-        movementDate: result.movement.movement_date,
-        reference: `Appointment ${appointmentId}`,
-        actor: result.movement.actor || "",
-        movementType: "OUT",
-        appointmentId,
-        itemName: target.name,
-        itemUnit: target.unit,
-      }, ...previous]);
-      return { item: target, amount: Number(amount) };
-    },
-    [inventory]
-  );
-
+  // A visit's materials. The server draws first from what the visit's crew
+  // checked out (054), then the shelf by batch, soonest expiry first (055), so
+  // whether there is "enough" is its call, not a comparison with the shelf
+  // here — and one line can come back as several rows. The lists are
+  // reloaded rather than patched.
   const stockOutMany = useCallback(
     async (appointmentId, entries, date = todayISO()) => {
       const dateError = validateMovementDate(date);
       if (dateError) return dateError;
-      const requested = new Map(entries.map((entry) => [entry.itemId, Number(entry.amount)]));
-      for (const [itemId, amount] of requested) {
-        const target = inventory.find((entry) => entry.id === itemId);
+      for (const entry of entries) {
+        const target = inventory.find((item) => item.id === entry.itemId);
         if (!target) return "Inventory item not found.";
         // Decimals are allowed on the way out (migration 036): 0.4 L applied
-        // is the honest figure. This used to demand whole numbers, which
-        // contradicted both the database and the Stock-Out form.
-        const quantityError = validateQuantity(amount, { label: "Stock-out quantity" });
+        // is the honest figure.
+        const quantityError = validateQuantity(entry.amount, { label: "Stock-out quantity" });
         if (quantityError) return quantityError;
-        if (amount > Number(target.quantity)) return `Requested quantity for ${target.name} exceeds available stock.`;
       }
 
       const result = await appointmentService.stockOutBatch(appointmentId, entries, date);
       if (result.error) return result.error;
       if (!result.movements.length) return "Stock Out did not return a saved movement.";
-      setInventory((previous) => previous.map((entry) => {
-        const movement = result.movements.find((row) => row.item_id === entry.id);
-        return movement ? { ...entry, quantity: Number(movement.new_quantity) } : entry;
-      }));
-      setMovements((previous) => [
-        ...result.movements.map((movement) => {
-          const target = inventory.find((entry) => entry.id === movement.item_id);
-          return {
-            id: movement.movement_id,
-            itemId: movement.item_id,
-            amount: Number(movement.amount),
-            quantityDelta: -Number(movement.amount),
-            movementDate: movement.movement_date,
-            batchNumber: movement.batch_number || "",
-            reference: `Appointment ${appointmentId}`,
-            actor: movement.actor || "",
-            movementType: "OUT",
-            stockOutReason: "APPOINTMENT",
-            appointmentId,
-            itemName: target?.name || "Unknown item",
-            itemUnit: target?.unit || "",
-          };
-        }),
-        ...previous,
-      ]);
+      await reloadStock();
       return result.movements;
     },
-    [inventory]
+    [inventory, reloadStock]
   );
 
-  const stockCorrection = useCallback(async (itemId, delta, reason) => {
+  /** Checked-out stock back on the shelf, with a reason (migration 054). */
+  const returnCheckout = useCallback(
+    async (checkout, { amount, reason, appointmentId, note, date }) => {
+      const quantityError = validateQuantity(amount, { label: "Quantity returned" });
+      if (quantityError) return quantityError;
+      const dateError = validateMovementDate(date);
+      if (dateError) return dateError;
+
+      const result = await inventoryService.returnCheckout(checkout.id, { amount, reason, appointmentId, note, date });
+      if (result.error) return result.error;
+      await reloadStock();
+      addLog(actor, `Returned ${amount} ${checkout.itemUnit || ""} of "${checkout.itemName}" to stock.`.replace("  ", " "), LOG_TYPES.INVENTORY);
+      return true;
+    },
+    [actor, reloadStock]
+  );
+
+  /** A counted difference; for a chemical, on `batchId` or by expiry (migration 055). */
+  const stockCorrection = useCallback(async (itemId, delta, reason, { batchId } = {}) => {
     const target = inventory.find((entry) => entry.id === itemId);
     if (!target) return "Inventory item not found.";
     if (!Number.isInteger(Number(delta)) || Number(delta) === 0) return "Correction must be a non-zero whole number.";
+    // The same cap as every other movement (LIMITS, migrations 047 and 058).
+    const sizeError = validateQuantity(Math.abs(Number(delta)), { label: "A correction" });
+    if (sizeError) return sizeError;
     if (Number(target.quantity) + Number(delta) < 0) return "Correction cannot make stock negative.";
-    const result = await inventoryService.stockCorrection(itemId, delta, reason);
+    const result = await inventoryService.stockCorrection(itemId, delta, reason, { batchId });
     if (result.error) return result.error;
-    setInventory((previous) => previous.map((entry) => entry.id === itemId ? { ...entry, quantity: result.newQuantity } : entry));
-    setMovements((previous) => [{
-      ...result.movement,
-      itemId,
-      amount: Number(result.movement.amount),
-      quantityDelta: Number(delta),
-      movementDate: result.movement.movement_date,
-      reference: result.movement.reference,
-      actor: result.movement.actor || "",
-      movementType: "CORRECTION",
-      itemName: target.name,
-      itemUnit: target.unit,
-    }, ...previous]);
+    await reloadStock();
     return true;
-  }, [inventory]);
+  }, [inventory, reloadStock]);
 
-  const refreshMovements = useCallback(async () => {
-    setMovementsLoading(true);
-    setMovementsError("");
+  // Admin batch tools (migration 055). Each resolves to true or an error.
+  const batchAction = useCallback(async (call, logLine) => {
+    const result = await call();
+    if (result.error) return result.error;
+    await reloadStock();
+    if (logLine) addLog(actor, logLine, LOG_TYPES.INVENTORY);
+    return true;
+  }, [actor, reloadStock]);
 
-    const result = await inventoryService.fetchMovements();
-    if (result.error) setMovementsError(result.error);
-    else setMovements(result.movements);
-
-    setMovementsLoading(false);
-    return result;
-  }, []);
+  const writeOffBatch = useCallback(
+    (batch, note) => batchAction(() => inventoryService.writeOffBatch(batch.id, note), `Wrote off expired batch ${batch.lotNumber || batch.reference}.`),
+    [batchAction]
+  );
+  const updateBatch = useCallback(
+    (batch, changes) => batchAction(() => inventoryService.updateBatch(batch.id, changes), `Corrected batch ${batch.reference}.`),
+    [batchAction]
+  );
+  const splitBatch = useCallback(
+    (batch, split) => batchAction(() => inventoryService.splitBatch(batch.id, split), `Split ${split.amount} off batch ${batch.reference}.`),
+    [batchAction]
+  );
 
   useEffect(() => {
     if (session && sessionVerified) refreshMovements();
@@ -314,14 +308,19 @@ export function InventoryProvider({ children }) {
       removeItem,
       setItemStatus,
       stockInMany,
-      stockOut,
       stockOutManual,
       stockOutMany,
+      returnCheckout,
       stockCorrection,
       movements,
       movementsLoading,
       movementsError,
       refreshMovements,
+      batches,
+      refreshBatches,
+      writeOffBatch,
+      updateBatch,
+      splitBatch,
     }),
     [
       inventory,
@@ -334,14 +333,19 @@ export function InventoryProvider({ children }) {
       removeItem,
       setItemStatus,
       stockInMany,
-      stockOut,
       stockOutManual,
       stockOutMany,
+      returnCheckout,
       stockCorrection,
       movements,
       movementsLoading,
       movementsError,
       refreshMovements,
+      batches,
+      refreshBatches,
+      writeOffBatch,
+      updateBatch,
+      splitBatch,
     ]
   );
 

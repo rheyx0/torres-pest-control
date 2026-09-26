@@ -9,7 +9,7 @@
 // The person printing picks "Save as PDF" in the browser's print dialog.
 
 import { COMPANY } from "../../utils/constants";
-import { formatDate, formatDateTime } from "../../utils/formatters";
+import { formatDate, formatDateTime, formatPeso } from "../../utils/formatters";
 import { appointmentReference } from "../../utils/scheduling";
 
 function Row({ label, value }) {
@@ -104,7 +104,7 @@ function ServiceReportDocument({ appointment, client, technician, technicians = 
                     const item = inventoryById.get(entry.itemId);
                     const amount = Number(entry.amount ?? entry.quantity) || 0;
                     const value = amount * (Number(item?.cost) || 0);
-                    return item?.cost !== undefined && item?.cost !== null ? `₱${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
+                    return item?.cost !== undefined && item?.cost !== null ? formatPeso(value) : "—";
                   })()}</td>
                 </tr>
               ))}

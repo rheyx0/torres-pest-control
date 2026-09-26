@@ -10,10 +10,10 @@
 //                  the client's creation, newest first
 
 import { endOf, startOf } from "./scheduling";
+import { hasPlausiblePrice } from "./dashboardMetrics";
 
 const live = (entry) => entry.status !== "Cancelled";
 const done = (entry) => entry.status === "Completed" || entry.reportSubmitted;
-const hasPrice = (entry) => entry.price !== "" && entry.price !== null && entry.price !== undefined && !Number.isNaN(Number(entry.price));
 
 export function clientVisits(appointments, clientId) {
   return appointments.filter((entry) => entry.clientId === clientId).sort((a, b) => startOf(b) - startOf(a));
@@ -31,7 +31,8 @@ export function nextVisit(visits, now = new Date()) {
 export function lifetimeValue(visits) {
   const finished = visits.filter(done);
   return {
-    total: finished.filter(hasPrice).reduce((sum, entry) => sum + Number(entry.price), 0),
+    // A price the system could not accept today is left out (migration 058).
+    total: finished.filter(hasPlausiblePrice).reduce((sum, entry) => sum + Number(entry.price), 0),
     visits: finished.length,
   };
 }

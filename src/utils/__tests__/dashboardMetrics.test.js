@@ -1,4 +1,49 @@
-import { reportsDue, serviceMix, serviceMixThisMonth, signatureState, weekWindow } from "../dashboardMetrics";
+import {
+  averageMaterialCost,
+  hasPlausiblePrice,
+  reorderExposure,
+  reportsDue,
+  serviceMix,
+  serviceMixThisMonth,
+  signatureState,
+  spendBySupplier,
+  spendThisMonth,
+  stockOnHandValue,
+  weekWindow,
+} from "../dashboardMetrics";
+import { todayISO } from "../validators";
+
+// Migration 058: rows from before the limits with figures the system could
+// not accept today are left out of every total, not shown.
+describe("figures the system could not accept", () => {
+  const thisMonth = todayISO();
+  const inventory = [
+    { id: "ok", supplier: "Bayer", cost: 100, quantity: 10, reorderLevel: 20 },
+    { id: "bad-cost", supplier: "Baygon", cost: 1e284, quantity: 5, reorderLevel: 10 },
+    { id: "bad-qty", supplier: "Acme", cost: 10, quantity: 5e9, reorderLevel: null },
+  ];
+  const delivery = (itemId, amount, unitCost) => ({ itemId, movementType: "IN", movementDate: thisMonth, amount, unitCost, totalCost: amount * unitCost });
+  const movements = [delivery("ok", 10, 100), delivery("bad-cost", 5, 1e284), delivery("ok", 2e6, 1)];
+
+  it("leaves them out of stock received and spend by supplier", () => {
+    expect(spendThisMonth(movements)).toBe(1000);
+    expect(spendBySupplier(movements, inventory)).toEqual([{ label: "Bayer", value: 1000 }]);
+  });
+
+  it("leaves impossible items out of stock on hand and restock cost", () => {
+    expect(stockOnHandValue(inventory)).toBe(1000);
+    expect(reorderExposure(inventory)).toBe(1000);
+  });
+
+  it("prices materials per job with sensible items only", () => {
+    const jobs = [{ reportSubmitted: true, reportSubmittedAt: new Date().toISOString(), stockUsed: [{ itemId: "ok", amount: 2 }, { itemId: "bad-cost", amount: 1 }] }];
+    expect(averageMaterialCost(jobs, inventory)).toMatchObject({ jobs: 1, total: 200 });
+  });
+
+  it("only counts prices from ₱0 to ₱999,999.99", () => {
+    expect([1500, 0, "", null, 1e12, -5, "abc"].map((price) => hasPlausiblePrice({ price }))).toEqual([true, true, false, false, false, false, false]);
+  });
+});
 
 // Friday 25 Sep 2026, 9:12 AM — the handoff's example day.
 const now = new Date(2026, 8, 25, 9, 12);

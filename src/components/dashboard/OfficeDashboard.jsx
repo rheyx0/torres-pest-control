@@ -28,6 +28,7 @@ import { ROLES } from "../../utils/constants";
 import { SUBSYSTEMS } from "../../utils/permissions";
 import { bookableTechnicians, crewOf, endOf, findTechnicianConflicts } from "../../utils/scheduling";
 import { greetingFor } from "../../utils/greetings";
+import { absenceDuring, describeOut, outOn } from "../../utils/absences";
 import { plural } from "../../utils/formatters";
 import {
   attentionItems,
@@ -47,6 +48,7 @@ import {
   reorderExposure,
   signatureState,
   spendBySupplier,
+  dayKey,
   spendThisMonth,
   stockOnHandValue,
   weekWindow,
@@ -81,7 +83,7 @@ const firstName = (user) => (user?.name || user?.username || "").split(" ")[0];
 
 function OfficeDashboard() {
   const { currentUser, can } = useAuth();
-  const { appointments, loading, error, updateAppointment } = useScheduling();
+  const { appointments, absences, loading, error, updateAppointment } = useScheduling();
   const { clients } = useClients();
   const { users } = useUsers();
   const { inventory, movements } = useInventoryContext();
@@ -109,6 +111,9 @@ function OfficeDashboard() {
   const boardDay = new Date(now);
   if (dayChoice === "tomorrow") boardDay.setDate(boardDay.getDate() + 1);
   const lanes = dispatchLanes(appointments, technicians, boardDay);
+  // Who is out on the board's day (migration 057): their lane says so and
+  // takes no drops.
+  const outOnBoard = new Map(outOn(absences, dayKey(boardDay)).map((absence) => [absence.technicianId, absence]));
 
   const today = appointmentsToday(appointments);
   const doneToday = today.filter((entry) => entry.status === "Completed" || entry.reportSubmitted).length;
@@ -124,7 +129,7 @@ function OfficeDashboard() {
   const overdue = overdueReports(appointments, now);
   const revenue = weekRevenue(appointments, now);
   const lowStock = lowStockItems(inventory.filter((item) => item.status !== "DISABLED"));
-  const attention = attentionItems({ appointments, clients, inventory, users }, { now, canBook, canSeeStock });
+  const attention = attentionItems({ appointments, clients, inventory, users, absences }, { now, canBook, canSeeStock });
   const bars = weekBars(appointments, now);
   const { start: weekStart, end: weekEnd } = weekWindow(now);
   const lastDay = new Date(weekEnd);
@@ -150,6 +155,11 @@ function OfficeDashboard() {
   // status is left as it is.
   const assign = async (appointment, technician) => {
     if (!appointment || !technician) return;
+    const away = absenceDuring(absences, technician.id, appointment);
+    if (away) {
+      showError(`${technician.name || technician.username} is ${describeOut(away)}.`);
+      return;
+    }
     const assigned = { ...appointment, technicianId: technician.id, technicianIds: [technician.id] };
     if (findTechnicianConflicts(appointments, assigned).length > 0) {
       showError(`${technician.name || technician.username} is already booked at that time.`);
@@ -236,6 +246,7 @@ function OfficeDashboard() {
 
         <DispatchBoard
           lanes={lanes}
+          outIds={outOnBoard}
           day={boardDay}
           now={now}
           clientName={clientName}

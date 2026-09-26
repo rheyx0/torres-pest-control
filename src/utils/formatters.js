@@ -60,6 +60,26 @@ export function humanizeEnum(value) {
     .join(" ");
 }
 
+/**
+ * The most a peso figure is shown as. Nothing real comes close — the largest
+ * possible stock movement is 100,000 × ₱999,999.99 — so anything above it is
+ * a bad row (migration 058 stops new ones), shown as a cap rather than as
+ * "₱1.1000000000000001e+284T" breaking the layout.
+ */
+export const PESO_DISPLAY_CAP = 1e15;
+
+/**
+ * "₱1,234.50". The one peso formatter: `decimals` fixes the decimal places
+ * (default 2); `minDecimals` lets whole amounts drop them ("₱1,234"). A figure
+ * that is not a number shows as "₱0.00"; one past PESO_DISPLAY_CAP as "₱999T+".
+ */
+export function formatPeso(value, { decimals = 2, minDecimals = decimals } = {}) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return `₱${(0).toFixed(minDecimals)}`;
+  if (Math.abs(amount) >= PESO_DISPLAY_CAP) return amount < 0 ? "-₱999T+" : "₱999T+";
+  return `₱${amount.toLocaleString(undefined, { minimumFractionDigits: minDecimals, maximumFractionDigits: decimals })}`;
+}
+
 /** "Sep 24" — the short form used in lists, rows and chips. */
 export function formatShortDate(value) {
   if (!value) return "—";

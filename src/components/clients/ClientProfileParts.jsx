@@ -22,12 +22,12 @@ import { colors, quietButton } from "../../styles/theme";
 import Button from "../ui/Button";
 import StatusPill from "../ui/StatusPill";
 import { DOCUMENT_CATEGORIES } from "../../utils/constants";
-import { humanizeEnum } from "../../utils/formatters";
+import { formatPeso, humanizeEnum } from "../../utils/formatters";
 import { crewOf } from "../../utils/scheduling";
 import { directionsUrl, telUrl } from "../../utils/clientTimeline";
 import { signatureState } from "../../utils/dashboardMetrics";
 
-export const peso = (value) => `₱${(Number(value) || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+export const peso = (value) => formatPeso(value, { minDecimals: 0 });
 const shortDate = (value) => new Date(value).toLocaleDateString([], { month: "short", day: "numeric" });
 const clock = (value) => new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const iconText = { display: "inline-flex", alignItems: "center", gap: "6px" };

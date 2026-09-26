@@ -148,7 +148,16 @@ export async function fetchAppointments() {
   const stockByAppointment = new Map();
   (stockResult.data || []).forEach((movement) => {
     const entries = stockByAppointment.get(movement.appointment_id) || [];
-    entries.push({ itemId: movement.item_id, name: movement.inventory?.name || "Inventory item", amount: Number(movement.amount), unit: movement.inventory?.unit || "", batchNumber: movement.batch_number || "", date: movement.movement_date });
+    // Since migration 054 one line of materials can be several rows — part
+    // drawn from a technician's checkout, part from the shelf. The report
+    // shows what was used, so rows of the same item, batch and day are one.
+    const same = entries.find((entry) => entry.itemId === movement.item_id
+      && entry.batchNumber === (movement.batch_number || "") && entry.date === movement.movement_date);
+    if (same) {
+      same.amount = Math.round((same.amount + Number(movement.amount)) * 1e6) / 1e6;
+    } else {
+      entries.push({ itemId: movement.item_id, name: movement.inventory?.name || "Inventory item", amount: Number(movement.amount), unit: movement.inventory?.unit || "", batchNumber: movement.batch_number || "", date: movement.movement_date });
+    }
     stockByAppointment.set(movement.appointment_id, entries);
   });
   // Lead first, then the order they were assigned in, so the crew reads the
@@ -292,6 +301,53 @@ export const finishJobHere = (appointmentId) => planCall("finish_job_here", { p_
 
 /** Cancels every visit of the plan still to come. */
 export const cancelPlanRemaining = (planId) => planCall("cancel_plan_remaining", { p_plan_id: planId });
+
+// ---------------------------------------------------------------------------
+// Technicians who are out (migration 057)
+// ---------------------------------------------------------------------------
+
+const mapAbsenceRow = (row) => ({
+  id: row.id,
+  technicianId: row.technician_id,
+  startsOn: String(row.starts_on).slice(0, 10),
+  endsOn: String(row.ends_on).slice(0, 10),
+  reason: row.reason || "",
+});
+
+/** Every recorded absence. Before migration 057 there is no table, and none. */
+export async function fetchAbsences() {
+  const { data, error } = await supabase.from("technician_absences").select("id, technician_id, starts_on, ends_on, reason").order("starts_on");
+  if (error && /technician_absences/.test(`${error.message || ""} ${error.details || ""}`)) return { absences: [] };
+  if (error) return { error: describeError(error), absences: [] };
+  return { absences: (data || []).map(mapAbsenceRow) };
+}
+
+/**
+ * Marks a technician out from `startsOn` to `endsOn` and, in the same
+ * transaction, reassigns their visits in those days (`changes`, as
+ * reassign_visits takes them — see utils/coverage.js).
+ */
+export const markTechnicianOut = (technicianId, { startsOn, endsOn, reason, changes = [] }) => planCall("mark_technician_out", {
+  p_technician_id: technicianId,
+  p_starts_on: startsOn,
+  p_ends_on: endsOn,
+  p_reason: reason?.trim() || null,
+  p_changes: changes,
+});
+
+/** Back to work on `backOn`: the absence ends the day before (or is removed). */
+export const endAbsence = (absenceId, backOn) => planCall("end_absence", { p_absence_id: absenceId, p_back_on: backOn });
+
+/**
+ * Cover for a technician who cannot work (migration 056): one change per
+ * visit — { appointment_id, action: ASSIGN | REMOVE | RESCHEDULE,
+ * technician_ids: the crew after } — in one transaction. See utils/coverage.js.
+ */
+export const reassignVisits = (absentTechnicianId, changes, reason) => planCall("reassign_visits", {
+  p_absent_technician_id: absentTechnicianId,
+  p_changes: changes,
+  p_reason: reason?.trim() || null,
+});
 
 /** "Don't renew" (renew = false) or undo it (true); a recurring plan only (migration 053). */
 export const setPlanRenewal = (planId, renew) => planCall("set_plan_renewal", { p_plan_id: planId, p_renew: renew });
@@ -456,25 +512,15 @@ export async function getAttachmentUrl(attachment, { download = false } = {}) {
   return { url: data.signedUrl };
 }
 
-export async function stockOut(itemId, appointmentId, amount, date = new Date().toISOString().slice(0, 10)) {
-  const { data, error } = await supabase.rpc("stock_out", {
-    p_item_id: itemId,
-    p_appointment_id: appointmentId,
-    p_amount: Number(amount),
-    p_movement_date: date,
-  });
-  if (error) return { error: describeError(error) };
-  const row = Array.isArray(data) ? data[0] : data;
-  return { movement: row, newQuantity: Number(row?.new_quantity) };
-}
-
 // `date` is the business day the materials were used. The default is the
 // local date, not toISOString()'s UTC one, which in the Philippines is still
 // yesterday until 8 am.
 export async function stockOutBatch(appointmentId, items, date = todayISO()) {
   const { data, error } = await supabase.rpc("stock_out_batch", {
     p_appointment_id: appointmentId,
-    p_items: items.map((item) => ({ item_id: item.itemId, amount: Number(item.amount), batch_number: item.batchNumber || null })),
+    // `batchId` is the container in the technician's hand (migration 055); the
+    // server fills in each row's batch and lot, soonest expiry first otherwise.
+    p_items: items.map((item) => ({ item_id: item.itemId, amount: Number(item.amount), batch_id: item.batchId || null })),
     p_movement_date: date,
   });
   if (error) return { error: describeError(error) };

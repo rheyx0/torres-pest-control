@@ -50,7 +50,7 @@ describe("filterByReason", () => {
 
 describe("countByReason", () => {
   it("counts every chip", () => {
-    expect(countByReason(movements)).toEqual({ ALL: 6, APPOINTMENT: 2, TECHNICIAN_CHECKOUT: 2, MISSING: 1, DAMAGED: 1 });
+    expect(countByReason(movements)).toEqual({ ALL: 6, APPOINTMENT: 2, TECHNICIAN_CHECKOUT: 2, MISSING: 1, DAMAGED: 1, EXPIRED: 0 });
   });
 });
 

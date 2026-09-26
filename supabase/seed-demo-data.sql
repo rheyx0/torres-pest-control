@@ -983,6 +983,18 @@ begin
   end if;
 end $$;
 
+-- Migration 055 tracks chemicals by batch; the truncate above cleared them.
+-- Each seeded chemical's stock becomes its opening batch. Skipped on a
+-- database without 055.
+do $$
+declare chemical uuid;
+begin
+  if to_regprocedure('public.ensure_item_batches(uuid)') is null then return; end if;
+  for chemical in select i.id from public.inventory i where i.type = 'CHEMICAL' and i.quantity > 0 loop
+    perform public.ensure_item_batches(chemical);
+  end loop;
+end $$;
+
 commit;
 
 notify pgrst, 'reload schema';

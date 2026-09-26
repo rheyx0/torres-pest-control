@@ -65,6 +65,8 @@ export const LIMITS = {
   MAX_PRICE: 999999.99,
   MAX_UNIT_COST: 999999.99,
   MAX_MOVEMENT_QTY: 100000,
+  // An item's stock level (migration 058's inventory_quantity_limit_check).
+  MAX_STOCK_LEVEL: 10000000,
   MIN_DURATION_MINUTES: 15,
   MAX_DURATION_MINUTES: 1440,
   NOTES_MAX: 2000,
@@ -97,7 +99,22 @@ export const STOCK_OUT_REASON_LABELS = {
   TECHNICIAN_CHECKOUT: "Checked out by a technician",
   MISSING: "Missing stock",
   DAMAGED: "Damaged stock",
+  // An expired chemical batch written off (migration 055). Never chosen by
+  // hand: it comes from the batch's Write off.
+  EXPIRED: "Expired stock",
 };
+
+// Why checked-out stock came back to the shelf (return_checkout, migration
+// 054). Values mirror inventory_movements_return_reason_check. A cancelled
+// visit names the visit; "Other" needs a note.
+export const RETURN_REASONS = [
+  { value: "VISIT_CANCELLED", label: "Visit cancelled", needsVisit: true },
+  { value: "LEFTOVER", label: "Leftover after the visit" },
+  { value: "NOT_NEEDED", label: "Not needed after all" },
+  { value: "OTHER", label: "Other", needsNote: true },
+];
+
+export const RETURN_REASON_LABELS = Object.fromEntries(RETURN_REASONS.map((entry) => [entry.value, entry.label]));
 
 // How often a service recurs. Mirrors the appointments_service_frequency_check
 // constraint (migration 041, "Daily" added by 052) — changing one side needs a

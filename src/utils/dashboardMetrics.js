@@ -12,6 +12,8 @@
 // derived from it and nothing here tries to.
 
 import { crewOf, endOf, isAssignedTo, reportOwed } from "./scheduling";
+import { PESO_DISPLAY_CAP, formatPeso } from "./formatters";
+import { LIMITS } from "./constants";
 
 const startOfDay = (date) => {
   const copy = new Date(date);
@@ -191,6 +193,30 @@ export function recentlyCompleted(appointments, limit = 5) {
 // Cost
 // ---------------------------------------------------------------------------
 
+// Rows the system could not store today (LIMITS; migration 058 puts them on
+// the tables). Anything older that breaks them — test deliveries costed at
+// ₱1.1 × 10^284 — is left out of every total below instead of being added
+// up and shown. supabase/cleanup-absurd-amounts.sql fixes the rows themselves.
+const within0 = (value, max) => {
+  const number = Number(value) || 0;
+  return number >= 0 && number <= max;
+};
+
+/** A visit price the system accepts: set, a number, ₱0 – ₱999,999.99. */
+export const hasPlausiblePrice = (entry) =>
+  entry?.price !== "" && entry?.price !== null && entry?.price !== undefined
+  && Number.isFinite(Number(entry.price)) && within0(entry.price, LIMITS.MAX_PRICE);
+
+/** An item whose cost and stock level are ones the system accepts. */
+export const isPlausibleItem = (item) =>
+  within0(item?.cost, LIMITS.MAX_UNIT_COST) && within0(item?.quantity, LIMITS.MAX_STOCK_LEVEL);
+
+/** A stock movement whose quantity, unit cost and total are ones the system accepts. */
+export const isPlausibleMovement = (movement) =>
+  within0(movement?.amount, LIMITS.MAX_MOVEMENT_QTY)
+  && within0(movement?.unitCost, LIMITS.MAX_UNIT_COST)
+  && within0(movement?.totalCost, LIMITS.MAX_MOVEMENT_QTY * LIMITS.MAX_UNIT_COST);
+
 /** Items at or below their reorder level. A null level means "not tracked". */
 export function lowStockItems(inventory) {
   return inventory
@@ -201,7 +227,9 @@ export function lowStockItems(inventory) {
 
 /** Capital sitting in the store right now. */
 export function stockOnHandValue(inventory) {
-  return inventory.reduce((total, item) => total + (Number(item.quantity) || 0) * (Number(item.cost) || 0), 0);
+  return inventory
+    .filter(isPlausibleItem)
+    .reduce((total, item) => total + (Number(item.quantity) || 0) * (Number(item.cost) || 0), 0);
 }
 
 /**
@@ -209,7 +237,7 @@ export function stockOnHandValue(inventory) {
  * The one cost figure that answers a question somebody has to act on.
  */
 export function reorderExposure(inventory) {
-  return lowStockItems(inventory).reduce((total, item) => {
+  return lowStockItems(inventory.filter(isPlausibleItem)).reduce((total, item) => {
     const shortfall = Math.max(0, Number(item.reorderLevel) - Number(item.quantity));
     return total + shortfall * (Number(item.cost) || 0);
   }, 0);
@@ -218,7 +246,7 @@ export function reorderExposure(inventory) {
 /** Recorded spend on stock received inside a window. */
 export function spendInWindow(movements, window) {
   return movements
-    .filter((movement) => movement.movementType === "IN" && within(movement.movementDate, window))
+    .filter((movement) => movement.movementType === "IN" && within(movement.movementDate, window) && isPlausibleMovement(movement))
     .reduce((total, movement) => total + (Number(movement.totalCost) || 0), 0);
 }
 
@@ -230,7 +258,7 @@ export function spendBySupplier(movements, inventory, limit = 4) {
   const supplierOf = new Map(inventory.map((item) => [item.id, item.supplier || "Unrecorded"]));
   const totals = new Map();
   movements
-    .filter((movement) => movement.movementType === "IN" && within(movement.movementDate, window))
+    .filter((movement) => movement.movementType === "IN" && within(movement.movementDate, window) && isPlausibleMovement(movement))
     .forEach((movement) => {
       const supplier = supplierOf.get(movement.itemId) || "Unrecorded";
       totals.set(supplier, (totals.get(supplier) || 0) + (Number(movement.totalCost) || 0));
@@ -251,14 +279,14 @@ export function spendBySupplier(movements, inventory, limit = 4) {
  */
 export function averageMaterialCost(appointments, inventory) {
   const window = monthWindow();
-  const costOf = new Map(inventory.map((item) => [item.id, Number(item.cost) || 0]));
+  const costOf = new Map(inventory.filter(isPlausibleItem).map((item) => [item.id, Number(item.cost) || 0]));
   const jobs = appointments.filter((entry) =>
     entry.reportSubmitted && within(entry.reportSubmittedAt || entry.scheduledAt, window));
   if (jobs.length === 0) return { average: 0, jobs: 0, total: 0 };
 
   const total = jobs.reduce((sum, job) => sum
     + (job.stockUsed || []).reduce((jobSum, used) =>
-      jobSum + (Number(used.amount) || 0) * (costOf.get(used.itemId) || 0), 0), 0);
+      jobSum + (within0(used.amount, LIMITS.MAX_MOVEMENT_QTY) ? Number(used.amount) || 0 : 0) * (costOf.get(used.itemId) || 0), 0), 0);
 
   return { average: total / jobs.length, jobs: jobs.length, total };
 }
@@ -270,18 +298,18 @@ export function averageMaterialCost(appointments, inventory) {
  * the full `peso()` value in a title attribute.
  */
 export function pesoCompact(value) {
-  const amount = Number(value) || 0;
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return peso(0);
   const size = Math.abs(amount);
+  // Past the cap it is a bad row, not money: see PESO_DISPLAY_CAP.
+  if (size >= PESO_DISPLAY_CAP) return formatPeso(amount);
   if (size >= 1e12) return `₱${(amount / 1e12).toFixed(2)}T`;
   if (size >= 1e9) return `₱${(amount / 1e9).toFixed(2)}B`;
   if (size >= 1e6) return `₱${(amount / 1e6).toFixed(2)}M`;
   return peso(amount);
 }
 
-/** Peso formatting, used wherever a cost is shown. */
+/** Peso formatting, used wherever a cost is shown. Whole pesos unless asked. */
 export function peso(value, { decimals = 0 } = {}) {
-  return `₱${(Number(value) || 0).toLocaleString(undefined, {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  })}`;
+  return formatPeso(value, { decimals });
 }

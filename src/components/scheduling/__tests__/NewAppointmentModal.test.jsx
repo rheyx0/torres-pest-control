@@ -231,6 +231,19 @@ describe("NewAppointmentModal", () => {
       expect(within(picker).getByRole("checkbox", { name: "Bruce Banner" })).toBeInTheDocument();
     });
 
+    // Migration 057: someone on leave cannot be booked — the server refuses
+    // them, so the picker does not offer them.
+    it("will not book a technician who is out that day", () => {
+      renderModal({
+        initialScheduledAt: `${TODAY}T14:00`,
+        absences: [{ id: "a", technicianId: "t2", startsOn: TODAY, endsOn: TODAY, reason: "On leave" }],
+      });
+      const picker = screen.getByRole("group", { name: "Assigned technicians" });
+      const bruce = within(picker).getByRole("checkbox", { name: /Bruce Banner — out \(On leave\) until/ });
+      expect(bruce).toBeDisabled();
+      expect(screen.getByText("1 of 2 free at this time")).toBeInTheDocument();
+    });
+
     // Advisory only: a stale appointments list must never stop a booking the
     // server would accept.
     it("does not block submission", async () => {

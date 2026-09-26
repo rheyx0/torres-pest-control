@@ -9,7 +9,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
-import SchedulingPage, { buildStockRows, defaultStockOutDate, scopeAppointments, shortDuration, validateStockOut, weekRangeLabel } from "../SchedulingPage";
+import SchedulingPage, { buildStockRows, defaultStockOutDate, scopeAppointments, shortDuration, stockAvailable, validateStockOut, weekRangeLabel } from "../SchedulingPage";
 import { localDateKey, startOfWeek } from "../../utils/calendarDates";
 
 // SchedulingPage reads ?appointment= via useSearchParams, so it needs a router
@@ -88,6 +88,8 @@ const mockServices = [
 ];
 
 const mockStockOutMany = jest.fn(async () => [{ movement_id: "m1" }]);
+// The stock log; a test puts a technician's checkout here (migration 054).
+let mockMovements = [];
 const mockUpdateAppointment = jest.fn(async (a) => a);
 const mockCreateAppointment = jest.fn(async (a) => ({ ...a, id: "new" }));
 
@@ -111,7 +113,7 @@ jest.mock("../../hooks/useClients", () => ({
 
 jest.mock("../../hooks/useInventory", () => ({
   __esModule: true,
-  default: () => ({ inventory: mockInventory, stockOutMany: mockStockOutMany }),
+  default: () => ({ inventory: mockInventory, movements: mockMovements, stockOutMany: mockStockOutMany }),
 }));
 
 jest.mock("../../hooks/useUsers", () => ({
@@ -411,8 +413,8 @@ describe("the Stock-Out tab", () => {
     expect(mockStockOutMany).toHaveBeenCalledWith(
       "a1",
       [
-        { itemId: "i1", amount: 1.5, batchNumber: "" },
-        { itemId: "i2", amount: 2, batchNumber: "" },
+        { itemId: "i1", amount: 1.5, batchId: "" },
+        { itemId: "i2", amount: 2, batchId: "" },
       ],
       "2026-01-15"
     );
@@ -427,10 +429,35 @@ describe("the Stock-Out tab", () => {
     await userEvent.clear(quantity);
     await userEvent.type(quantity, "5");
 
-    expect(screen.getByText("Only 3 pc in stock.")).toBeInTheDocument();
+    expect(screen.getByText("Only 3 pc available.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Record stock out/ }));
     expect(mockStockOutMany).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/Only 3 pc of Bait station is in stock/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/Only 3 pc of Bait station is available/);
+  });
+
+  // Migration 054: what the crew checked out is used before the shelf, so it
+  // counts toward what the visit can record — no double deduction, no refusal.
+  describe("when the crew checked stock out", () => {
+    beforeEach(() => {
+      mockMovements = [{
+        id: "co1", itemId: "i2", amount: 2, movementType: "OUT", stockOutReason: "TECHNICIAN_CHECKOUT",
+        technicianId: "t1", movementDate: dayKey(0), itemName: "Bait station", itemUnit: "pc",
+      }];
+    });
+    afterEach(() => { mockMovements = []; });
+
+    it("counts it toward what is available and says it is used first", async () => {
+      await openStockTab();
+
+      expect(screen.getByText("The crew checked out 2 pc; that is used first, then the shelf.")).toBeInTheDocument();
+      const quantity = screen.getByLabelText("Equipment quantity");
+      await userEvent.clear(quantity);
+      await userEvent.type(quantity, "5");
+      expect(screen.queryByText(/available\.$/)).not.toBeInTheDocument();
+
+      await userEvent.type(quantity, "0");
+      expect(screen.getByText("Only 5 pc (3 pc on the shelf, 2 pc with the crew) available.")).toBeInTheDocument();
+    });
   });
 });
 
@@ -459,10 +486,34 @@ describe("stock-out helpers", () => {
     expect(rows.every((row) => row.itemId === "")).toBe(true);
   });
 
-  it("accepts decimals and refuses a future date", () => {
-    const rows = [{ itemId: "i1", amount: "0.4", batchNumber: " L1 " }];
-    expect(validateStockOut(rows, "2026-01-01", mockInventory)).toEqual({ error: null, entries: [{ itemId: "i1", amount: 0.4, batchNumber: "L1" }] });
+  it("accepts decimals, carries a chosen batch, and refuses a future date", () => {
+    const rows = [{ itemId: "i1", amount: "0.4", batchId: "b1" }];
+    expect(validateStockOut(rows, "2026-01-01", mockInventory)).toEqual({ error: null, entries: [{ itemId: "i1", amount: 0.4, batchId: "b1" }] });
     expect(validateStockOut(rows, "2999-01-01", mockInventory).error).toMatch(/future/);
+  });
+
+  // Migration 055: only usable batches count; expired stock cannot be recorded.
+  describe("stockAvailable", () => {
+    const termidor = mockInventory[0];
+    const batch = (id, quantity, expirationDate) => ({ id, itemId: "i1", quantity, expirationDate, receivedDate: "2026-01-01" });
+    const batches = [batch("fresh", 6, "2027-06-01"), batch("old", 4, "2026-02-01")];
+
+    it("counts the shelf by batch, leaving out what has expired", () => {
+      expect(stockAvailable(termidor, { batches, date: "2026-03-01" })).toEqual({ shelf: 6, held: 0 });
+      expect(stockAvailable(termidor, { batches, date: "2026-01-15" })).toEqual({ shelf: 10, held: 0 });
+    });
+
+    it("counts the crew's checked-out stock unless its batch has expired", () => {
+      const held = [
+        { checkout: { itemId: "i1", batchId: "fresh" }, remaining: 1 },
+        { checkout: { itemId: "i1", batchId: "old" }, remaining: 2 },
+      ];
+      expect(stockAvailable(termidor, { batches, held, date: "2026-03-01" })).toEqual({ shelf: 6, held: 1 });
+    });
+
+    it("falls back on the item's quantity before batches exist", () => {
+      expect(stockAvailable(termidor, { batches: [], date: "2026-03-01" })).toEqual({ shelf: 10, held: 0 });
+    });
   });
 
   it("refuses zero, blanks and absurd quantities", () => {

@@ -127,7 +127,7 @@ describe("VisitPage", () => {
   it("sends the report, then records the materials, then goes back to the day", async () => {
     renderVisit(visit, "/visit/a1?step=Treatment");
     mockSubmitReport.mockResolvedValue({});
-    mockStockOutMany.mockResolvedValue(true);
+    mockStockOutMany.mockResolvedValue([]);
 
     await userEvent.click(screen.getByRole("button", { name: /^Findings/ }));
     await userEvent.type(screen.getByLabelText("Findings"), "Droppings by the loading bay");
@@ -138,7 +138,7 @@ describe("VisitPage", () => {
     expect(mockSubmitReport).toHaveBeenCalledWith("a1", expect.objectContaining({ findings: "Droppings by the loading bay" }));
     // The services were left as booked, so they are not re-sent.
     expect(mockSubmitReport.mock.calls[0][1]).not.toHaveProperty("serviceIds");
-    expect(mockStockOutMany).toHaveBeenCalledWith("a1", [{ itemId: "blox", amount: 0.5, batchNumber: "" }, { itemId: "station", amount: 6, batchNumber: "" }], expect.any(String));
+    expect(mockStockOutMany).toHaveBeenCalledWith("a1", [{ itemId: "blox", amount: 0.5, batchId: "" }, { itemId: "station", amount: 6, batchId: "" }], expect.any(String));
     expect(mockShowSuccess).toHaveBeenCalledWith("Report sent. The visit stays open until the customer signs.");
     expect(localStorage.getItem("torres_visit_draft_a1")).toBeNull();
   });
@@ -146,7 +146,7 @@ describe("VisitPage", () => {
   it("ticks several services, merges their materials, and files them all", async () => {
     renderVisit(visit, "/visit/a1?step=Findings");
     mockSubmitReport.mockResolvedValue({});
-    mockStockOutMany.mockResolvedValue(true);
+    mockStockOutMany.mockResolvedValue([]);
 
     await userEvent.type(screen.getByLabelText("Findings"), "Mud tubes on the east wall");
     await userEvent.click(screen.getByRole("button", { name: /^Treatment/ }));
@@ -217,7 +217,7 @@ describe("VisitPage", () => {
 
     it("closes an earlier day with Day done: materials recorded, no report", async () => {
       renderVisit(day1, "/visit/a1", [day2]);
-      mockStockOutMany.mockResolvedValue(true);
+      mockStockOutMany.mockResolvedValue([]);
       mockFinishJobDay.mockResolvedValue(true);
 
       expect(screen.getByText(/Day 1\/2 of a multi-day job/)).toBeInTheDocument();

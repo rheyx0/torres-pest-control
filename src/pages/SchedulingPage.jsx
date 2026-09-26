@@ -11,6 +11,7 @@ import {
   Printer,
   ShieldCheck,
   UserRound,
+  UserX,
   X,
 } from "lucide-react";
 import ClientDocuments from "../components/clients/ClientDocuments";
@@ -41,12 +42,18 @@ import CalendarLegend from "../components/scheduling/CalendarLegend";
 import ScheduleSidePanel from "../components/scheduling/ScheduleSidePanel";
 import { awaitingReschedule } from "../utils/dashboardMetrics";
 import { bookingReminders } from "../utils/dispatch";
+import { openCheckouts } from "../utils/custody";
+import { formatPeso } from "../utils/formatters";
+import { outDuring } from "../utils/absences";
+import { isExpired, usableBatches } from "../utils/batches";
+import BatchSelect from "../components/inventory/BatchSelect";
 import { dayOrderProblem, isEarlierJobDay, planLabel, planVisits, printableJob } from "../utils/plans";
 import { CalendarProvider } from "../components/scheduling/CalendarContext";
 import WeekGrid from "../components/scheduling/WeekGrid";
 import MonthGrid from "../components/scheduling/MonthGrid";
 import OverflowDialog from "../components/scheduling/OverflowDialog";
 import NewAppointmentModal from "../components/scheduling/NewAppointmentModal";
+import TechnicianUnavailableModal from "../components/scheduling/TechnicianUnavailableModal";
 import TechnicianPicker from "../components/scheduling/TechnicianPicker";
 import PlanPanel from "../components/scheduling/PlanPanel";
 import SchedulingToolbar, { MODES, isCalendarMode } from "../components/scheduling/SchedulingToolbar";
@@ -80,10 +87,12 @@ function SchedulingPage() {
   const { can, currentUser } = useAuth();
   const { showError, showSuccess } = useToast();
   const { clients, addDocument, removeDocument, getDocumentUrl } = useClients();
-  const { inventory, stockOutMany } = useInventory();
+  const { inventory, movements, batches, stockOutMany } = useInventory();
+  // Stock technicians have checked out and not used or returned (migration 054).
+  const outWithTechnicians = useMemo(() => openCheckouts(movements), [movements]);
   const { staff, technicians } = useUsers();
   const { activeServices, serviceById, serviceByName } = useServices();
-  const { appointments, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
+  const { appointments, absences, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState(null);
   const [mode, setMode] = useState(MODES.WEEK);
@@ -93,6 +102,8 @@ function SchedulingPage() {
   const [draggedId, setDraggedId] = useState(null);
   const [message, setMessage] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  // "Technician unavailable": cover a sick technician's visits (migration 056).
+  const [coverOpen, setCoverOpen] = useState(false);
   const [createClientId, setCreateClientId] = useState("");
   const [createScheduledAt, setCreateScheduledAt] = useState("");
   // Service, frequency and pest concern carried over when booking a re-service.
@@ -581,9 +592,10 @@ function SchedulingPage() {
       setMessage(result);
       return result;
     }
-    entries.forEach((entry) => {
-      const item = inventory.find((candidate) => candidate.id === entry.itemId);
-      addStockUsed(selected.id, { itemId: entry.itemId, name: item?.name || "Inventory item", amount: entry.amount, unit: item?.unit || "", batchNumber: entry.batchNumber, date });
+    // One row per batch drawn from, with the lot the server recorded (055).
+    (Array.isArray(result) ? result : []).forEach((row) => {
+      const item = inventory.find((candidate) => candidate.id === row.item_id);
+      addStockUsed(selected.id, { itemId: row.item_id, name: item?.name || "Inventory item", amount: Number(row.amount), unit: item?.unit || "", batchNumber: row.batch_number || "", date });
     });
     setMessage(`${entries.length} stock item${entries.length === 1 ? "" : "s"} recorded as OUT for this appointment.`);
     return true;
@@ -718,7 +730,38 @@ function SchedulingPage() {
 
   return (
     <div style={pageShell}>
-      <PageHeader eyebrow="Operations" title="Schedule" />
+      <PageHeader
+        eyebrow="Operations"
+        title="Schedule"
+        actions={canReschedule ? (
+          <Button variant="secondary" icon={<UserX size={15} />} onClick={() => setCoverOpen(true)}>
+            Technician unavailable
+          </Button>
+        ) : null}
+      />
+      {coverOpen && (
+        <TechnicianUnavailableModal
+          technicians={technicians}
+          appointments={appointments}
+          absences={absences}
+          clients={clients}
+          movements={movements}
+          onClose={() => setCoverOpen(false)}
+          onSubmit={async (absentId, absence) => {
+            const result = await planActions.markTechnicianOut(absentId, absence);
+            if (result !== true) return result;
+            setCoverOpen(false);
+            const moved = absence.changes.length;
+            showSuccess(moved ? `Marked out, and ${moved} visit${moved === 1 ? "" : "s"} reassigned.` : "Marked out.");
+            return true;
+          }}
+          onEndAbsence={async (absence, backOn) => {
+            const result = await planActions.endAbsence(absence.id, backOn);
+            if (result === true) showSuccess("Absence updated.");
+            return result;
+          }}
+        />
+      )}
 
       <div style={{ display: "grid", gap: "15px" }}>
         <SchedulingToolbar
@@ -905,6 +948,7 @@ function SchedulingPage() {
           client={selectedClient}
           appointments={appointments}
           activeAccounts={bookableTechnicians(technicians, crewOf(selected))}
+          absences={absences}
           ui={{ tab, setTab, onClose: () => setSelectedId(null), onOpen: setSelectedId }}
           access={{
             canReschedule,
@@ -936,7 +980,17 @@ function SchedulingPage() {
             onScheduleFollowUp: scheduleFollowUp,
             onProblem: showError,
           }}
-          stock={{ inventory, service: combineServices(servicesOf(selected, serviceById, serviceByName)), services: activeServices, serviceById, serviceByName }}
+          stock={{
+            inventory,
+            service: combineServices(servicesOf(selected, serviceById, serviceByName)),
+            services: activeServices,
+            serviceById,
+            serviceByName,
+            // What the visit's crew checked out and still holds (054) — used
+            // before the shelf — and the chemical batches (055).
+            held: outWithTechnicians.filter(({ checkout }) => crewOf(selected).includes(checkout.technicianId)),
+            batches,
+          }}
           plan={{
             visits: planVisits(selected, appointments),
             // The office manages a plan; the crew on a job may also end it early.
@@ -957,6 +1011,7 @@ function SchedulingPage() {
           clients={clients}
           activeAccounts={activeTechnicians}
           appointments={appointments}
+          absences={absences}
           services={activeServices}
           initialClientId={createClientId}
           initialScheduledAt={createScheduledAt}
@@ -992,7 +1047,7 @@ export function weekRangeLabel(start, end) {
   return `${month(start)} ${start.getDate()} – ${endPart}, ${end.getFullYear()}`;
 }
 
-function AppointmentOverviewForm({ appointment, client, activeAccounts, busyTechnicians, appointments, onSave }) {
+function AppointmentOverviewForm({ appointment, client, activeAccounts, busyTechnicians, outTechnicians, appointments, onSave }) {
   const hours = Math.floor((appointment.durationMinutes || 60) / 60);
   const minutes = (appointment.durationMinutes || 60) % 60;
   const [technicianIds, setTechnicianIds] = useState(() => crewOf(appointment));
@@ -1015,7 +1070,7 @@ function AppointmentOverviewForm({ appointment, client, activeAccounts, busyTech
     {client.serviceNotes && <InfoRow icon={<FileText size={15} />} label="Service notes" value={client.serviceNotes} />}
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Date and time</strong><input name="scheduledAt" type="datetime-local" defaultValue={toDateTimeLocal(appointment.scheduledAt)} style={inputStyle} />{appointment.status !== "Reschedule" && <span style={hintStyle}>Set the status to Reschedule before changing the date, time, or duration.</span>}</div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}><label style={{ display: "grid", gap: "0.25rem", color: colors.muted, fontSize: "0.72rem", fontWeight: 500 }}>Hours<input name="durationHours" type="number" min="0" max="24" defaultValue={hours} style={{ ...inputStyle, padding: "0.55rem" }} required /></label><label style={{ display: "grid", gap: "0.25rem", color: colors.muted, fontSize: "0.72rem", fontWeight: 500 }}>Minutes<input name="durationMinutes" type="number" min="0" max="59" defaultValue={minutes} style={{ ...inputStyle, padding: "0.55rem" }} required /></label></div>
-    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Technicians</strong><TechnicianPicker accounts={activeAccounts} value={technicianIds} busyIds={busyTechnicians} onChange={setTechnicianIds} />{conflicts.length > 0 && <span style={{ color: colors.danger, fontSize: "0.72rem", fontWeight: 500 }}>Conflict: someone on this crew overlaps another appointment.</span>}</div>
+    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Technicians</strong><TechnicianPicker accounts={activeAccounts} value={technicianIds} busyIds={busyTechnicians} outIds={outTechnicians} onChange={setTechnicianIds} />{conflicts.length > 0 && <span style={{ color: colors.danger, fontSize: "0.72rem", fontWeight: 500 }}>Conflict: someone on this crew overlaps another appointment.</span>}</div>
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Service location</strong><input name="serviceLocation" maxLength={LIMITS.NOTES_MAX} defaultValue={appointment.serviceLocation || ""} placeholder={client.address || "Client address"} style={inputStyle} /><span style={hintStyle}>Leave blank to use the client's address.</span></div>
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Pest concern</strong><select name="pestConcern" defaultValue={appointment.pestConcern || ""} style={inputStyle}><option value="">Select a pest concern</option>{PEST_CONCERN_SUGGESTIONS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
@@ -1111,7 +1166,7 @@ function AppointmentListView({ appointments, clients, accounts, scope, limit, on
         row.price === "" || row.price === null || row.price === undefined ? (
           <span style={{ color: colors.muted }}>—</span>
         ) : (
-          `₱${Number(row.price).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+          formatPeso(row.price, { minDecimals: 0 })
         ),
     },
   ];
@@ -1506,6 +1561,7 @@ function AppointmentPanel({
   appointment,
   client,
   appointments,
+  absences = [],
   activeAccounts,
   ui,
   access,
@@ -1537,9 +1593,11 @@ function AppointmentPanel({
     getAttachmentUrl,
   } = files;
   const { onSave, onStockSubmit, onScheduleFollowUp, onProblem } = actions;
-  const { inventory, service, services, serviceById, serviceByName } = stock;
+  const { inventory, service, services, serviceById, serviceByName, held, batches } = stock;
 
   const busyTechnicians = busyTechnicianIds(appointments, appointment);
+  // Out on this visit's day (migration 057): cannot be added to it.
+  const outTechnicians = outDuring(absences, [appointment]);
   // A day of a multi-day job before its last: no report of its own (052).
   const earlierJobDay = isEarlierJobDay(appointment, appointments);
   const lastDay = plan.visits[plan.visits.length - 1];
@@ -1658,6 +1716,7 @@ function AppointmentPanel({
                   canManage={plan.canManage}
                   canFinish={plan.canFinish}
                   accounts={activeAccounts}
+                  absences={absences}
                   services={services}
                   onOpen={ui.onOpen}
                   onAction={plan.onAction}
@@ -1671,6 +1730,7 @@ function AppointmentPanel({
                   client={client}
                   activeAccounts={activeAccounts}
                   busyTechnicians={busyTechnicians}
+                  outTechnicians={outTechnicians}
                   appointments={appointments}
                   onSave={onSave}
                 />
@@ -1845,6 +1905,8 @@ function AppointmentPanel({
                     appointment={appointment}
                     inventory={inventory}
                     service={service}
+                    held={held}
+                    batches={batches}
                     onSubmit={onStockSubmit}
                   />
                 )}
@@ -1893,7 +1955,8 @@ function AppointmentPanel({
 }
 
 let stockRowCounter = 0;
-const newStockRow = (category, itemId = "", amount = "") => ({ id: `stock-row-${category}-${(stockRowCounter += 1)}`, category, itemId, amount: amount === "" ? "" : String(amount), batchNumber: "" });
+// `batchId` is a chosen chemical batch (migration 055); blank = soonest expiry first.
+const newStockRow = (category, itemId = "", amount = "") => ({ id: `stock-row-${category}-${(stockRowCounter += 1)}`, category, itemId, amount: amount === "" ? "" : String(amount), batchId: "" });
 
 /**
  * The date a stock-out for this visit defaults to: the visit's own day once it
@@ -1920,29 +1983,62 @@ export function buildStockRows(service, inventory) {
   return [...prefilled, ...missing.map((category) => newStockRow(category))];
 }
 
+const roundAmount = (value) => Math.round(value * 1e6) / 1e6;
+
+/**
+ * What a visit can record of `item` on `date`: { shelf, held }.
+ *
+ * `held` is the crew's open checkouts (migration 054), used before the shelf.
+ * For a chemical with batches (055) only usable stock counts: expired batches
+ * — on the shelf or checked out — cannot be recorded.
+ */
+export function stockAvailable(item, { batches = [], held = [], date } = {}) {
+  const byBatch = new Map(batches.map((batch) => [batch.id, batch]));
+  const withBatches = item.type === "CHEMICAL" && batches.some((batch) => batch.itemId === item.id);
+  const heldTotal = held
+    .filter(({ checkout }) => checkout.itemId === item.id)
+    .filter(({ checkout }) => !withBatches || !checkout.batchId || !isExpired(byBatch.get(checkout.batchId), date))
+    .reduce((sum, entry) => sum + entry.remaining, 0);
+  const shelf = withBatches
+    ? usableBatches(batches, item.id, date).reduce((sum, batch) => sum + batch.quantity, 0)
+    : Number(item.quantity);
+  return { shelf: roundAmount(shelf), held: roundAmount(heldTotal) };
+}
+
 /**
  * Pure validation for a stock-out submission. Returns an error string, or
- * null with the rows ready to send.
+ * null with the rows ready to send. `stockFor(item)` says what can be used —
+ * see stockAvailable(); the default is the shelf alone.
  */
-export function validateStockOut(rows, date, inventory) {
+export function validateStockOut(rows, date, inventory, stockFor = (item) => ({ shelf: Number(item.quantity), held: 0 })) {
   const dateError = validateMovementDate(date);
   if (dateError) return { error: dateError };
   const entries = rows
     .filter((row) => row.itemId)
-    .map((row) => ({ itemId: row.itemId, amount: Number(row.amount), batchNumber: (row.batchNumber || "").trim(), raw: row.amount }));
+    .map((row) => ({ itemId: row.itemId, amount: Number(row.amount), batchId: row.batchId || "", raw: row.amount }));
   if (entries.length === 0) return { error: "Select at least one item and enter a quantity greater than zero." };
   if (new Set(entries.map((entry) => entry.itemId)).size !== entries.length) return { error: "Select each inventory item only once per stock-out." };
   for (const entry of entries) {
     const item = inventory.find((candidate) => candidate.id === entry.itemId);
     const quantityError = validateQuantity(entry.raw, { label: `Quantity for ${item?.name || "an item"}` });
     if (quantityError) return { error: quantityError };
-    if (item && entry.amount > Number(item.quantity)) return { error: `Only ${item.quantity} ${item.unit} of ${item.name} is in stock.` };
+    if (item) {
+      const stock = stockFor(item);
+      if (entry.amount > stock.shelf + stock.held) return { error: `Only ${describeAvailable(item, stock)} of ${item.name} is available.` };
+    }
   }
   // eslint-disable-next-line no-unused-vars
   return { error: null, entries: entries.map(({ raw, ...entry }) => entry) };
 }
 
-function StockOutForm({ appointment, inventory, service, onSubmit }) {
+/** "3 L" — or "3 L (1 L on the shelf, 2 L with the crew)" when the crew holds some. */
+function describeAvailable(item, { shelf, held }) {
+  return held > 0
+    ? `${roundAmount(shelf + held)} ${item.unit} (${shelf} ${item.unit} on the shelf, ${held} ${item.unit} with the crew)`
+    : `${shelf} ${item.unit}`;
+}
+
+function StockOutForm({ appointment, inventory, service, held = [], batches = [], onSubmit }) {
   const alreadyRecorded = (appointment.stockUsed || []).length > 0;
   const hasProfile = Boolean(service?.materials?.length);
   const [rows, setRows] = useState(() => buildStockRows(hasProfile && !alreadyRecorded ? service : null, inventory));
@@ -1969,9 +2065,11 @@ function StockOutForm({ appointment, inventory, service, onSubmit }) {
     setPrefilled(true);
   };
 
+  const stockFor = (item) => stockAvailable(item, { batches, held, date });
+
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const { error, entries } = validateStockOut(rows, date, inventory);
+    const { error, entries } = validateStockOut(rows, date, inventory, stockFor);
     if (error) {
       setFormError(error);
       return;
@@ -2033,27 +2131,38 @@ function StockOutForm({ appointment, inventory, service, onSubmit }) {
             {categoryRows.map((row) => {
               const selectedItemIds = new Set(categoryRows.filter((candidate) => candidate.id !== row.id).map((candidate) => candidate.itemId).filter(Boolean));
               const item = inventory.find((candidate) => candidate.id === row.itemId);
-              const short = item && Number(row.amount) > Number(item.quantity);
+              const stock = item ? stockFor(item) : { shelf: 0, held: 0 };
+              const short = item && Number(row.amount) > stock.shelf + stock.held;
               const disabledItem = item?.status === "DISABLED";
               return (
                 <div key={row.id} style={{ display: "grid", gap: "0.3rem" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 82px auto", gap: "0.45rem", alignItems: "center" }}>
-                  <select aria-label={`${categoryLabel(category)} item`} value={row.itemId} onChange={(event) => updateRow(row.id, "itemId", event.target.value)} style={{ ...inputStyle, padding: "0.62rem 0.55rem", fontSize: "0.78rem" }}>
+                  <select aria-label={`${categoryLabel(category)} item`} value={row.itemId} onChange={(event) => { updateRow(row.id, "itemId", event.target.value); updateRow(row.id, "batchId", ""); }} style={{ ...inputStyle, padding: "0.62rem 0.55rem", fontSize: "0.78rem" }}>
                     <option value="">Select item</option>
                     {categoryItems.map((option) => <option key={option.id} value={option.id} disabled={selectedItemIds.has(option.id)}>{option.name} ({option.quantity} {option.unit})</option>)}
                   </select>
                   <input aria-label={`${categoryLabel(category)} quantity`} type="number" min="0" max={LIMITS.MAX_MOVEMENT_QTY} step="any" value={row.amount} onChange={(event) => updateRow(row.id, "amount", event.target.value)} placeholder="Qty" style={{ ...inputStyle, padding: "0.62rem 0.55rem", fontSize: "0.78rem" }} />
                   {categoryRows.length > 1 && <button type="button" aria-label={`Remove ${categoryLabel(category)} row`} onClick={() => removeRow(row.id)} style={{ border: 0, background: "transparent", color: colors.danger, cursor: "pointer", padding: "0.4rem" }}><X size={15} /></button>}
                 </div>
-                {(short || disabledItem) && <span style={{ color: colors.danger, fontSize: "0.7rem", fontWeight: 500 }}>{disabledItem ? `${item.name} is disabled and cannot be stocked out. Remove it or pick another item.` : `Only ${item.quantity} ${item.unit} in stock.`}</span>}
-                {category === "CHEMICAL" && row.itemId && <input
-                  aria-label="Batch or lot number"
-                  value={row.batchNumber || ""}
-                  onChange={(event) => updateRow(row.id, "batchNumber", event.target.value)}
-                  placeholder="Batch / lot no. from the container — e.g. L24-0917"
-                  maxLength={LIMITS.SHORT_TEXT_MAX}
-                  style={{ ...inputStyle, padding: "0.5rem 0.55rem", fontSize: "0.74rem" }}
-                />}
+                {(short || disabledItem) && <span style={{ color: colors.danger, fontSize: "0.7rem", fontWeight: 500 }}>{disabledItem ? `${item.name} is disabled and cannot be stocked out. Remove it or pick another item.` : `Only ${describeAvailable(item, stock)} available.`}</span>}
+                {!short && !disabledItem && stock.held > 0 && <span style={{ color: colors.muted, fontSize: "0.7rem" }}>The crew checked out {stock.held} {item.unit}; that is used first, then the shelf.</span>}
+                {/* The batch: filled in with the soonest expiry; change it only
+                    when the container in hand is from another batch (055). */}
+                {category === "CHEMICAL" && !disabledItem && (
+                  <BatchSelect
+                    item={item}
+                    batches={batches}
+                    held={held}
+                    date={date}
+                    value={row.batchId}
+                    onChange={(batchId) => updateRow(row.id, "batchId", batchId)}
+                    amount={row.amount}
+                    visitId={appointment.id}
+                    label="Batch used"
+                    selectStyle={{ ...inputStyle, padding: "0.5rem 0.55rem", fontSize: "0.74rem" }}
+                    noteStyle={{ color: colors.muted, fontSize: "0.7rem" }}
+                  />
+                )}
                 </div>
               );
             })}
@@ -2063,7 +2172,7 @@ function StockOutForm({ appointment, inventory, service, onSubmit }) {
       })}
       {formError && <p role="alert" style={{ margin: 0, color: colors.danger, fontSize: "0.8rem", fontWeight: 500 }}>{formError}</p>}
       <button type="submit" disabled={saving} style={{ ...primaryButton, opacity: saving ? 0.6 : 1 }}><PackageCheck size={15} /> {saving ? "Recording…" : "Record stock out"}</button>
-      {(appointment.stockUsed || []).length > 0 && <div style={{ display: "grid", gap: "0.45rem" }}><strong style={{ fontSize: "0.76rem", color: colors.muted }}>Recorded for this service</strong>{appointment.stockUsed.map((entry, index) => <div key={`${entry.itemId}-${index}`} style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", padding: "0.55rem 0.7rem", border: "1px solid #efe9e0", borderRadius: "3.75px", fontSize: "0.78rem" }}><span>{entry.name}{entry.date && <span style={{ color: colors.muted, marginLeft: "0.4rem" }}>· {new Date(`${entry.date}T00:00:00`).toLocaleDateString()}</span>}</span><strong>{entry.amount} {entry.unit}</strong></div>)}</div>}
+      {(appointment.stockUsed || []).length > 0 && <div style={{ display: "grid", gap: "0.45rem" }}><strong style={{ fontSize: "0.76rem", color: colors.muted }}>Recorded for this service</strong>{appointment.stockUsed.map((entry, index) => <div key={`${entry.itemId}-${index}`} style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", padding: "0.55rem 0.7rem", border: "1px solid #efe9e0", borderRadius: "3.75px", fontSize: "0.78rem" }}><span>{entry.name}{entry.batchNumber && <span style={{ color: colors.muted, marginLeft: "0.4rem" }}>· Batch {entry.batchNumber}</span>}{entry.date && <span style={{ color: colors.muted, marginLeft: "0.4rem" }}>· {new Date(`${entry.date}T00:00:00`).toLocaleDateString()}</span>}</span><strong>{entry.amount} {entry.unit}</strong></div>)}</div>}
     </form>
   );
 }

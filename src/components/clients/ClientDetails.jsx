@@ -22,14 +22,14 @@ import { signatureState } from "../../utils/dashboardMetrics";
 import { useScheduling } from "../../context/SchedulingContext";
 import useUsers from "../../hooks/useUsers";
 import useInventory from "../../hooks/useInventory";
-import { formatDate, formatDateTime, formatFileSize, formatTime } from "../../utils/formatters";
+import { formatDate, formatDateTime, formatFileSize, formatPeso, formatTime } from "../../utils/formatters";
 import { DOCUMENT_CATEGORIES } from "../../utils/constants";
 import { appointmentReference, crewOf } from "../../utils/scheduling";
 import { printableJob } from "../../utils/plans";
 import { colors, pageShell, secondaryButton } from "../../styles/theme";
 
 
-const peso = (value) => `₱${(Number(value) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const peso = (value) => formatPeso(value);
 
 
 function HistoryFileList({ files = [], onOpen, onResolveUrl, onRemove, emptyMessage }) {

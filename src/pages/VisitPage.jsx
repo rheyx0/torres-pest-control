@@ -28,7 +28,9 @@ import SignaturePad from "../components/scheduling/SignaturePad";
 import Button from "../components/ui/Button";
 import StatusPill from "../components/ui/StatusPill";
 import { REPORT_UPLOAD_CATEGORIES, ROLES } from "../utils/constants";
-import { combineServices, isAssignedTo, servicesOf } from "../utils/scheduling";
+import { combineServices, crewOf, isAssignedTo, servicesOf } from "../utils/scheduling";
+import { heldBy, openCheckouts } from "../utils/custody";
+import BatchSelect from "../components/inventory/BatchSelect";
 import { isEarlierJobDay, isMultiDay, planLabel } from "../utils/plans";
 import { todayISO, validateAttachment } from "../utils/validators";
 import {
@@ -123,7 +125,7 @@ function VisitPage() {
   const now = useNow(60000);
   const { currentUser } = useAuth();
   const { clients } = useClients();
-  const { inventory, stockOutMany } = useInventory();
+  const { inventory, movements, batches, stockOutMany } = useInventory();
   const { activeServices, serviceById, serviceByName } = useServices();
   const { appointments, loading, startVisit, submitReport, uploadSignature, addAttachment, removeAttachment, addStockUsed, planActions } = useScheduling();
   const { showError, showSuccess } = useToast();
@@ -182,6 +184,11 @@ function VisitPage() {
   };
 
   const inventoryById = useMemo(() => new Map(inventory.map((item) => [item.id, item])), [inventory]);
+  // What this visit's crew has checked out (migration 054), used first.
+  const crewHeld = useMemo(
+    () => (appointment ? openCheckouts(movements).filter(({ checkout }) => crewOf(appointment).includes(checkout.technicianId)) : []),
+    [movements, appointment]
+  );
   const addableItems = inventory.filter((item) => item.status !== "DISABLED" && !(draft?.materials || []).some((material) => material.itemId === item.id));
 
   if (loading && !appointment) return <p style={{ color: neutral.bark }}>Loading visit…</p>;
@@ -275,13 +282,16 @@ function VisitPage() {
    * Returns an error message, or null. Skipped once stock was recorded.
    */
   const recordMaterials = async () => {
-    const entries = draft.materials.filter((material) => Number(material.amount) > 0).map((material) => ({ itemId: material.itemId, amount: Number(material.amount), batchNumber: "" }));
+    // `batchId` blank = soonest expiry first; set when the container in hand
+    // is from another batch (migration 055).
+    const entries = draft.materials.filter((material) => Number(material.amount) > 0).map((material) => ({ itemId: material.itemId, amount: Number(material.amount), batchId: material.batchId || "" }));
     if (!entries.length || alreadyStocked) return null;
     const stocked = await stockOutMany(appointment.id, entries, todayISO());
     if (typeof stocked === "string") return stocked;
-    entries.forEach((entry) => {
-      const item = inventoryById.get(entry.itemId);
-      addStockUsed(appointment.id, { itemId: entry.itemId, name: item?.name || "Inventory item", amount: entry.amount, unit: item?.unit || "", batchNumber: "", date: todayISO() });
+    // One row per batch drawn from, with the lot the server recorded.
+    (Array.isArray(stocked) ? stocked : []).forEach((row) => {
+      const item = inventoryById.get(row.item_id);
+      addStockUsed(appointment.id, { itemId: row.item_id, name: item?.name || "Inventory item", amount: Number(row.amount), unit: item?.unit || "", batchNumber: row.batch_number || "", date: todayISO() });
     });
     return null;
   };
@@ -447,22 +457,59 @@ function VisitPage() {
         </div>
       )}
 
-      <ol aria-label="Steps" style={{ listStyle: "none", margin: "18px 0 0", padding: 0, display: "grid", gridTemplateColumns: `repeat(${steps.length}, 1fr)`, gap: "8px" }}>
+      {/* A stepper: numbered points joined by a line that fills as steps are
+          done. Every point can be tapped to go back to that step. */}
+      <ol aria-label="Steps" style={{ listStyle: "none", margin: "22px 0 0", padding: 0, display: "grid", gridTemplateColumns: `repeat(${steps.length}, 1fr)` }}>
         {steps.map((name, index) => {
           const done = index < stepIndex;
           const current = index === stepIndex;
+          const reached = done || current;
           return (
-            <li key={name}>
+            <li key={name} style={{ position: "relative" }}>
+              {/* The line to the next point, drawn from this point's centre. */}
+              {index < steps.length - 1 && (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    top: "15px",
+                    left: "50%",
+                    width: "100%",
+                    height: "3px",
+                    borderRadius: "2px",
+                    background: done ? brand.base : surface.sunken,
+                  }}
+                />
+              )}
               <button
                 type="button"
                 aria-current={current ? "step" : undefined}
                 onClick={() => setStep(name)}
-                style={{ width: "100%", border: 0, background: "none", padding: 0, cursor: "pointer", textAlign: "center" }}
+                style={{ position: "relative", width: "100%", border: 0, background: "none", padding: 0, cursor: "pointer", display: "grid", justifyItems: "center", gap: "6px" }}
               >
-                <span style={{ display: "block", height: "4px", borderRadius: "2px", background: done ? semantic.success : current ? brand.base : surface.sunken }} />
-                <span style={{ display: "block", marginTop: "6px", fontSize: "13.5px", color: done ? semantic.success : current ? brand.base : neutral.bark, fontWeight: current ? weight.medium : weight.regular }}>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "50%",
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: "13px",
+                    fontWeight: weight.medium,
+                    background: done ? brand.base : current ? surface.panel : surface.canvas,
+                    color: done ? surface.canvas : current ? brand.base : neutral.bark,
+                    border: `2px solid ${reached ? brand.base : neutral.loam}`,
+                    boxShadow: current ? `0 0 0 4px ${brand.wash}` : "none",
+                  }}
+                >
+                  {done ? <Check size={16} strokeWidth={2.5} /> : index + 1}
+                </span>
+                {/* The button's name is this text — not an aria-label, which
+                    would clash with the Findings field's label. */}
+                <span style={{ fontSize: "13px", color: current ? brand.base : done ? neutral.ink : neutral.bark, fontWeight: current ? weight.medium : weight.regular }}>
                   {name}
-                  {done ? " ✓" : ""}
+                  {done && <span className="visually-hidden">, done</span>}
                 </span>
               </button>
             </li>
@@ -522,19 +569,21 @@ function VisitPage() {
             </p>
             {alreadyStocked ? (
               <p style={{ margin: 0, color: neutral.saddle }}>
-                Already recorded for this visit: {(appointment.stockUsed || []).map((entry) => `${entry.name} ${entry.amount} ${entry.unit}`).join(", ")}.
+                Already recorded for this visit: {(appointment.stockUsed || []).map((entry) => `${entry.name} ${entry.amount} ${entry.unit}${entry.batchNumber ? ` (batch ${entry.batchNumber})` : ""}`).join(", ")}.
               </p>
             ) : (
               <div style={{ border: `1px solid ${colors.line}`, borderRadius: radius.card, background: surface.panel }}>
                 {draft.materials.map((material, index) => {
                   const item = inventoryById.get(material.itemId);
                   if (!item) return null;
+                  // Checked out to this visit's crew (migration 054): used before the shelf.
+                  const carried = heldBy(movements, crewOf(appointment), item.id);
                   return (
                     <div key={material.itemId} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 14px", borderBottom: `1px solid ${colors.line}`, flexWrap: "wrap" }}>
                       <span style={{ flex: 1, minWidth: "140px" }}>
                         <span style={{ display: "block", fontWeight: weight.medium }}>{item.name}</span>
                         <span style={{ display: "block", color: neutral.bark, fontSize: "13px" }}>
-                          {item.quantity} {item.unit} in stock
+                          {carried > 0 ? `${carried} ${item.unit} checked out, used first · ${item.quantity} on the shelf` : `${item.quantity} ${item.unit} in stock`}
                         </span>
                       </span>
                       <Stepper
@@ -543,6 +592,23 @@ function VisitPage() {
                         unit={item.unit}
                         onChange={(amount) => update({ materials: draft.materials.map((entry, position) => (position === index ? { ...entry, amount } : entry)) })}
                       />
+                      {/* A chemical's batch: soonest expiry unless the container
+                          in hand is from another one (migration 055). */}
+                      <div style={{ flexBasis: "100%" }}>
+                        <BatchSelect
+                          item={item}
+                          batches={batches}
+                          held={crewHeld}
+                          date={todayISO()}
+                          value={material.batchId || ""}
+                          onChange={(batchId) => update({ materials: draft.materials.map((entry, position) => (position === index ? { ...entry, batchId } : entry)) })}
+                          amount={material.amount}
+                          visitId={appointment.id}
+                          label={`${item.name} batch`}
+                          selectStyle={{ ...field, padding: "10px", fontSize: "14px" }}
+                          noteStyle={{ color: neutral.bark, fontSize: "13px" }}
+                        />
+                      </div>
                     </div>
                   );
                 })}

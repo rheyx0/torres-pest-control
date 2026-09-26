@@ -28,7 +28,12 @@ import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
 import { appointmentReference } from "../utils/scheduling";
 import { INVENTORY_STATUS } from "../services/inventoryService";
-import { ACCOUNT_STATUS, LIMITS, STOCK_OUT_REASONS, STOCK_OUT_REASON_LABELS } from "../utils/constants";
+import { ACCOUNT_STATUS, LIMITS, RETURN_REASONS, RETURN_REASON_LABELS, STOCK_OUT_REASONS, STOCK_OUT_REASON_LABELS } from "../utils/constants";
+import { checkoutOf, heldByItem, openCheckouts } from "../utils/custody";
+import { usableBatches } from "../utils/batches";
+import BatchSelect from "../components/inventory/BatchSelect";
+import BatchList from "../components/inventory/BatchList";
+import { crewOf } from "../utils/scheduling";
 import { todayISO, validateMoney, validateMovementDate, validateQuantity } from "../utils/validators";
 import { LOSS_REASONS, REASON_FILTERS, countByReason, describeLosses, filterByReason, reasonOf, recentLossesByItem, summarizeLosses } from "../utils/stockMovements";
 import {
@@ -41,7 +46,8 @@ import {
 } from "../utils/units";
 import { card, colors, primaryButton, secondaryButton } from "../styles/theme";
 import ConfirmDialog from "../components/common/ConfirmDialog";
-import { formatDate } from "../utils/formatters";
+import { formatDate, formatPeso } from "../utils/formatters";
+import { isPlausibleItem, isPlausibleMovement } from "../utils/dashboardMetrics";
 
 const CREATE_FORM_DEFAULTS = {
   name: "",
@@ -108,10 +114,17 @@ function UnitField({ value, onChange }) {
 const HISTORY_SECTIONS = [
   { key: "IN", label: "Stock In", accent: "#4a6b4a", empty: "No stock has been received yet." },
   { key: "OUT", label: "Stock Out", accent: "#9a2d24", empty: "No stock has been used yet." },
+  { key: "RETURN", label: "Returns", accent: "#334e7a", empty: "No checked-out stock has been returned." },
   { key: "CORRECTION", label: "Correction", accent: "#7c3aed", empty: "No corrections have been recorded." },
 ];
 
-const peso = (value) => `₱${(Number(value) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const shortDay = (value) => (value ? new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric" }) : "");
+
+const peso = (value) => formatPeso(value);
+
+// A movement from before the limits with a figure the system could not accept
+// today (migration 058) shows no cost rather than an impossible one.
+const movementPeso = (movement, value) => (isPlausibleMovement(movement) ? peso(value) : "—");
 
 // Missing and damaged are the reasons someone has to chase, so they are the
 // two that carry colour; routine reasons stay quiet.
@@ -119,6 +132,7 @@ const REASON_TONES = {
   MISSING: { background: "#faf0e2", border: "1px solid #fed7aa", color: "#b45309" },
   DAMAGED: { background: "#f9ecea", border: "1px solid #f5c2bd", color: "#9a2d24" },
   TECHNICIAN_CHECKOUT: { background: "#eef2f8", border: "1px solid #c7d4e8", color: "#334e7a" },
+  EXPIRED: { background: "#f9ecea", border: "1px solid #f5c2bd", color: "#7f1d1d" },
   APPOINTMENT: { background: "#f4f1ec", border: "1px solid #efe9e0", color: "#50463c" },
 };
 
@@ -145,6 +159,24 @@ function ReasonBadge({ reason }) {
   );
 }
 
+// The chemical batch a movement moved (migration 055): its lot (or system
+// reference) and expiry, read from the batch so a corrected lot shows, else
+// the lot recorded on the row.
+const batchCell = (m, context = {}) => {
+  const batch = m.batchId ? context.batchById?.(m.batchId) : null;
+  if (!batch && !m.batchNumber) return <span style={{ color: "#96897b" }}>—</span>;
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ color: "#211b15", fontWeight: 500, overflowWrap: "anywhere" }}>{batch ? batch.lotNumber || "No lot" : m.batchNumber}</div>
+      {batch && (
+        <div style={{ color: "#96897b", fontSize: "0.74rem" }}>
+          {batch.reference}{batch.expirationDate ? ` · exp ${formatDate(batch.expirationDate)}` : ""}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const itemCell = (movement) => (
   <div>
     <div style={{ fontWeight: 500, color: "#211b15" }}>{movement.itemName}</div>
@@ -154,11 +186,12 @@ const itemCell = (movement) => (
 
 const HISTORY_COLUMNS = {
   IN: {
-    template: "110px 1.2fr 110px 120px 110px 130px 1.1fr 1.1fr 1fr",
-    minWidth: "1120px",
+    template: "110px 1.2fr 1fr 110px 120px 110px 130px 1.1fr 1.1fr 1fr",
+    minWidth: "1240px",
     columns: [
       { label: "Date", render: (m) => <span style={{ color: "#50463c" }}>{formatDate(m.movementDate)}</span> },
       { label: "Item Name", render: itemCell },
+      { label: "Batch", render: batchCell },
       { label: "Qty In", render: (m) => <span style={{ fontWeight: 500, color: "#4a6b4a" }}>+{Math.abs(m.quantityDelta)}</span> },
       // What the delivery note said, when it was not the tracking unit. Keeping
       // both figures is what makes a converted intake auditable against the note.
@@ -170,23 +203,26 @@ const HISTORY_COLUMNS = {
           </span>
         ),
       },
-      { label: "Unit Cost", render: (m) => <span style={{ color: "#50463c" }}>{peso(m.unitCost)}</span> },
-      { label: "Total Spent", render: (m) => <span style={{ fontWeight: 500, color: "#4a6b4a" }}>{peso(m.totalCost)}</span> },
+      { label: "Unit Cost", render: (m) => <span style={{ color: "#50463c" }}>{movementPeso(m, m.unitCost)}</span> },
+      { label: "Total Spent", render: (m) => <span style={{ fontWeight: 500, color: "#4a6b4a" }}>{movementPeso(m, m.totalCost)}</span> },
       { label: "PO / Reference", render: (m) => <span style={{ color: "#1e293b", fontWeight: 500 }}>{m.reference || "—"}</span> },
       { label: "Branch / Origin", render: (m) => <span style={{ color: "#50463c" }}>{m.intakeBranchOrStation || "—"}</span> },
       { label: "Recorded By", render: (m) => <span style={{ color: "#96897b" }}>{m.actor || "—"}</span> },
     ],
   },
   OUT: {
-    template: "110px 1.4fr 110px 130px 1.2fr 1.3fr 1fr",
-    minWidth: "980px",
+    template: "110px 1.4fr 110px 1fr 130px 1.2fr 1.3fr 1fr",
+    minWidth: "1100px",
     columns: [
       { label: "Date", render: (m) => <span style={{ color: "#50463c" }}>{formatDate(m.movementDate)}</span> },
       { label: "Item Name", render: itemCell },
-      { label: "Qty Out", render: (m) => <span style={{ fontWeight: 500, color: "#9a2d24" }}>-{Math.abs(m.quantityDelta)}</span> },
+      // The amount, not quantity_delta: materials drawn from a checkout move
+      // nothing on the shelf (delta 0) but were still used (migration 054).
+      { label: "Qty Out", render: (m) => <span style={{ fontWeight: 500, color: "#9a2d24" }}>-{Math.abs(m.amount)}</span> },
+      { label: "Batch", render: batchCell },
       // Derived from the item's current cost, not a figure recorded on the row,
       // so it is labelled as an estimate rather than presented as spend.
-      { label: "Est. Value", render: (m) => <span style={{ color: "#50463c" }}>{peso(m.totalCost)}</span> },
+      { label: "Est. Value", render: (m) => <span style={{ color: "#50463c" }}>{movementPeso(m, m.totalCost)}</span> },
       // Reason and destination are two questions, so they are two columns:
       // "why did this leave" and "where did it go".
       { label: "Reason", render: (m) => <ReasonBadge reason={reasonOf(m)} /> },
@@ -194,15 +230,56 @@ const HISTORY_COLUMNS = {
         label: "Used On / Issued To",
         render: (m, context = {}) => {
           const technician = m.technicianId ? context.technicianName?.(m.technicianId) : "";
+          const visitLabel = (id) => (context.appointmentLabel ? context.appointmentLabel(id) : appointmentReference({ id }));
+          // Which checkout a visit's materials came out of (migration 054).
+          const source = context.checkoutOf?.(m);
+          const sourceTechnician = source?.technicianId ? context.technicianName?.(source.technicianId) : "";
           return (
             <div style={{ minWidth: 0 }}>
               <div style={{ color: "#50463c" }}>
                 {m.appointmentId
-                  ? `Visit ${context.appointmentLabel ? context.appointmentLabel(m.appointmentId) : appointmentReference({ id: m.appointmentId })}`
+                  ? `Visit ${visitLabel(m.appointmentId)}`
                   : technician
-                    ? `Checked out to ${technician}`
+                    ? `Checked out to ${technician}${m.forAppointmentId ? ` for ${visitLabel(m.forAppointmentId)}` : ""}`
                     : (m.reference || "—")}
               </div>
+              {source && (
+                <div style={{ color: "#334e7a", fontSize: "0.76rem", marginTop: "0.15rem" }}>
+                  From {sourceTechnician ? `${sourceTechnician}'s` : "a"} checkout of {shortDay(source.movementDate)}, not the shelf
+                </div>
+              )}
+              {m.note && <div style={{ color: "#96897b", fontSize: "0.76rem", marginTop: "0.15rem", overflowWrap: "anywhere" }}>{m.note}</div>}
+            </div>
+          );
+        },
+      },
+      { label: "Recorded By", render: (m) => <span style={{ color: "#96897b" }}>{m.actor || "—"}</span> },
+    ],
+  },
+  RETURN: {
+    template: "110px 1.3fr 100px 1fr 170px 1.5fr 1fr",
+    minWidth: "1020px",
+    columns: [
+      { label: "Date", render: (m) => <span style={{ color: "#50463c" }}>{formatDate(m.movementDate)}</span> },
+      { label: "Item Name", render: itemCell },
+      { label: "Qty Back", render: (m) => <span style={{ fontWeight: 500, color: "#4a6b4a" }}>+{Math.abs(m.amount)}</span> },
+      { label: "Batch", render: batchCell },
+      { label: "Reason", render: (m) => <span style={{ color: "#1e293b", fontWeight: 500 }}>{RETURN_REASON_LABELS[m.returnReason] || "—"}</span> },
+      {
+        label: "From / Visit",
+        render: (m, context = {}) => {
+          const technician = m.technicianId ? context.technicianName?.(m.technicianId) : "";
+          const source = context.checkoutOf?.(m);
+          return (
+            <div style={{ minWidth: 0 }}>
+              <div style={{ color: "#50463c" }}>
+                {technician || "A technician"}{source ? `, checked out ${shortDay(source.movementDate)}` : ""}
+              </div>
+              {m.forAppointmentId && (
+                <div style={{ color: "#96897b", fontSize: "0.76rem", marginTop: "0.15rem" }}>
+                  Visit {context.appointmentLabel ? context.appointmentLabel(m.forAppointmentId) : appointmentReference({ id: m.forAppointmentId })}
+                </div>
+              )}
               {m.note && <div style={{ color: "#96897b", fontSize: "0.76rem", marginTop: "0.15rem", overflowWrap: "anywhere" }}>{m.note}</div>}
             </div>
           );
@@ -239,6 +316,7 @@ function InventoryPage() {
     setItemStatus,
     stockInMany,
     stockOutManual,
+    returnCheckout,
     stockCorrection,
     removeItem,
     loading,
@@ -247,12 +325,16 @@ function InventoryPage() {
     movementsLoading,
     movementsError,
     refreshMovements,
+    batches = [],
+    writeOffBatch,
+    updateBatch,
+    splitBatch,
   } = useInventory();
   const { technicians } = useUsers();
   const { appointments } = useScheduling();
   const { showSuccess, showError } = useToast();
 
-  const [tab, setTab] = useState("items"); // "items" | "history"
+  const [tab, setTab] = useState("items"); // "items" | "custody" | "history"
   const { can } = useAuth();
   // Receiving and reordering stock is an inventory write: admins only, per
   // the permission matrix (staff and technicians read inventory).
@@ -268,6 +350,8 @@ function InventoryPage() {
   const [stockInSeedItemId, setStockInSeedItemId] = useState("");
   const [stockOutItem, setStockOutItem] = useState(null);
   const [correctionItem, setCorrectionItem] = useState(null);
+  // An open checkout being returned: { checkout, remaining }.
+  const [returnTarget, setReturnTarget] = useState(null);
   const [disableTarget, setDisableTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [actionMenuItemId, setActionMenuItemId] = useState(null);
@@ -327,6 +411,14 @@ function InventoryPage() {
   // Missing/damaged per item over the last 30 days, for the list badge.
   const recentLosses = useMemo(() => recentLossesByItem(movements), [movements]);
 
+  // Stock technicians have checked out and not yet used or returned (migration 054).
+  const outWithTechnicians = useMemo(() => openCheckouts(movements), [movements]);
+  const heldPerItem = useMemo(() => heldByItem(movements), [movements]);
+  const sourceCheckout = useCallback((movement) => checkoutOf(movement, movements), [movements]);
+  // Chemical batches by id, for the history's Batch column (migration 055).
+  const batchMap = useMemo(() => new Map(batches.map((batch) => [batch.id, batch])), [batches]);
+  const batchById = useCallback((id) => batchMap.get(id) || null, [batchMap]);
+
   const uniqueBranches = useMemo(() => {
     const set = new Set();
     movements.forEach((movement) => {
@@ -369,7 +461,7 @@ function InventoryPage() {
 
   const alerts = useMemo(() => inventoryAlerts(inventory, now, recentLosses), [inventory, now, recentLosses]);
   const stockValue = useMemo(
-    () => inventory.filter((item) => item.status !== INVENTORY_STATUS.DISABLED).reduce((sum, item) => sum + itemValue(item), 0),
+    () => inventory.filter((item) => item.status !== INVENTORY_STATUS.DISABLED && isPlausibleItem(item)).reduce((sum, item) => sum + itemValue(item), 0),
     [inventory]
   );
 
@@ -396,7 +488,10 @@ function InventoryPage() {
         const reasonLabel = STOCK_OUT_REASON_LABELS[reasonOf(m)] || "";
         const technician = m.technicianId ? technicianName(m.technicianId) : "";
         const visit = m.appointmentId ? appointmentLabel(m.appointmentId) : "";
-        const text = `${m.itemName || ""} ${m.reference || ""} ${m.intakeBranchOrStation || ""} ${m.actor || ""} ${m.note || ""} ${reasonLabel} ${technician} ${visit}`.toLowerCase();
+        // Lot and batch reference, so a recall ("lot L24-0917") finds every use.
+        const batch = m.batchId ? batchById(m.batchId) : null;
+        const batchText = `${m.batchNumber || ""} ${batch?.lotNumber || ""} ${batch?.reference || ""}`;
+        const text = `${m.itemName || ""} ${m.reference || ""} ${m.intakeBranchOrStation || ""} ${m.actor || ""} ${m.note || ""} ${reasonLabel} ${technician} ${visit} ${batchText}`.toLowerCase();
         return text.includes(term);
       });
     }
@@ -422,7 +517,7 @@ function InventoryPage() {
       }
     }
     return result;
-  }, [movements, historySearch, historyItemFilter, historySection, historyBranchFilter, historyDateFilter, technicianName, appointmentLabel]);
+  }, [movements, historySearch, historyItemFilter, historySection, historyBranchFilter, historyDateFilter, technicianName, appointmentLabel, batchById]);
 
   const reasonCounts = useMemo(() => countByReason(sectionMovements), [sectionMovements]);
   const lossSummary = useMemo(() => summarizeLosses(sectionMovements), [sectionMovements]);
@@ -548,7 +643,7 @@ function InventoryPage() {
           <p style={{ margin: 0, fontSize: "11.5px", letterSpacing: "0.09em", textTransform: "uppercase", color: "#50463c" }}>Operations</p>
           <h1 style={{ margin: "4px 0 0", fontSize: "30px", lineHeight: 1.2, letterSpacing: "-0.33px" }}>Inventory</h1>
           <p style={{ margin: "4px 0 0", color: "#50463c" }}>
-            {inventory.length} {inventory.length === 1 ? "item" : "items"} · ₱{Math.round(stockValue).toLocaleString()} on hand
+            {inventory.length} {inventory.length === 1 ? "item" : "items"} · {formatPeso(stockValue, { decimals: 0 })} on hand
           </p>
         </div>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -571,6 +666,9 @@ function InventoryPage() {
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1.5rem", borderBottom: "1px solid #efe9e0" }}>
         <TabButton active={tab === "items"} onClick={() => setTab("items")}>
           Items
+        </TabButton>
+        <TabButton active={tab === "custody"} onClick={() => setTab("custody")}>
+          With technicians{outWithTechnicians.length ? ` (${outWithTechnicians.length})` : ""}
         </TabButton>
         <TabButton active={tab === "history"} onClick={() => setTab("history")}>
           Stock history
@@ -832,6 +930,7 @@ function InventoryPage() {
               const fill = reorder ? Math.min(1, quantity / (reorder * 2)) : quantity > 0 ? 1 : 0;
               const detail = [item.supplier, item.type === "EQUIPMENT" ? item.serialNumber : item.chemicalType || item.materialCategory].filter(Boolean).join(" · ");
               const losses = recentLosses.get(item.id);
+              const withTechnicians = heldPerItem.get(item.id) || 0;
 
               return (
                 <div
@@ -852,7 +951,12 @@ function InventoryPage() {
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 500, color: "#211b15" }}>{item.name}</div>
                     <div style={{ fontSize: "12px", color: "#8a7d70", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {[detail || null, losses ? describeLosses(losses) : null, isDisabled ? "Disabled" : null].filter(Boolean).join(" · ") || "—"}
+                      {[
+                        detail || null,
+                        withTechnicians ? `${withTechnicians} ${item.unit || ""} with technicians`.replace("  ", " ") : null,
+                        losses ? describeLosses(losses) : null,
+                        isDisabled ? "Disabled" : null,
+                      ].filter(Boolean).join(" · ") || "—"}
                     </div>
                   </div>
 
@@ -874,7 +978,7 @@ function InventoryPage() {
 
                   <div style={{ color: "#211b15", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.storageLocation || "—"}</div>
 
-                  <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#211b15" }}>₱{Math.round(itemValue(item)).toLocaleString()}</div>
+                  <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#211b15" }}>{isPlausibleItem(item) ? formatPeso(itemValue(item), { decimals: 0 }) : "—"}</div>
 
                   <div ref={actionMenuItemId === item.id ? actionMenuRef : null} style={{ display: "flex", gap: "6px", alignItems: "center", justifyContent: "flex-end", overflow: "visible", position: "relative", zIndex: actionMenuItemId === item.id ? 200 : 1 }} onClick={(e) => e.stopPropagation()}>
                     {low && canManageStock && (
@@ -951,6 +1055,18 @@ function InventoryPage() {
         </>
       )}
 
+      {tab === "custody" && (
+        <CustodyList
+          entries={outWithTechnicians}
+          technicianName={technicianName}
+          appointmentLabel={appointmentLabel}
+          canManage={canManageStock}
+          loading={movementsLoading}
+          error={movementsError}
+          onReturn={setReturnTarget}
+        />
+      )}
+
       {tab === "history" && (
         <div style={{ maxWidth: "1200px", width: "100%", margin: "0 auto" }}>
           {/* Filtering and Sorting Toolbar */}
@@ -960,7 +1076,7 @@ function InventoryPage() {
                 <input
                   value={historySearch}
                   onChange={(e) => setHistorySearch(e.target.value)}
-                  placeholder="Item, PO#, reason, technician, note…"
+                  placeholder="Item, PO#, lot no., reason, technician, note…"
                   style={inputStyle}
                 />
               </Field>
@@ -1172,7 +1288,7 @@ function InventoryPage() {
                   }}
                 >
                   {activeHistoryColumns.columns.map((column) => (
-                    <div key={column.label}>{column.render(movement, { technicianName, appointmentLabel })}</div>
+                    <div key={column.label}>{column.render(movement, { technicianName, appointmentLabel, checkoutOf: sourceCheckout, batchById })}</div>
                   ))}
                 </div>
               ))}
@@ -1181,7 +1297,32 @@ function InventoryPage() {
         </div>
       )}
 
-      {selectedItem && <InventoryDetailModal item={selectedItem} onClose={() => setSelectedItem(null)} />}
+      {selectedItem && (
+        <InventoryDetailModal
+          // The list row can be stale once a batch action reloads the item.
+          item={inventory.find((entry) => entry.id === selectedItem.id) || selectedItem}
+          batches={batches}
+          canManage={canManageStock}
+          onClose={() => setSelectedItem(null)}
+          batchActions={{
+            onWriteOff: async (batch, note) => {
+              const result = await writeOffBatch(batch, note);
+              if (result === true) showSuccess(`Wrote off expired batch ${batch.lotNumber || batch.reference}.`);
+              return result;
+            },
+            onUpdate: async (batch, changes) => {
+              const result = await updateBatch(batch, changes);
+              if (result === true) showSuccess(`Batch ${batch.reference} updated.`);
+              return result;
+            },
+            onSplit: async (batch, split) => {
+              const result = await splitBatch(batch, split);
+              if (result === true) showSuccess(`Split ${split.amount} off ${batch.reference} into lot ${split.lotNumber}.`);
+              return result;
+            },
+          }}
+        />
+      )}
 
       {editItem && (
         <EditItemModal
@@ -1219,10 +1360,33 @@ function InventoryPage() {
         />
       )}
 
+      {returnTarget && (
+        <ReturnModal
+          entry={returnTarget}
+          technicianName={technicianName}
+          appointments={appointments}
+          appointmentLabel={appointmentLabel}
+          onClose={() => setReturnTarget(null)}
+          onSubmit={async (values) => {
+            const { checkout } = returnTarget;
+            const result = await returnCheckout(checkout, values);
+            if (result !== true) {
+              showError(typeof result === "string" ? result : "Could not record the return.");
+              return false;
+            }
+            showSuccess(`${values.amount} ${checkout.itemUnit || ""} of ${checkout.itemName} is back on the shelf.`.replace("  ", " "));
+            setReturnTarget(null);
+            return true;
+          }}
+        />
+      )}
+
       {stockOutItem && (
         <StockOutModal
           item={stockOutItem}
           technicians={technicians}
+          appointments={appointments}
+          batches={batches}
           onClose={() => setStockOutItem(null)}
           onSubmit={async (values) => {
             const result = await stockOutManual(stockOutItem.id, values);
@@ -1240,9 +1404,10 @@ function InventoryPage() {
       {correctionItem && (
         <StockCorrectionModal
           item={correctionItem}
+          batches={batches}
           onClose={() => setCorrectionItem(null)}
           onSubmit={async (values) => {
-            const result = await stockCorrection(correctionItem.id, values.delta, values.reason);
+            const result = await stockCorrection(correctionItem.id, values.delta, values.reason, { batchId: values.batchId });
             if (result !== true) {
               showError(typeof result === "string" ? result : "Could not record the correction.");
               return;
@@ -1429,7 +1594,11 @@ function EditItemModal({ item, onClose, onSave }) {
                   <option value="INSECTICIDE">Insecticide</option><option value="FUNGICIDE">Fungicide</option><option value="RODENTICIDE">Rodenticide</option><option value="HERBICIDE">Herbicide</option><option value="FUMIGANT">Fumigant</option><option value="OTHER">Other</option>
                 </select>
               </Field>
-              <Field label="Expiration Date"><input name="expirationDate" type="date" value={values.expirationDate} onChange={handleChange} style={inputStyle} /></Field>
+              {/* The expiry comes from the batches (migration 055): the soonest
+                  one with stock. It is corrected per batch in the item's details. */}
+              <Field label="Soonest expiry" hint="Comes from the batches. Correct a batch's expiry in the item's details.">
+                <input value={values.expirationDate ? formatDate(values.expirationDate) : "—"} readOnly style={{ ...inputStyle, background: "#efe9e0" }} />
+              </Field>
               <Field label="Safety Level *">
                 <select name="safetyLevel" value={values.safetyLevel} onChange={handleChange} style={inputStyle} required>
                   <option value="">Select safety level</option>
@@ -1547,7 +1716,8 @@ export function expiryHint(expiry, deliveryDate, currentExpiry) {
   const days = Math.round((new Date(`${expiry}T00:00:00`) - new Date(`${deliveryDate || todayISO()}T00:00:00`)) / 86400000);
   if (days < 0) return "Before the delivery date: this stock has already expired.";
   if (days <= EXPIRY_WARNING_DAYS) return `Expires ${days === 0 ? "on the delivery date" : `${days} day${days === 1 ? "" : "s"} after delivery`}.`;
-  return "Replaces the item's expiry date.";
+  // Migration 055: the delivery is its own batch; the item shows the soonest.
+  return "Kept with this batch. The soonest-expiring batch is used first.";
 }
 
 export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSubmit }) {
@@ -1568,6 +1738,10 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
       enteredUnit: item ? normalizeUnit(item.unit) || item.unit : "",
       unitCost: item?.cost ?? "",
       expirationDate: "",
+      // A chemical line becomes its own batch (migration 055): the lot printed
+      // on the container, or `noLot` when none is.
+      lotNumber: "",
+      noLot: false,
     };
   };
 
@@ -1597,6 +1771,8 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
       enteredUnit: item ? normalizeUnit(item.unit) || item.unit : "",
       unitCost: item?.cost ?? "",
       expirationDate: "",
+      lotNumber: "",
+      noLot: false,
     });
   };
 
@@ -1626,8 +1802,13 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
       setValidationError("Add at least one item to this delivery.");
       return;
     }
-    if (new Set(filledRows.map((row) => row.itemId)).size !== filledRows.length) {
-      setValidationError("Each item can only appear once per Stock In. Combine the duplicate lines.");
+    // One line per item — except a chemical, which may arrive in more than
+    // one lot: then one line per lot.
+    const lineKey = (row) => (findItem(row.itemId)?.type === "CHEMICAL"
+      ? `${row.itemId}|${row.noLot ? "" : row.lotNumber.trim().toLowerCase()}`
+      : row.itemId);
+    if (new Set(filledRows.map(lineKey)).size !== filledRows.length) {
+      setValidationError("The same item and lot appear twice. Combine the duplicate lines.");
       return;
     }
     if (!reference.trim() || !intakeBranchOrStation.trim() || !date) return;
@@ -1663,6 +1844,11 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
         setValidationError(`${item.name} has already expired: its expiry date is before the delivery date.`);
         return;
       }
+      const lotNumber = item.type === "CHEMICAL" && !row.noLot ? row.lotNumber.trim() : "";
+      if (item.type === "CHEMICAL" && !row.noLot && !lotNumber) {
+        setValidationError(`Enter the lot number printed on the ${item.name} container, or tick "No lot number printed".`);
+        return;
+      }
       const converted = normalizeUnit(row.enteredUnit) !== normalizeUnit(item.unit)
         && Boolean(normalizeUnit(row.enteredUnit))
         && Boolean(normalizeUnit(item.unit));
@@ -1674,6 +1860,8 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
         enteredUnit: converted ? row.enteredUnit : null,
         conversionFactor: converted ? conversionFactor(row.enteredUnit, item.unit) : 1,
         expirationDate: expiry || null,
+        lotNumber: lotNumber || null,
+        noLot: item.type === "CHEMICAL" && row.noLot,
       });
     }
 
@@ -1744,7 +1932,11 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
 
           {rows.map((row) => {
             const item = findItem(row.itemId);
-            const alreadyChosen = new Set(rows.filter((other) => other.key !== row.key).map((other) => other.itemId).filter(Boolean));
+            // A chemical can appear again for another lot; anything else once.
+            const alreadyChosen = new Set(rows
+              .filter((other) => other.key !== row.key && findItem(other.itemId)?.type !== "CHEMICAL")
+              .map((other) => other.itemId)
+              .filter(Boolean));
             const unitChoices = item ? convertibleUnits(item.unit) : [];
             const conversionNote = item && row.amount !== "" && row.enteredUnit
               ? describeConversion(row.amount, row.enteredUnit, item.unit)
@@ -1833,7 +2025,7 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
                 </div>
 
                 {item?.type === "CHEMICAL" && (
-                  <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 12rem)", gap: "0.45rem" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))", gap: "0.45rem", alignItems: "start" }}>
                     <Field
                       label="Expiry date *"
                       hint={expiryHint(row.expirationDate, date, item.expirationDate)}
@@ -1848,6 +2040,26 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
                         style={{ ...inputStyle, padding: "0.6rem 0.55rem", fontSize: "0.82rem" }}
                       />
                     </Field>
+                    <Field label={row.noLot ? "Lot number" : "Lot number *"} hint="Printed on the container, for recalls. The batch ID is added for you.">
+                      <input
+                        aria-label="Lot number"
+                        aria-required={!row.noLot}
+                        value={row.noLot ? "" : row.lotNumber}
+                        disabled={row.noLot}
+                        onChange={(event) => updateRow(row.key, { lotNumber: event.target.value })}
+                        maxLength={LIMITS.SHORT_TEXT_MAX}
+                        placeholder="e.g. L24-0917"
+                        style={{ ...inputStyle, padding: "0.6rem 0.55rem", fontSize: "0.82rem", background: row.noLot ? "#efe9e0" : inputStyle.background }}
+                      />
+                    </Field>
+                    <label style={{ display: "flex", gap: "0.45rem", alignItems: "center", color: "#50463c", fontSize: "0.8rem", paddingTop: "1.7rem" }}>
+                      <input
+                        type="checkbox"
+                        checked={row.noLot}
+                        onChange={(event) => updateRow(row.key, { noLot: event.target.checked })}
+                      />
+                      No lot number printed
+                    </label>
                   </div>
                 )}
 
@@ -1915,17 +2127,37 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
  * found days after it happened, and backdating it is what keeps the movement
  * log lined up with the physical count.
  */
-function StockOutModal({ item, technicians, onClose, onSubmit }) {
+function StockOutModal({ item, technicians, appointments = [], batches = [], onClose, onSubmit }) {
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(() => todayISO());
   const [reason, setReason] = useState(STOCK_OUT_REASONS[0].value);
   const [technicianId, setTechnicianId] = useState("");
+  const [forAppointmentId, setForAppointmentId] = useState("");
+  // A chemical's batch (migration 055): blank = soonest expiry first.
+  const [batchId, setBatchId] = useState("");
+  const withBatches = item.type === "CHEMICAL" && batches.some((batch) => batch.itemId === item.id);
+  const usable = withBatches
+    ? Math.round(usableBatches(batches, item.id, date).reduce((sum, batch) => sum + batch.quantity, 0) * 1e6) / 1e6
+    : Number(item.quantity);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState("");
 
   const selectedReason = STOCK_OUT_REASONS.find((entry) => entry.value === reason) || STOCK_OUT_REASONS[0];
   const activeTechnicians = technicians.filter((account) => account.status !== ACCOUNT_STATUS.INACTIVE);
+  // A checkout may name the visit it is for (migration 054): that visit uses it
+  // first. Only the technician's visits still to be done are offered.
+  const upcomingVisits = useMemo(() => {
+    if (!technicianId) return [];
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    return appointments
+      .filter((visit) => crewOf(visit).includes(technicianId)
+        && !["Completed", "Cancelled"].includes(visit.status)
+        && new Date(visit.scheduledAt) >= startOfToday)
+      .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
+      .slice(0, 30);
+  }, [appointments, technicianId]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -1935,8 +2167,10 @@ function StockOutModal({ item, technicians, onClose, onSubmit }) {
       setValidationError(limitError);
       return;
     }
-    if (parsedAmount > Number(item.quantity)) {
-      setValidationError(`Only ${item.quantity} ${item.unit} is in stock.`);
+    if (parsedAmount > usable) {
+      setValidationError(withBatches && usable < Number(item.quantity)
+        ? `Only ${usable} ${item.unit} is usable; the rest has expired. Write the expired batch off from the item's details.`
+        : `Only ${item.quantity} ${item.unit} is in stock.`);
       return;
     }
     if (selectedReason.requiresTechnician && !technicianId) {
@@ -1944,7 +2178,15 @@ function StockOutModal({ item, technicians, onClose, onSubmit }) {
       return;
     }
     setSaving(true);
-    await onSubmit({ amount: parsedAmount, date, reason, technicianId, note: note.trim() });
+    await onSubmit({
+      amount: parsedAmount,
+      date,
+      reason,
+      technicianId,
+      forAppointmentId: selectedReason.requiresTechnician ? forAppointmentId : "",
+      batchId: withBatches ? batchId : "",
+      note: note.trim(),
+    });
     setSaving(false);
   };
 
@@ -1974,6 +2216,22 @@ function StockOutModal({ item, technicians, onClose, onSubmit }) {
           <input type="date" value={date} max={todayISO()} onChange={(event) => { setValidationError(""); setDate(event.target.value); }} style={inputStyle} required />
         </Field>
 
+        {withBatches && (
+          <Field label="Batch">
+            <BatchSelect
+              item={item}
+              batches={batches}
+              date={date}
+              value={batchId}
+              onChange={(value) => { setValidationError(""); setBatchId(value); }}
+              amount={amount}
+              label="Batch"
+              selectStyle={inputStyle}
+              noteStyle={{ color: "#96897b", fontSize: "0.74rem", fontWeight: 400 }}
+            />
+          </Field>
+        )}
+
         <Field label="Reason *">
           <select
             value={reason}
@@ -1991,7 +2249,7 @@ function StockOutModal({ item, technicians, onClose, onSubmit }) {
           <Field label="Technician *">
             <select
               value={technicianId}
-              onChange={(event) => { setValidationError(""); setTechnicianId(event.target.value); }}
+              onChange={(event) => { setValidationError(""); setTechnicianId(event.target.value); setForAppointmentId(""); }}
               style={inputStyle}
               required
             >
@@ -2005,6 +2263,19 @@ function StockOutModal({ item, technicians, onClose, onSubmit }) {
             {activeTechnicians.length === 0 && (
               <span style={{ color: "#9a2d24", fontSize: "0.74rem" }}>No active technician accounts to check stock out to.</span>
             )}
+          </Field>
+        )}
+
+        {selectedReason.requiresTechnician && technicianId && (
+          <Field label="For visit" hint="Optional. The stock stays with the technician either way; their next visit's materials are taken from it before the shelf.">
+            <select value={forAppointmentId} onChange={(event) => setForAppointmentId(event.target.value)} style={inputStyle}>
+              <option value="">Not for a particular visit</option>
+              {upcomingVisits.map((visit) => (
+                <option key={visit.id} value={visit.id}>
+                  {appointmentReference(visit)} · {new Date(visit.scheduledAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                </option>
+              ))}
+            </select>
           </Field>
         )}
 
@@ -2029,17 +2300,166 @@ function StockOutModal({ item, technicians, onClose, onSubmit }) {
   );
 }
 
-function StockCorrectionModal({ item, onClose, onSubmit }) {
+/**
+ * Stock technicians have checked out and not yet used on a visit or returned
+ * (migration 054). A visit's materials come out of these first, so what is
+ * listed here is what is physically in someone's van right now.
+ */
+function CustodyList({ entries, technicianName, appointmentLabel, canManage, loading, error, onReturn }) {
+  const template = "1.1fr 1.3fr 110px 1fr 120px 1.1fr 110px";
+  const cell = { color: "#50463c" };
+  return (
+    <div style={{ background: "#ffffff", border: "1px solid #efe9e0", borderRadius: "7.5px", overflow: "hidden" }}>
+      <p style={{ margin: 0, padding: "0.9rem 1.25rem", color: "#50463c", fontSize: "0.85rem", borderBottom: "1px solid #efe9e0" }}>
+        Stock checked out and not yet used or returned. When a technician records a visit's materials, they come out of this first — the shelf is only charged for the rest.
+      </p>
+      <div style={{ overflowX: "auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: template, minWidth: "900px", gap: "0.75rem", padding: "0.8rem 1.25rem", background: "#efe9e0", color: "#96897b", fontSize: "0.72rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+          {["Technician", "Item", "Taken", "For visit", "Still out", "Used · returned", ""].map((label) => <span key={label || "action"}>{label}</span>)}
+        </div>
+        {error && <div style={{ padding: "1.25rem", color: "#9a2d24", background: "#f9ecea" }}>Could not load checkouts — {error}</div>}
+        {!error && loading && entries.length === 0 && <div style={{ padding: "1.25rem", color: "#96897b" }}>Loading…</div>}
+        {!error && !loading && entries.length === 0 && (
+          <div style={{ padding: "1.75rem", textAlign: "center", color: "#96897b" }}>Nothing is checked out right now.</div>
+        )}
+        {entries.map((entry) => {
+          const { checkout, remaining, used, returned } = entry;
+          return (
+            <div key={checkout.id} style={{ display: "grid", gridTemplateColumns: template, minWidth: "900px", gap: "0.75rem", padding: "0.85rem 1.25rem", borderTop: "1px solid #efe9e0", alignItems: "center", fontSize: "0.9rem" }}>
+              <span style={{ color: "#211b15", fontWeight: 500 }}>{technicianName(checkout.technicianId) || "A technician"}</span>
+              {itemCell(checkout)}
+              <span style={cell}>{formatDate(checkout.movementDate)}</span>
+              <span style={cell}>{checkout.forAppointmentId ? appointmentLabel(checkout.forAppointmentId) : "—"}</span>
+              <span style={{ fontWeight: 600, color: "#211b15", fontVariantNumeric: "tabular-nums" }}>{remaining} {checkout.itemUnit}</span>
+              <span style={{ ...cell, fontSize: "0.8rem" }}>of {checkout.amount} · {used} used · {returned} returned</span>
+              <span style={{ textAlign: "right" }}>
+                {canManage && <Button size="sm" variant="secondary" onClick={() => onReturn(entry)}>Return</Button>}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Checked-out stock coming back to the shelf. Every return says why; a
+ * cancelled visit names the visit, and "Other" needs a note.
+ */
+function ReturnModal({ entry, technicianName, appointments, appointmentLabel, onClose, onSubmit }) {
+  const { checkout, remaining } = entry;
+  const technician = technicianName(checkout.technicianId) || "the technician";
+  // Visits that can be "the cancelled one": this technician's cancelled visits,
+  // the one the checkout was for first.
+  const cancelledVisits = useMemo(() => appointments
+    .filter((visit) => visit.status === "Cancelled" && crewOf(visit).includes(checkout.technicianId))
+    .sort((a, b) => (b.id === checkout.forAppointmentId) - (a.id === checkout.forAppointmentId) || new Date(b.scheduledAt) - new Date(a.scheduledAt))
+    .slice(0, 30), [appointments, checkout]);
+  const forVisitCancelled = cancelledVisits.some((visit) => visit.id === checkout.forAppointmentId);
+
+  const [amount, setAmount] = useState(String(remaining));
+  const [reason, setReason] = useState(forVisitCancelled ? "VISIT_CANCELLED" : "LEFTOVER");
+  const [visitId, setVisitId] = useState(forVisitCancelled ? checkout.forAppointmentId : "");
+  const [note, setNote] = useState("");
+  const [date, setDate] = useState(() => todayISO());
+  const [saving, setSaving] = useState(false);
+  const [validationError, setValidationError] = useState("");
+  const chosen = RETURN_REASONS.find((option) => option.value === reason) || RETURN_REASONS[0];
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const problem = validateQuantity(amount, { label: "Quantity returned" })
+      || (Number(amount) > remaining ? `Only ${remaining} ${checkout.itemUnit} is still out on this checkout.` : null)
+      || validateMovementDate(date)
+      || (date < String(checkout.movementDate).slice(0, 10) ? "A return cannot be dated before the checkout." : null)
+      || (chosen.needsVisit && !visitId ? "Choose the visit that was cancelled." : null)
+      || (chosen.needsNote && !note.trim() ? "Write a note saying why the stock is coming back." : null);
+    if (problem) {
+      setValidationError(problem);
+      return;
+    }
+    setSaving(true);
+    await onSubmit({ amount: Number(amount), reason, appointmentId: chosen.needsVisit ? visitId : "", note: note.trim(), date });
+    setSaving(false);
+  };
+
+  const clear = (setter) => (event) => { setValidationError(""); setter(event.target.value); };
+
+  return (
+    <ModalShell
+      onClose={onClose}
+      title="Return to stock"
+      subtitle={`${checkout.itemName} • ${remaining} ${checkout.itemUnit} still out with ${technician} since ${formatDate(checkout.movementDate)}`}
+    >
+      <form onSubmit={handleSubmit} style={{ display: "grid", gap: "1rem" }}>
+        {validationError && <p role="alert" style={{ margin: 0, color: "#9a2d24", fontSize: "0.85rem", fontWeight: 500 }}>{validationError}</p>}
+
+        <Field label={`Quantity returned (${checkout.itemUnit}) *`}>
+          <input type="number" min="0" max={remaining} step="any" inputMode="decimal" value={amount} onChange={clear(setAmount)} style={inputStyle} required autoFocus />
+        </Field>
+
+        <Field label="Why is it coming back? *">
+          <select aria-label="Return reason" value={reason} onChange={clear(setReason)} style={inputStyle} required>
+            {RETURN_REASONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </Field>
+
+        {chosen.needsVisit && (
+          <Field label="Cancelled visit *">
+            <select aria-label="Cancelled visit" value={visitId} onChange={clear(setVisitId)} style={inputStyle} required>
+              <option value="">Select the visit</option>
+              {cancelledVisits.map((visit) => (
+                <option key={visit.id} value={visit.id}>
+                  {appointmentLabel(visit.id)} · {new Date(visit.scheduledAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                </option>
+              ))}
+            </select>
+            {cancelledVisits.length === 0 && (
+              <span style={{ color: "#9a2d24", fontSize: "0.74rem" }}>{technician} has no cancelled visits. Cancel the visit first, or choose another reason.</span>
+            )}
+          </Field>
+        )}
+
+        <Field label="Date returned *">
+          <input type="date" value={date} min={String(checkout.movementDate).slice(0, 10)} max={todayISO()} onChange={clear(setDate)} style={inputStyle} required />
+        </Field>
+
+        <Field label={chosen.needsNote ? "Note *" : "Note"}>
+          <textarea
+            value={note}
+            onChange={clear(setNote)}
+            style={{ ...inputStyle, minHeight: "70px", resize: "vertical" }}
+            placeholder="Anything worth recording — the container's condition, who brought it back"
+            maxLength={LIMITS.NOTES_MAX}
+          />
+        </Field>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.65rem", paddingTop: "0.75rem", borderTop: "1px solid #efe9e0" }}>
+          <button type="button" onClick={onClose} style={secondaryButton}>Cancel</button>
+          <button type="submit" disabled={saving} style={buttonWhen(saving)}>{saving ? "Recording…" : "Return to stock"}</button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+function StockCorrectionModal({ item, batches = [], onClose, onSubmit }) {
   const [delta, setDelta] = useState("");
   const [reason, setReason] = useState("");
+  // Which batch the count is about (migration 055). Blank: a shortfall comes
+  // off the soonest expiry (expired included — it is what is on the shelf),
+  // extra stock goes into the opening batch, since its lot is unknown.
+  const [batchId, setBatchId] = useState("");
   const [saving, setSaving] = useState(false);
+  const adding = Number(delta) > 0;
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     const parsedDelta = Number(delta);
     if (!Number.isInteger(parsedDelta) || parsedDelta === 0 || !reason.trim()) return;
     setSaving(true);
-    await onSubmit({ delta: parsedDelta, reason: reason.trim() });
+    await onSubmit({ delta: parsedDelta, reason: reason.trim(), batchId });
     setSaving(false);
   };
 
@@ -2049,6 +2469,22 @@ function StockCorrectionModal({ item, onClose, onSubmit }) {
         <Field label={`Adjustment (${item.unit}) *`} hint="Use a positive number to add stock or a negative number to remove stock.">
           <input type="number" step="1" value={delta} onChange={(event) => setDelta(event.target.value)} style={inputStyle} placeholder="e.g. -2 or 5" required autoFocus />
         </Field>
+        {item.type === "CHEMICAL" && batches.some((batch) => batch.itemId === item.id) && (
+          <Field label="Batch" hint={adding ? "Extra stock found. Pick its batch if you know it." : "Stock missing from the count. Pick the batch if you know it."}>
+            <BatchSelect
+              item={item}
+              batches={batches}
+              date={todayISO()}
+              value={batchId}
+              onChange={setBatchId}
+              includeExpired
+              showPlan={false}
+              label="Batch"
+              autoLabel={adding ? "Unknown lot (opening batch)" : "Soonest expiry first"}
+              selectStyle={inputStyle}
+            />
+          </Field>
+        )}
         <Field label="Reason *">
           <textarea value={reason} onChange={(event) => setReason(event.target.value)} style={{ ...inputStyle, minHeight: "90px", resize: "vertical" }} placeholder="Explain the physical count or discrepancy" required />
         </Field>
@@ -2123,11 +2559,12 @@ function ModalShell({ title, subtitle, onClose, children, maxWidth = "28rem" }) 
   );
 }
 
-function InventoryDetailModal({ item, onClose }) {
+function InventoryDetailModal({ item, batches = [], canManage, batchActions, onClose }) {
   const typeLabel = item.type === "CHEMICAL" ? "Chemical" : item.type === "EQUIPMENT" ? "Equipment" : "Material";
+  const hasBatches = item.type === "CHEMICAL" && batches.some((batch) => batch.itemId === item.id);
 
   return (
-    <ModalShell onClose={onClose} title={item.name}>
+    <ModalShell onClose={onClose} title={item.name} maxWidth={hasBatches ? "44rem" : undefined}>
       {/* Basic Information */}
       <div style={{ marginBottom: "1.5rem" }}>
         <h3 style={{ color: "#50463c", fontSize: "0.875rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
@@ -2137,8 +2574,8 @@ function InventoryDetailModal({ item, onClose }) {
           <DetailRow label="Type" value={typeLabel} />
           <DetailRow label="Status" value={item.status === "DISABLED" ? "Disabled" : "Active"} />
           <DetailRow label="Quantity" value={`${item.quantity} ${item.unit}`} />
-          {item.cost !== undefined && item.cost !== null ? <DetailRow label="Cost per Unit" value={`₱${Number(item.cost).toFixed(2)}`} /> : null}
-          {item.cost !== undefined && item.cost !== null && item.quantity ? <DetailRow label="Total Value" value={`₱${(item.quantity * Number(item.cost)).toFixed(2)}`} /> : null}
+          {item.cost !== undefined && item.cost !== null ? <DetailRow label="Cost per Unit" value={peso(item.cost)} /> : null}
+          {item.cost !== undefined && item.cost !== null && item.quantity ? <DetailRow label="Total Value" value={peso(item.quantity * Number(item.cost))} /> : null}
           {item.supplier && <DetailRow label="Supplier" value={item.supplier} />}
           {item.reorderLevel && <DetailRow label="Reorder Level" value={item.reorderLevel} />}
         </div>
@@ -2152,11 +2589,21 @@ function InventoryDetailModal({ item, onClose }) {
           </h3>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
             <DetailRow label="Chemical Type" value={item.chemicalType} />
-            {item.expirationDate && <DetailRow label="Expiration Date" value={formatDate(item.expirationDate)} />}
+            {item.expirationDate && <DetailRow label={hasBatches ? "Soonest expiry" : "Expiration Date"} value={formatDate(item.expirationDate)} />}
             {item.safetyLevel && <DetailRow label="Safety Level" value={item.safetyLevel} />}
               {item.hazardRating && <DetailRow label="Hazard Note" value={item.hazardRating} />}
             {item.dateReceived && <DetailRow label="Date Received" value={formatDate(item.dateReceived)} />}
           </div>
+        </div>
+      )}
+
+      {/* Batches (migration 055): what is on the shelf, by lot and expiry. */}
+      {hasBatches && (
+        <div style={{ marginBottom: "1.5rem" }}>
+          <h3 style={{ color: "#50463c", fontSize: "0.875rem", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
+            Batches
+          </h3>
+          <BatchList item={item} batches={batches} today={todayISO()} canManage={canManage} {...batchActions} />
         </div>
       )}
 
@@ -2238,7 +2685,9 @@ function DetailRow({ label, value }) {
 
 function Field({ label, hint, children }) {
   return (
-    <label style={{ display: "grid", gap: "0.45rem", color: "#50463c", fontWeight: 500 }}>
+    // alignContent start: a field beside one with a hint must not stretch its
+    // control to fill the taller row (Edit item's Chemical Type did).
+    <label style={{ display: "grid", gap: "0.45rem", alignContent: "start", color: "#50463c", fontWeight: 500 }}>
       <span>{label}</span>
       {children}
       {hint && <span style={{ color: "#96897b", fontSize: "0.72rem", fontWeight: 400 }}>{hint}</span>}
@@ -2288,6 +2737,7 @@ const editGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
   gap: "1rem",
+  alignItems: "start",
 };
 
 export default InventoryPage;

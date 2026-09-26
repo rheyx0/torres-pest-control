@@ -7,6 +7,7 @@
 // The logic lives here, not in InventoryPage, so it can be tested on its own.
 
 import { STOCK_OUT_REASON_LABELS } from "./constants";
+import { isPlausibleMovement } from "./dashboardMetrics";
 
 /** The reasons a person follows up on. */
 export const LOSS_REASONS = ["MISSING", "DAMAGED"];
@@ -24,6 +25,7 @@ export const REASON_FILTERS = [
   { value: "TECHNICIAN_CHECKOUT", label: STOCK_OUT_REASON_LABELS.TECHNICIAN_CHECKOUT },
   { value: "MISSING", label: STOCK_OUT_REASON_LABELS.MISSING },
   { value: "DAMAGED", label: STOCK_OUT_REASON_LABELS.DAMAGED },
+  { value: "EXPIRED", label: STOCK_OUT_REASON_LABELS.EXPIRED },
 ];
 
 /**
@@ -38,7 +40,7 @@ export function filterByReason(movements, { reason = "ALL", technicianId = "ALL"
   });
 }
 
-/** { ALL, APPOINTMENT, TECHNICIAN_CHECKOUT, MISSING, DAMAGED } counts for the chips. */
+/** { ALL, APPOINTMENT, TECHNICIAN_CHECKOUT, MISSING, DAMAGED, EXPIRED } counts for the chips. */
 export function countByReason(movements) {
   const counts = { ALL: movements.length };
   REASON_FILTERS.forEach(({ value }) => {
@@ -67,7 +69,8 @@ export function summarizeLosses(movements) {
     const quantity = Math.abs(Number(movement.quantityDelta ?? movement.amount) || 0);
     summary[reason].count += 1;
     summary[reason].quantity += quantity;
-    summary[reason].value += Number(movement.totalCost) || 0;
+    // A row from before the limits with an impossible figure adds no value (058).
+    if (isPlausibleMovement(movement)) summary[reason].value += Number(movement.totalCost) || 0;
   });
   return summary;
 }

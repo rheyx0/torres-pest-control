@@ -16,7 +16,8 @@
 
 import { crewOf, endOf, isAssignedTo, reportOwed, startOf } from "./scheduling";
 import { plansEnding } from "./plans";
-import { byTime, dayKey, weekWindow } from "./dashboardMetrics";
+import { describeOut, outOn } from "./absences";
+import { byTime, dayKey, hasPlausiblePrice, weekWindow } from "./dashboardMetrics";
 
 export const BOARD_START_HOUR = 7;
 export const BOARD_END_HOUR = 18;
@@ -132,7 +133,8 @@ export function unsignedReports(appointments, now = new Date(), lookbackDays = 3
 export function weekRevenue(appointments, now = new Date()) {
   const { start, end } = weekWindow(now);
   const inWeek = appointments.filter((entry) => live(entry) && startOf(entry) >= start.getTime() && startOf(entry) < end.getTime());
-  const priced = inWeek.filter((entry) => entry.price !== "" && entry.price !== null && entry.price !== undefined && !Number.isNaN(Number(entry.price)));
+  // A price the system could not accept today is left out (migration 058).
+  const priced = inWeek.filter(hasPlausiblePrice);
   const total = priced.reduce((sum, entry) => sum + Number(entry.price), 0);
   return { total, visits: inWeek.length, priced: priced.length, average: priced.length ? total / priced.length : 0 };
 }
@@ -259,7 +261,7 @@ function whenPhrase(value, now) {
  * not act on.
  */
 export function attentionItems(
-  { appointments = [], clients = [], inventory = [], users = [] },
+  { appointments = [], clients = [], inventory = [], users = [], absences = [] },
   { now = new Date(), canBook = true, canSeeStock = true, expiryDays = 30 } = {}
 ) {
   const clientName = (id) => clients.find((client) => client.id === id)?.name || "Unknown client";
@@ -268,6 +270,20 @@ export function attentionItems(
     return person?.name || person?.username || "";
   };
   const items = [];
+
+  // Who is out today (migration 057): nobody can book them, and the office
+  // should know before it starts moving visits around.
+  const away = outOn(absences, dayKey(now));
+  if (away.length) {
+    items.push({
+      key: "out-today",
+      kind: "absence",
+      tone: "neutral",
+      title: away.length === 1 ? `${personName(away[0].technicianId) || "A technician"} is out today` : `${away.length} technicians are out today`,
+      detail: listNames(away.map((absence) => `${personName(absence.technicianId) || "A technician"} (${describeOut(absence).replace(/^out /, "")})`), 2),
+      action: { label: "View", to: "/scheduling" },
+    });
+  }
 
   const unassigned = unassignedUpcoming(appointments, now);
   if (unassigned.length) {

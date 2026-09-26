@@ -147,7 +147,9 @@ function DispatchJob({ job, clientName, now, draggable, onDragStart }) {
  * Unassigned row. With `onAssign`, an unassigned visit can be dragged onto a
  * technician's row to give it to them.
  */
-export function DispatchBoard({ lanes, day, now = new Date(), clientName, onAssign = null, dayChoice, onDayChange }) {
+// `outIds` (migration 057): Map<technicianId, absence> for the board's day —
+// the lane says "Out" and takes no drops.
+export function DispatchBoard({ lanes, outIds = new Map(), day, now = new Date(), clientName, onAssign = null, dayChoice, onDayChange }) {
   const [dropLane, setDropLane] = useState(null);
   const [dragging, setDragging] = useState(null);
   const nowAt = nowPlacement(day, now);
@@ -203,13 +205,14 @@ export function DispatchBoard({ lanes, day, now = new Date(), clientName, onAssi
 
           {lanes.map((lane, laneIndex) => {
             const isUnassigned = !lane.technician;
-            const canDropHere = Boolean(onAssign && dragging && !isUnassigned);
+            const away = isUnassigned ? null : outIds.get(lane.technician.id);
+            const canDropHere = Boolean(onAssign && dragging && !isUnassigned && !away);
             const name = isUnassigned ? "Unassigned" : lane.technician.name || lane.technician.username;
             return (
               <div
                 key={lane.key}
                 role="group"
-                aria-label={`${name}: ${lane.jobs.length} ${lane.jobs.length === 1 ? "visit" : "visits"}`}
+                aria-label={away ? `${name}: out${away.reason ? ` (${away.reason})` : ""}` : `${name}: ${lane.jobs.length} ${lane.jobs.length === 1 ? "visit" : "visits"}`}
                 onDragOver={(event) => {
                   if (!canDropHere) return;
                   event.preventDefault();
@@ -234,7 +237,12 @@ export function DispatchBoard({ lanes, day, now = new Date(), clientName, onAssi
               >
                 <span style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "13px", color: isUnassigned ? neutral.bark : neutral.ink, minWidth: 0 }}>
                   <Avatar user={lane.technician} size="sm" />
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: away ? 0.6 : 1 }}>{name}</span>
+                  {away && (
+                    <span title={away.reason || "Out"} style={{ flex: "none", fontSize: "11px", color: "#9a2d24", border: "1px solid #f5c2bd", background: "#f9ecea", borderRadius: "999px", padding: "0 6px" }}>
+                      Out
+                    </span>
+                  )}
                 </span>
                 <div style={{ position: "relative", height: "48px", background: trackGrid }}>
                   {nowAt !== null && (

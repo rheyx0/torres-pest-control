@@ -17,15 +17,18 @@ const REPORT_OWNED = [
 export function SchedulingProvider({ children }) {
   const { session, sessionVerified } = useAuthContext();
   const [appointments, setAppointments] = useState([]);
+  // Technicians who are out (migration 057): nobody can be booked on those days.
+  const [absences, setAbsences] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
-    const result = await appointmentService.fetchAppointments();
+    const [result, away] = await Promise.all([appointmentService.fetchAppointments(), appointmentService.fetchAbsences()]);
     if (result.error) setError(result.error);
     else setAppointments(result.appointments);
+    if (!away.error) setAbsences(away.absences);
     setLoading(false);
     return result;
   }, []);
@@ -33,6 +36,7 @@ export function SchedulingProvider({ children }) {
   useEffect(() => {
     if (!session || !sessionVerified) {
       setAppointments([]);
+      setAbsences([]);
       setError("");
       return;
     }
@@ -70,6 +74,10 @@ export function SchedulingProvider({ children }) {
     finishJobHere: (appointmentId) => runPlanAction(() => appointmentService.finishJobHere(appointmentId)),
     cancelPlanRemaining: (planId) => runPlanAction(() => appointmentService.cancelPlanRemaining(planId)),
     setPlanRenewal: (planId, renew) => runPlanAction(() => appointmentService.setPlanRenewal(planId, renew)),
+    // Not plan changes, but the same shape: several visits at once, then reload.
+    reassignVisits: (absentId, changes, reason) => runPlanAction(() => appointmentService.reassignVisits(absentId, changes, reason)),
+    markTechnicianOut: (technicianId, absence) => runPlanAction(() => appointmentService.markTechnicianOut(technicianId, absence)),
+    endAbsence: (absenceId, backOn) => runPlanAction(() => appointmentService.endAbsence(absenceId, backOn)),
     addPlanVisit: (planId, visit) => runPlanAction(() => appointmentService.addPlanVisit(planId, visit)),
     updatePlanFuture: (planId, fromId, changes) => runPlanAction(() => appointmentService.updatePlanFuture(planId, fromId, changes)),
   }), [runPlanAction]);
@@ -161,8 +169,8 @@ export function SchedulingProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ appointments, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl, uploadSignature: appointmentService.uploadSignature, getSignatureUrl: appointmentService.getSignatureUrl }),
-    [appointments, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment]
+    () => ({ appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl, uploadSignature: appointmentService.uploadSignature, getSignatureUrl: appointmentService.getSignatureUrl }),
+    [appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment]
   );
   return <SchedulingContext.Provider value={value}>{children}</SchedulingContext.Provider>;
 }

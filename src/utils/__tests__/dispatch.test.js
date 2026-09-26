@@ -292,4 +292,17 @@ describe("attentionItems", () => {
   it("returns nothing when all is well", () => {
     expect(attentionItems({}, { now })).toEqual([]);
   });
+
+  // Migration 057.
+  it("says who is out today, and not who is out another day", () => {
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const users = [{ id: "juan", name: "Juan" }, { id: "ana", name: "Ana" }];
+    const absences = [
+      { id: "a", technicianId: "juan", startsOn: today, endsOn: today, reason: "Sick" },
+      { id: "b", technicianId: "ana", startsOn: "2099-01-01", endsOn: "2099-01-02", reason: "" },
+    ];
+    const out = attentionItems({ users, absences }, { now }).find((item) => item.kind === "absence");
+    expect(out.title).toBe("Juan is out today");
+    expect(out.detail).toMatch(/^Juan \(\(Sick\) until /);
+  });
 });

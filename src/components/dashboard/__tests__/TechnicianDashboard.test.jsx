@@ -22,6 +22,12 @@ jest.mock("../../../hooks/useClients", () => ({
 }));
 jest.mock("../../../hooks/useUsers", () => ({ __esModule: true, default: () => ({ users: [{ id: "jun", name: "Jun Dela Cruz" }, { id: "paolo", name: "Paolo Garcia" }] }) }));
 jest.mock("../../../hooks/useNow", () => ({ __esModule: true, default: () => new Date() }));
+jest.mock("../../../hooks/useInventory", () => ({
+  __esModule: true,
+  default: () => ({
+    movements: [{ id: "co", itemId: "i1", amount: 2, movementType: "OUT", stockOutReason: "TECHNICIAN_CHECKOUT", technicianId: "jun", movementDate: "2026-01-01", itemName: "Termidor SC", itemUnit: "L" }],
+  }),
+}));
 jest.mock("../../../context/SchedulingContext", () => ({
   useScheduling: () => ({ appointments: mockState.appointments, loading: false, error: "", startVisit: mockStartVisit }),
 }));
@@ -110,6 +116,19 @@ describe("TechnicianDashboard — Your day", () => {
     const farm = screen.getByText("Mendoza Poultry Farm").closest("a");
     expect(farm).toHaveTextContent("with Paolo Garcia");
     expect(within(farm).getByText("Lead")).toBeInTheDocument();
+  });
+
+  it("shows the day as points: one done, the next one current", () => {
+    renderDay(appointments);
+    const timeline = screen.getByRole("list", { name: "1 of 3 visits done" });
+    expect(within(timeline).getAllByRole("listitem")).toHaveLength(3);
+  });
+
+  it("adds the week, the stock they carry, and their time off", () => {
+    renderDay(appointments);
+    expect(screen.getByRole("region", { name: "This week" })).toHaveTextContent("No more visits booked this week.");
+    expect(screen.getByRole("region", { name: "Stock you're carrying" })).toHaveTextContent("Termidor SC2 L");
+    expect(screen.getByRole("region", { name: "Time off" })).toHaveTextContent("None coming up.");
   });
 
   it("nudges for a signature on a finished visit that has none", () => {

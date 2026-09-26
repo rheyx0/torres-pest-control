@@ -18,9 +18,10 @@ import useInventory from "../../hooks/useInventory";
 import useServices from "../../hooks/useServices";
 import { LIMITS } from "../../utils/constants";
 import { validateDuration, validateMoney, validateQuantity } from "../../utils/validators";
+import { formatPeso } from "../../utils/formatters";
 import { card, colors } from "../../styles/theme";
 
-const peso = (value) => `₱${(Number(value) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const peso = (value) => formatPeso(value);
 
 const formatDuration = (minutes) => {
   if (!minutes) return "—";

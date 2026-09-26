@@ -11,11 +11,19 @@
 // Ticking is therefore append-only rather than roster order, and the lead is
 // labelled so nobody has to infer it.
 
-import { colors } from "../../styles/theme";
+//
+// `outIds` (migration 057) is Map<id, absence> of technicians out on the day:
+// they cannot be ticked, and say why. Unlike busy, this is not advisory — the
+// server refuses them — but someone already on the job stays tickable so the
+// visit can still be edited.
 
-function TechnicianPicker({ accounts, value = [], busyIds, onChange, disabled = false }) {
+import { colors } from "../../styles/theme";
+import { describeOut } from "../../utils/absences";
+
+function TechnicianPicker({ accounts, value = [], busyIds, outIds, onChange, disabled = false }) {
   const selected = Array.isArray(value) ? value.filter(Boolean) : [];
   const busy = busyIds || new Set();
+  const out = outIds || new Map();
 
   const toggle = (accountId) => {
     if (disabled) return;
@@ -39,7 +47,10 @@ function TechnicianPicker({ accounts, value = [], busyIds, onChange, disabled = 
         const position = selected.indexOf(account.id);
         // Busy is advisory, and never hides someone already on this job: the
         // appointment they clash with may be the very one being edited.
-        const isBusy = busy.has(account.id) && !checked;
+        const absence = out.get(account.id);
+        const isOut = Boolean(absence) && !checked;
+        const isBusy = busy.has(account.id) && !checked && !isOut;
+        const locked = disabled || isOut;
 
         return (
           <label
@@ -51,9 +62,9 @@ function TechnicianPicker({ accounts, value = [], busyIds, onChange, disabled = 
               padding: "0.5rem 0.6rem",
               border: `1px solid ${checked ? "#c7bcaf" : "#efe9e0"}`,
               borderRadius: "3.75px",
-              background: checked ? "#fcfaf1" : "#ffffff",
-              cursor: disabled ? "not-allowed" : "pointer",
-              opacity: disabled ? 0.6 : 1,
+              background: checked ? "#fcfaf1" : isOut ? "#f6f2ea" : "#ffffff",
+              cursor: locked ? "not-allowed" : "pointer",
+              opacity: locked ? 0.6 : 1,
               fontSize: "0.82rem",
               color: colors.ink,
             }}
@@ -61,7 +72,7 @@ function TechnicianPicker({ accounts, value = [], busyIds, onChange, disabled = 
             <input
               type="checkbox"
               checked={checked}
-              disabled={disabled}
+              disabled={locked}
               onChange={() => toggle(account.id)}
               style={{ margin: 0 }}
             />
@@ -73,6 +84,9 @@ function TechnicianPicker({ accounts, value = [], busyIds, onChange, disabled = 
               )}
               {isBusy && (
                 <span style={{ color: "#b45309", fontSize: "0.72rem" }}> — already booked</span>
+              )}
+              {absence && (
+                <span style={{ color: "#9a2d24", fontSize: "0.72rem" }}> — {describeOut(absence)}</span>
               )}
             </span>
             {position === 0 && (

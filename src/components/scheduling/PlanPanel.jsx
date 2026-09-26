@@ -15,6 +15,7 @@ import { useState } from "react";
 import { CalendarRange } from "lucide-react";
 import { neutral, radius, status as semantic, surface, text, weight } from "../../styles/tokens";
 import { PLAN_KINDS } from "../../utils/plans";
+import { outDuring } from "../../utils/absences";
 import { toDateTimeLocal } from "../../utils/calendarDates";
 import Button from "../ui/Button";
 import Input from "../ui/Input";
@@ -33,7 +34,7 @@ function nextMorning(visit) {
   return toDateTimeLocal(date);
 }
 
-function PlanPanel({ appointment, visits, canManage, canFinish, accounts = [], services = [], onOpen, onAction }) {
+function PlanPanel({ appointment, visits, canManage, canFinish, accounts = [], absences = [], services = [], onOpen, onAction }) {
   const [mode, setMode] = useState(null); // "change" | "add" | "cancel" | "finish"
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -44,6 +45,8 @@ function PlanPanel({ appointment, visits, canManage, canFinish, accounts = [], s
   const last = visits[visits.length - 1];
   const later = visits.filter((visit) => new Date(visit.scheduledAt) > new Date(appointment.scheduledAt));
   const upcoming = visits.filter((visit) => isOpen(visit) && new Date(visit.scheduledAt) > new Date());
+  // Out on any date the change would reach (migration 057): not offered.
+  const outIds = outDuring(absences, upcoming.filter((visit) => new Date(visit.scheduledAt) >= new Date(appointment.scheduledAt)));
 
   // The "change" form: blank means "leave as it is".
   const [startTime, setStartTime] = useState("");
@@ -140,7 +143,7 @@ function PlanPanel({ appointment, visits, canManage, canFinish, accounts = [], s
           )}
           <div style={{ display: "grid", gap: "4px", ...text.small, color: neutral.ink }}>
             Technicians {crew === null && <span style={{ color: neutral.bark }}>(unchanged)</span>}
-            <TechnicianPicker accounts={accounts} value={crew || []} onChange={setCrew} />
+            <TechnicianPicker accounts={accounts} value={crew || []} outIds={outIds} onChange={setCrew} />
           </div>
           <div role="group" aria-label="Services for the rest of the plan" style={{ display: "grid", gap: "4px", ...text.small, color: neutral.ink }}>
             Services {serviceIds === null && <span style={{ color: neutral.bark }}>(unchanged)</span>}

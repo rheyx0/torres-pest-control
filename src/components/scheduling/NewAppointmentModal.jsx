@@ -28,6 +28,7 @@ import { LIMITS, PEST_CONCERN_SUGGESTIONS, SERVICE_FREQUENCIES } from "../../uti
 import { defaultAppointmentDateTime, toDateTimeLocal } from "../../utils/calendarDates";
 import { validateAppointmentStart, validateDuration, validateMoney } from "../../utils/validators";
 import { appointmentsOverlap, busyTechnicianIds, describeSlotConflict, isAssignedTo } from "../../utils/scheduling";
+import { describeOut, outDuring } from "../../utils/absences";
 import {
   MAX_PLAN_VISITS,
   PLAN_KINDS,
@@ -111,6 +112,8 @@ function NewAppointmentModal({
   initialServiceIds = [],
   initialFrequency = "",
   initialPestConcern = "",
+  // Technicians who are out (migration 057): they cannot be booked.
+  absences = [],
   onClose,
   onCreate,
   onBook,
@@ -192,7 +195,6 @@ function NewAppointmentModal({
         return `${(account.name || account.username).split(" ")[0]}${where ? ` is on ${where}` : " is booked"}${visit ? ` ${clock(start)}–${clock(end)}` : ""}`;
       });
   }, [activeAccounts, appointments, busyIds, clients, scheduledAt, durationMinutes]);
-  const freeCount = activeAccounts.filter((account) => !busyIds.has(account.id)).length;
 
   // A service profile carries a default price and duration (migration 047).
   // Ticking services fills in their totals: the durations added up, and the
@@ -267,7 +269,15 @@ function NewAppointmentModal({
   // Whole-series fixes are only worth computing when every date is flagged.
   const everyDateFlagged = planVisits.length > 0 && planProblems === planVisits.length;
   const seriesTime = everyDateFlagged && kind === PLAN_KINDS.RECURRING ? commonFreeTime(planVisits, planContext) : null;
-  const seriesAccount = everyDateFlagged ? freeTechnician(planVisits, planContext, activeAccounts) : null;
+  // Everyone out on any of the dates being booked — the one visit, or every
+  // date of a plan (migration 057). The server refuses them; this says so first.
+  const outIds = scheduledAt
+    ? outDuring(absences, kind ? planVisits : [{ scheduledAt, durationMinutes }])
+    : new Map();
+  const seriesAccount = everyDateFlagged
+    ? freeTechnician(planVisits, planContext, activeAccounts.filter((account) => !outIds.has(account.id)))
+    : null;
+  const freeCount = activeAccounts.filter((account) => !busyIds.has(account.id) && !outIds.has(account.id)).length;
 
   const moveAllTo = (time) => setOverrides(Object.fromEntries(planVisits.map((visit) => [visit.key, atTime(visit, time).scheduledAt])));
 
@@ -299,6 +309,11 @@ function NewAppointmentModal({
     }
     if (kind && planProblems > 0) {
       setFormError(`Fix the ${planProblems} flagged ${planProblems === 1 ? "date" : "dates"} first.`);
+      return;
+    }
+    const away = technicianIds.find((id) => outIds.has(id));
+    if (away) {
+      setFormError(`${nameOf(away)} is ${describeOut(outIds.get(away))}. Choose someone else.`);
       return;
     }
 
@@ -567,6 +582,7 @@ function NewAppointmentModal({
               accounts={activeAccounts}
               value={technicianIds}
               busyIds={busyIds}
+              outIds={outIds}
               onChange={setTechnicianIds}
             />
           </div>

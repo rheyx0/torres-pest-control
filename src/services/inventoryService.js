@@ -11,6 +11,7 @@
 // applies; the rest stay null.
 
 import { supabase } from "./supabaseClient";
+import { todayISO } from "../utils/validators";
 
 export const INVENTORY_STATUS = {
   ACTIVE: "ACTIVE",
@@ -28,8 +29,19 @@ const COLUMNS = `
 
 const MOVEMENT_COLUMNS = `
   id, item_id, amount, quantity_delta, movement_date, reference, actor, intake_branch_or_station, movement_type, appointment_id, unit_cost, total_cost, created_at,
-  entered_amount, entered_unit, conversion_factor, stock_out_reason, technician_id, note,
+  entered_amount, entered_unit, conversion_factor, stock_out_reason, technician_id, note, batch_number,
   inventory ( name, unit, cost )
+`;
+
+// Columns later migrations add: checkout custody (054) and the chemical batch
+// (055). Each is dropped from the select if the database does not have it yet,
+// so the history still loads ahead of a migration.
+const CUSTODY_COLUMNS = ["checkout_id", "for_appointment_id", "return_reason", "custody_closed_at"];
+const OPTIONAL_MOVEMENT_COLUMNS = [...CUSTODY_COLUMNS, "batch_id"];
+
+const BATCH_COLUMNS = `
+  id, reference, item_id, lot_number, expiration_date, received_date, quantity_received, quantity,
+  unit_cost, is_opening, split_from, written_off_at, created_at
 `;
 
 function describeError(error) {
@@ -129,7 +141,8 @@ function buildPayload(item) {
   // stale values from another sub-type behind.
   if (item.type === "CHEMICAL") {
     payload.chemical_type = nullIfBlank(item.chemicalType);
-    payload.expiration_date = nullIfBlank(item.expirationDate);
+    // No expiration_date: since migration 055 it is the soonest expiry among
+    // the item's batches, kept by a trigger. Writing it here would be undone.
     payload.safety_level = nullIfBlank(item.safetyLevel);
     payload.hazard_rating = nullIfBlank(item.hazardRating);
     payload.date_received = nullIfBlank(item.dateReceived);
@@ -271,8 +284,11 @@ export async function stockInBatch(entries, { date, reference, intakeBranchOrSta
       conversion_factor: entry.conversionFactor === undefined || entry.conversionFactor === null
         ? 1
         : Number(entry.conversionFactor),
-      // Migration 049: the expiry printed on this delivery replaces the item's.
+      // The expiry and lot printed on this delivery: a chemical line becomes
+      // its own batch (migration 055). `noLot` when no lot is printed.
       expiration_date: nullIfBlank(entry.expirationDate),
+      lot_number: nullIfBlank(entry.lotNumber),
+      no_lot: Boolean(entry.noLot),
     })),
     p_movement_date: date,
     p_reference: nullIfBlank(reference),
@@ -301,6 +317,7 @@ export async function stockInBatch(entries, { date, reference, intakeBranchOrSta
       newQuantity: Number(row.new_quantity),
       // Absent (undefined) before migration 049, so the caller keeps the old date.
       expirationDate: row.expiration_date,
+      batchId: row.batch_id || "",
     })),
   };
 }
@@ -309,48 +326,68 @@ export async function stockInBatch(entries, { date, reference, intakeBranchOrSta
  * Stock leaving for a reason that is not an appointment: checked out to a
  * technician, missing at count, or damaged. The date is the caller's, not the
  * server's — a shortfall found today is often a shortfall from last week.
+ *
+ * A chemical leaves by batch, soonest expiry first or `batchId` first
+ * (migration 055), so one stock-out can come back as several rows.
  */
-export async function stockOutManual(itemId, { amount, date, reason, technicianId, note }) {
+export async function stockOutManual(itemId, { amount, date, reason, technicianId, note, forAppointmentId, batchId }) {
+  const checkout = reason === "TECHNICIAN_CHECKOUT";
   const { data, error } = await supabase.rpc("stock_out_manual", {
     p_item_id: itemId,
     p_amount: Number(amount),
     p_movement_date: date,
     p_reason: reason,
-    p_technician_id: reason === "TECHNICIAN_CHECKOUT" ? technicianId || null : null,
+    p_technician_id: checkout ? technicianId || null : null,
     p_note: nullIfBlank(note),
+    // The visit a checkout is for (054) and a chosen batch (055). Sent only
+    // when set, so a stock-out still records on a database without them.
+    ...(checkout && forAppointmentId ? { p_for_appointment_id: forAppointmentId } : {}),
+    ...(batchId ? { p_batch_id: batchId } : {}),
   });
 
   if (error) return { error: describeError(error) };
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row) return { error: "Stock Out did not return a saved movement." };
-
-  return {
-    movement: {
-      id: row.movement_id,
-      itemId: row.item_id,
-      amount: Number(row.amount),
-      quantityDelta: -Number(row.amount),
-      movementDate: row.movement_date,
-      stockOutReason: row.reason,
-      technicianId: row.technician_id || "",
-      note: row.note || "",
-      actor: row.actor || "",
-      movementType: "OUT",
-    },
-    newQuantity: Number(row.new_quantity),
-  };
+  const rows = Array.isArray(data) ? data : data ? [data] : [];
+  if (rows.length === 0) return { error: "Stock Out did not return a saved movement." };
+  return { rows, newQuantity: Number(rows[rows.length - 1].new_quantity) };
 }
 
-export async function stockCorrection(itemId, delta, reason, date = new Date().toISOString().slice(0, 10)) {
+/**
+ * Checked-out stock coming back to the shelf (return_checkout, migration 054).
+ * `reason` is one of RETURN_REASONS; a cancelled visit names `appointmentId`,
+ * "OTHER" needs a note.
+ */
+export async function returnCheckout(checkoutId, { amount, reason, appointmentId, note, date }) {
+  const { data, error } = await supabase.rpc("return_checkout", {
+    p_checkout_id: checkoutId,
+    p_amount: Number(amount),
+    p_reason: reason,
+    p_appointment_id: appointmentId || null,
+    p_note: nullIfBlank(note),
+    p_movement_date: date || null,
+  });
+  if (error) return { error: describeError(error) };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return { error: "The return did not come back from the server." };
+  return { newQuantity: Number(row.new_quantity), remaining: Number(row.remaining) };
+}
+
+/**
+ * A counted difference. For a chemical it lands on `batchId` when given —
+ * otherwise down comes off the soonest expiry, up goes into the opening batch
+ * (migration 055) — so one correction can come back as several rows.
+ */
+export async function stockCorrection(itemId, delta, reason, { date = todayISO(), batchId } = {}) {
   const { data, error } = await supabase.rpc("stock_correction", {
     p_item_id: itemId,
     p_delta: Number(delta),
     p_reason: reason,
     p_movement_date: date,
+    ...(batchId ? { p_batch_id: batchId } : {}),
   });
   if (error) return { error: describeError(error) };
-  const row = Array.isArray(data) ? data[0] : data;
-  return { movement: row, newQuantity: Number(row?.new_quantity) };
+  const rows = Array.isArray(data) ? data : data ? [data] : [];
+  if (rows.length === 0) return { error: "The correction did not return a saved movement." };
+  return { rows, newQuantity: Number(rows[rows.length - 1].new_quantity) };
 }
 
 function mapMovementRow(row) {
@@ -374,6 +411,15 @@ function mapMovementRow(row) {
     note: row.note || "",
     quantityDelta: row.quantity_delta === null || row.quantity_delta === undefined ? (row.movement_type === "OUT" ? -Number(row.amount) : Number(row.amount)) : Number(row.quantity_delta),
     appointmentId: row.appointment_id || null,
+    // Custody (migration 054): the checkout this row settles, the visit a
+    // checkout was for, why a return came back, and pre-054 checkouts.
+    // The chemical batch it moved (migration 055) and its lot as recorded.
+    batchId: row.batch_id || "",
+    batchNumber: row.batch_number || "",
+    checkoutId: row.checkout_id || "",
+    forAppointmentId: row.for_appointment_id || "",
+    returnReason: row.return_reason || "",
+    custodyClosedAt: row.custody_closed_at || "",
     actor: row.actor || "—",
     unitCost,
     totalCost,
@@ -384,13 +430,85 @@ function mapMovementRow(row) {
 }
 
 export async function fetchMovements() {
-  const { data, error } = await supabase
-    .from("inventory_movements")
-    .select(MOVEMENT_COLUMNS)
-    .order("created_at", { ascending: false });
+  let optional = [...OPTIONAL_MOVEMENT_COLUMNS];
+  let result;
+  // Each retry drops the column the error named, so this runs at most
+  // OPTIONAL_MOVEMENT_COLUMNS + 1 times.
+  for (;;) {
+    const columns = optional.length ? `${optional.join(", ")}, ${MOVEMENT_COLUMNS}` : MOVEMENT_COLUMNS;
+    result = await supabase.from("inventory_movements").select(columns).order("created_at", { ascending: false });
+    const text = result.error ? `${result.error.message || ""} ${result.error.details || ""}` : "";
+    const missing = optional.find((column) => text.includes(column));
+    if (!missing) break;
+    optional = optional.filter((column) => column !== missing);
+  }
 
-  if (error) return { error: describeError(error), movements: [] };
-  return { error: null, movements: (data || []).map(mapMovementRow) };
+  if (result.error) return { error: describeError(result.error), movements: [] };
+  const movements = (result.data || []).map(mapMovementRow);
+  // Without 054 nothing links a visit's usage to a checkout, so every checkout
+  // is settled as it was — the same thing 054 does to them when it runs.
+  const beforeCustody = !optional.includes("checkout_id");
+  return { error: null, movements: beforeCustody ? movements.map((movement) => ({ ...movement, custodyClosedAt: "before-054" })) : movements };
+}
+
+// ---------------------------------------------------------------------------
+// Chemical batches (migration 055)
+// ---------------------------------------------------------------------------
+
+export function mapBatchRow(row) {
+  return {
+    id: row.id,
+    reference: row.reference,
+    itemId: row.item_id,
+    lotNumber: row.lot_number || "",
+    expirationDate: row.expiration_date ? String(row.expiration_date).slice(0, 10) : "",
+    receivedDate: row.received_date ? String(row.received_date).slice(0, 10) : "",
+    quantityReceived: Number(row.quantity_received) || 0,
+    quantity: Number(row.quantity) || 0,
+    unitCost: row.unit_cost === null || row.unit_cost === undefined ? null : Number(row.unit_cost),
+    isOpening: Boolean(row.is_opening),
+    splitFrom: row.split_from || "",
+    writtenOffAt: row.written_off_at || "",
+    createdAt: row.created_at,
+  };
+}
+
+/** Every batch. Before migration 055 there is no table, and no batches. */
+export async function fetchBatches() {
+  const { data, error } = await supabase.from("inventory_batches").select(BATCH_COLUMNS).order("created_at", { ascending: true });
+  if (error && /inventory_batches/.test(`${error.message || ""} ${error.details || ""}`)) return { error: null, batches: [] };
+  if (error) return { error: describeError(error), batches: [] };
+  return { error: null, batches: (data || []).map(mapBatchRow) };
+}
+
+/** An expired batch's leftovers off the shelf, reason EXPIRED. Admin only. */
+export async function writeOffBatch(batchId, note) {
+  const { data, error } = await supabase.rpc("write_off_expired_batch", { p_batch_id: batchId, p_note: nullIfBlank(note) });
+  if (error) return { error: describeError(error) };
+  return { amount: Number(data) || 0 };
+}
+
+/** Correct a batch's lot number or expiry. Admin only. */
+export async function updateBatch(batchId, { lotNumber, expirationDate }) {
+  const { data, error } = await supabase.rpc("update_inventory_batch", {
+    p_batch_id: batchId,
+    p_lot_number: nullIfBlank(lotNumber),
+    p_expiration_date: nullIfBlank(expirationDate),
+  });
+  if (error) return { error: describeError(error) };
+  return { batch: mapBatchRow(Array.isArray(data) ? data[0] : data) };
+}
+
+/** Move part of a batch into a new one with its own lot and expiry. Admin only. */
+export async function splitBatch(batchId, { amount, lotNumber, expirationDate }) {
+  const { data, error } = await supabase.rpc("split_inventory_batch", {
+    p_batch_id: batchId,
+    p_amount: Number(amount),
+    p_lot_number: nullIfBlank(lotNumber),
+    p_expiration_date: nullIfBlank(expirationDate),
+  });
+  if (error) return { error: describeError(error) };
+  return { batch: mapBatchRow(Array.isArray(data) ? data[0] : data) };
 }
 
 /** Drives the low-stock badge. */
