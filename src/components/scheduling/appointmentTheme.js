@@ -21,6 +21,9 @@ import { brand, neutral, status as semantic, surface } from "../../styles/tokens
 const VISUALS = {
   Confirmed: { label: "Confirmed", edge: brand.base, fill: surface.panel, borderStyle: "solid", strike: false, muted: false },
   Pending: { label: "Pending", edge: semantic.warning, fill: surface.panel, borderStyle: "dashed", strike: false, muted: false },
+  // Booked by the office, not yet confirmed by the client: between Pending's
+  // dashed amber and Confirmed's maroon.
+  Scheduled: { label: "Scheduled", edge: neutral.saddle, fill: surface.panel, borderStyle: "solid", strike: false, muted: false },
   // Migration 048: a technician has started the visit on site.
   "In progress": { label: "In progress", edge: brand.base, fill: "rgba(127, 17, 17, 0.07)", borderStyle: "solid", strike: false, muted: false },
   Reschedule: { label: "Reschedule", edge: semantic.warning, fill: semantic.warningSurface, borderStyle: "solid", strike: false, muted: false },
@@ -29,11 +32,11 @@ const VISUALS = {
 };
 
 /** The statuses the legend explains, in the order it lists them. */
-export const LEGEND_STATUSES = ["Confirmed", "In progress", "Pending", "Reschedule", "Completed", "Cancelled"];
+export const LEGEND_STATUSES = ["Confirmed", "In progress", "Scheduled", "Pending", "Reschedule", "Completed", "Cancelled"];
 
 /**
  * The visual treatment for one status: `{ edge, fill, borderStyle, strike,
- * muted }`. An unknown or retired status ("Scheduled") draws as Confirmed.
+ * muted }`. An unknown status draws as Confirmed.
  */
 export function statusVisual(status) {
   return VISUALS[status] || VISUALS.Confirmed;

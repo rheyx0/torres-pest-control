@@ -137,12 +137,16 @@ export function AuthProvider({ children }) {
     if (loginError) return loginError;
 
     setSession({ ...nextSession, remember });
-    addLog(profile.name, "Logged in.", LOG_TYPES.AUTH);
+    // The token is passed along: the app has not attached the new session to
+    // its requests yet, and the server records who logged in from it (059).
+    addLog(profile.name, "Logged in.", LOG_TYPES.AUTH, { token: nextSession.token });
     return true;
   }, []);
 
   const logout = useCallback(async () => {
-    if (currentUser) addLog(currentUser.name, "Logged out.", LOG_TYPES.AUTH);
+    // Written before the session ends, and waited for: once logout() runs the
+    // token no longer names anyone, and the entry would be refused.
+    if (currentUser) await addLog(currentUser.name, "Logged out.", LOG_TYPES.AUTH, { token: session?.token });
     await authService.logout(session?.token);
     setSession(null);
   }, [currentUser, session?.token]);

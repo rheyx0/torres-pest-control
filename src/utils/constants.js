@@ -132,6 +132,7 @@ export const SERVICE_FREQUENCIES = [
 
 export const APPOINTMENT_STATUSES = [
   "Pending",
+  "Scheduled",
   "Confirmed",
   "Reschedule",
   "In progress",
@@ -143,23 +144,27 @@ export const APPOINTMENT_STATUSES = [
 export const IN_PROGRESS = "In progress";
 
 // Follows the appointments_enforce_status_transition trigger in
-// supabase/migrations/027-appointment-integrity.sql, except that the UI no
-// longer offers "Scheduled" (the trigger still allows it). Completed is final
-// and Cancelled only reopens as Reschedule; keep both in sync.
+// supabase/migrations/027-appointment-integrity.sql. Completed is final and
+// Cancelled only reopens as Reschedule; keep both in sync.
+//
+// The Sprint 2 flow is Pending → Scheduled → Confirmed → Completed:
+//   Pending    the request is in, not yet arranged;
+//   Scheduled  the office has set the date, time and technician;
+//   Confirmed  the client has agreed to that slot.
+// "Scheduled" was retired for a while, as every booking already has a time;
+// it is back so the app matches the sprint. The database always accepted it.
 //
 // "In progress" (migration 048) is entered only through start_visit(), when a
 // technician starts the visit on site, so no status offers it as a target.
 // From it the office can still confirm, reschedule, complete or cancel.
 export const APPOINTMENT_STATUS_TRANSITIONS = {
-  Pending: ["Confirmed", "Reschedule", "Completed", "Cancelled"],
-  Confirmed: ["Pending", "Reschedule", "Completed", "Cancelled"],
-  Reschedule: ["Pending", "Confirmed", "Completed", "Cancelled"],
+  Pending: ["Scheduled", "Confirmed", "Reschedule", "Completed", "Cancelled"],
+  Scheduled: ["Pending", "Confirmed", "Reschedule", "Completed", "Cancelled"],
+  Confirmed: ["Pending", "Scheduled", "Reschedule", "Completed", "Cancelled"],
+  Reschedule: ["Pending", "Scheduled", "Confirmed", "Completed", "Cancelled"],
   "In progress": ["Confirmed", "Reschedule", "Completed", "Cancelled"],
   Completed: [],
   Cancelled: ["Reschedule"],
-  // Retired: "Scheduled" can no longer be chosen. The database still accepts it,
-  // so rows saved before this change keep a way out but nothing new lands here.
-  Scheduled: ["Pending", "Confirmed", "Reschedule", "Completed", "Cancelled"],
 };
 
 export const clientClassificationOptions = [

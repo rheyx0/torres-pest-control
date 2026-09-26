@@ -3,7 +3,7 @@
 import { Activity } from "lucide-react";
 import EmptyState from "../common/EmptyState";
 import { colors } from "../../styles/theme";
-import { formatDate } from "../../utils/formatters";
+import { formatDateTime, humanizeEnum } from "../../utils/formatters";
 
 function ActivityFeed({ logs, title = "Recent Activity", footer }) {
   return (
@@ -59,11 +59,15 @@ function ActivityFeed({ logs, title = "Recent Activity", footer }) {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 500, color: "#211b15" }}>{log.actor}</div>
+                  <div style={{ fontWeight: 500, color: "#211b15" }}>
+                    {log.actor}
+                    {log.actorRole && <span style={{ fontWeight: 400, color: colors.muted, fontSize: "0.8rem" }}> · {humanizeEnum(log.actorRole)}</span>}
+                  </div>
                   <div style={{ color: "#50463c", marginTop: "0.15rem" }}>{log.message}</div>
                 </div>
+                {/* Date and time: an audit entry needs both. */}
                 <div style={{ whiteSpace: "nowrap", color: colors.muted, fontSize: "0.8rem" }}>
-                  {formatDate(log.timestamp)}
+                  {formatDateTime(log.timestamp)}
                 </div>
               </div>
             ))}

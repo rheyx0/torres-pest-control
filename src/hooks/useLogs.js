@@ -1,15 +1,30 @@
-// Reads the system activity log and re-renders when any service writes to it.
+// Reads the system activity log (migration 059: the system_logs table).
 //
-// The subscription is why services can call addLog() directly instead of
-// having a React setter threaded down to them.
+// Reloads when this browser writes an entry (logService's subscription) and
+// every 30 seconds while open, so entries other people make show up too.
 
-import { useEffect, useState } from "react";
-import { getLogs, subscribe } from "../services/logService";
+import { useCallback, useEffect, useState } from "react";
+import { fetchLogs, subscribe } from "../services/logService";
 
-export default function useLogs(limit = null) {
-  const [logs, setLogs] = useState(() => getLogs());
+const REFRESH_MS = 30000;
 
-  useEffect(() => subscribe(setLogs), []);
+export default function useLogs(limit = 500) {
+  const [state, setState] = useState({ logs: [], loading: true, error: "", shared: true });
 
-  return limit ? logs.slice(0, limit) : logs;
+  const load = useCallback(async () => {
+    const result = await fetchLogs(limit);
+    setState({ logs: result.logs, loading: false, error: result.error || "", shared: result.shared });
+  }, [limit]);
+
+  useEffect(() => {
+    load();
+    const unsubscribe = subscribe(load);
+    const timer = setInterval(load, REFRESH_MS);
+    return () => {
+      unsubscribe();
+      clearInterval(timer);
+    };
+  }, [load]);
+
+  return { ...state, reload: load };
 }

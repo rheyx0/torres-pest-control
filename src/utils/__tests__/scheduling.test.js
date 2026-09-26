@@ -322,6 +322,14 @@ describe("canTransition / allowedNextStatuses", () => {
     expect(canTransition("Completed", "Completed")).toBe(true);
   });
 
+  // Sprint 2: Pending → Scheduled → Confirmed → Completed.
+  it("offers Scheduled between Pending and Confirmed", () => {
+    expect(canTransition("Pending", "Scheduled")).toBe(true);
+    expect(canTransition("Scheduled", "Confirmed")).toBe(true);
+    expect(canTransition("Confirmed", "Scheduled")).toBe(true);
+    expect(allowedNextStatuses("Scheduled")).toEqual(["Scheduled", "Pending", "Confirmed", "Reschedule", "Completed", "Cancelled"]);
+  });
+
   it("treats Completed as terminal", () => {
     expect(canTransition("Completed", "Pending")).toBe(false);
     expect(allowedNextStatuses("Completed")).toEqual(["Completed"]);
