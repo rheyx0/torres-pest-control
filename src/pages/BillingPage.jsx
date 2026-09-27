@@ -404,6 +404,7 @@ function BillingPage() {
             signedDocument={signedDocument}
             visits={contract.planId ? appointments.filter((visit) => visit.planId === contract.planId) : []}
             onEdit={() => setContractEditing({ contract })}
+            onPrint={() => setPrintRequest({ kind: "CONTRACT", contract, client })}
             onUploadSigned={(file) => uploadSigned(contract, file)}
             onViewSigned={() => signedDocument && viewDocument(signedDocument)}
             onActivate={() => toast(`${contract.reference} is active.`)(() => billing.setContractStatus(contract, "ACTIVE"))}

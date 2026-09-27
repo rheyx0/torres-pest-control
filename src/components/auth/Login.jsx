@@ -107,7 +107,7 @@ function Login({ onLogin }) {
 
       <button className="auth-submit" type="submit" disabled={submitting}>
         {submitting ? "Signing in…" : "Sign in"}
-        {!submitting && <ArrowRight size={16} strokeWidth={1.8} aria-hidden="true" />}
+        {!submitting && <ArrowRight size={19} strokeWidth={1.8} aria-hidden="true" />}
       </button>
 
       {error && (
@@ -117,7 +117,7 @@ function Login({ onLogin }) {
       )}
 
       <p className="auth-note">
-        <Lock size={14} strokeWidth={1.6} aria-hidden="true" />
+        <Lock size={15} strokeWidth={1.6} aria-hidden="true" />
         Shared computer? Leave “keep me signed in” off.
       </p>
     </form>

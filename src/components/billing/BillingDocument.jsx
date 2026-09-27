@@ -1,4 +1,6 @@
-// The printable quote, invoice and payment receipt (Sprint 3).
+// The printable quote, invoice, payment receipt and service contract
+// (Sprint 3). The contract is the paper the client signs: printed from the
+// draft, signed, then scanned back in as the contract's signed copy.
 //
 // The same approach as the service form (ServiceReportDocument): rendered off
 // screen, revealed by the print stylesheet in styles/globals.css, saved with
@@ -8,12 +10,12 @@
 // The receipt is an acknowledgement receipt, not a BIR official receipt: the
 // office still issues those from its registered booklet.
 
-import { COMPANY, PAYMENT_METHOD_LABELS, PAYMENT_TERMS } from "../../utils/constants";
+import { BILLING_SCHEDULES, COMPANY, PAYMENT_METHOD_LABELS, PAYMENT_TERMS } from "../../utils/constants";
 import { depositStatus, invoiceBalance } from "../../utils/billing";
 import { appointmentReference } from "../../utils/scheduling";
 import { formatDate, formatDateTime, formatPeso } from "../../utils/formatters";
 
-const TITLES = { QUOTE: "Quotation", INVOICE: "Invoice", RECEIPT: "Acknowledgement Receipt" };
+const TITLES = { QUOTE: "Quotation", INVOICE: "Invoice", RECEIPT: "Acknowledgement Receipt", CONTRACT: "Service Contract" };
 
 function Row({ label, value }) {
   return (
@@ -207,9 +209,75 @@ function ReceiptBody({ payment, client, quote, invoice, payments }) {
  * kind INVOICE: { invoice, client, quote?, payments, visits }
  * kind RECEIPT: { payment, client, quote?, invoice?, payments }
  */
-function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, payments = [], visits = [] }) {
+function ContractBody({ contract, client }) {
+  const schedule = BILLING_SCHEDULES.find((entry) => entry.value === contract.billingSchedule)?.label || "";
+  const length = contract.visitCount
+    ? `${contract.visitCount} visits`
+    : `Until ${formatDate(contract.endsOn)}`;
+  const value = contract.visitCount ? contract.visitCount * contract.pricePerVisit : null;
+  return (
+    <>
+      <table className="sf-meta">
+        <tbody>
+          <Row label="Client" value={clientLine(client)} />
+          <Row label="Service address" value={client.address} />
+          <Row label="Contact" value={[client.phone, client.email].filter(Boolean).join(" · ")} />
+          <Row label="Contract" value={contract.title} />
+          <Row label="Services" value={contract.serviceNames} />
+          <Row label="How often" value={contract.frequency} />
+          <Row label="Starts" value={formatDate(contract.startsOn)} />
+          <Row label="Length" value={length} />
+        </tbody>
+      </table>
+
+      {contract.status === "CANCELLED" && <p className="bd-void">CANCELLED — {contract.cancellationReason}</p>}
+
+      <section className="sf-block">
+        <h2 className="sf-h2">Price and payment</h2>
+        <table className="bd-totals" style={{ marginLeft: 0 }}>
+          <tbody>
+            <tr><th>Price per visit</th><td>{formatPeso(contract.pricePerVisit)}</td></tr>
+            {contract.visitCount ? <tr><th>Number of visits</th><td>{contract.visitCount}</td></tr> : null}
+            {value !== null && <tr className="bd-strong"><th>Contract value</th><td>{formatPeso(value)}</td></tr>}
+            <tr><th>Billed</th><td>{schedule}</td></tr>
+            <tr><th>Payment terms</th><td>{termsLabel(contract.paymentTerms)}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      {contract.inclusions && <section className="sf-block"><h2 className="sf-h2">What is included</h2><div className="sf-prose">{contract.inclusions}</div></section>}
+      {contract.cancellationTerms && <section className="sf-block"><h2 className="sf-h2">Cancellation</h2><div className="sf-prose">{contract.cancellationTerms}</div></section>}
+      {contract.notes && <section className="sf-block"><h2 className="sf-h2">Notes</h2><div className="sf-prose">{contract.notes}</div></section>}
+
+      <section className="sf-block">
+        <h2 className="sf-h2">Agreement</h2>
+        <div className="sf-prose">
+          {COMPANY.name} agrees to provide the services above on the schedule described, and the client agrees to the price and
+          terms set out in this contract. Work beyond these services is quoted separately and done only with the client's approval.
+        </div>
+      </section>
+
+      <section className="sf-sign">
+        <div className="sf-sign-grid bd-contract-sign">
+          <div className="sf-sign-box sf-sign-blank">
+            <div className="sf-sign-rule" />
+            <div className="sf-sign-name">{client.name}</div>
+            <div className="sf-sign-cap">Client signature over printed name · Date</div>
+          </div>
+          <div className="sf-sign-box sf-sign-blank">
+            <div className="sf-sign-rule" />
+            <div className="sf-sign-name">For {COMPANY.name}</div>
+            <div className="sf-sign-cap">Authorized signature over printed name · Date</div>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, payments = [], visits = [] }) {
   if (!client) return null;
-  const reference = kind === "QUOTE" ? quote?.reference : kind === "INVOICE" ? invoice?.reference : payment?.reference;
+  const reference = { QUOTE: quote, INVOICE: invoice, RECEIPT: payment, CONTRACT: contract }[kind]?.reference;
   if (!reference) return null;
   return (
     <div className="service-form billing-document">
@@ -217,6 +285,7 @@ function BillingDocument({ kind, client, quote = null, invoice = null, payment =
       {kind === "QUOTE" && <QuoteBody quote={quote} client={client} payments={payments} />}
       {kind === "INVOICE" && <InvoiceBody invoice={invoice} client={client} quote={quote} payments={payments} visits={visits} />}
       {kind === "RECEIPT" && <ReceiptBody payment={payment} client={client} quote={quote} invoice={invoice} payments={payments} />}
+      {kind === "CONTRACT" && <ContractBody contract={contract} client={client} />}
       <footer className="sf-foot">
         {COMPANY.name} · {TITLES[kind]} {reference} · Printed {formatDateTime(new Date().toISOString())}
       </footer>

@@ -1,6 +1,7 @@
 // One service contract (Sprint 3, migration 063) and what can happen next:
 //
-//   Draft      Edit · Upload signed copy · Activate (needs the signed copy) · Delete
+//   Draft      Edit · Print contract (to be signed) · Upload signed copy ·
+//              Activate (needs the signed copy) · Delete
 //   Active     Book visits (as a recurring plan) · End · Cancel with a reason
 //   Ended / Cancelled   read only
 //
@@ -18,7 +19,7 @@ export const CONTRACT_TONES = { DRAFT: "neutral", ACTIVE: "success", ENDED: "neu
 
 const labelOf = (list, value) => list.find((entry) => entry.value === value)?.label || value;
 
-function ContractDetail({ contract, client, signedDocument = null, visits = [], onEdit, onUploadSigned, onViewSigned, onActivate, onEnd, onCancel, onDelete, onBook, onClose }) {
+function ContractDetail({ contract, client, signedDocument = null, visits = [], onEdit, onPrint, onUploadSigned, onViewSigned, onActivate, onEnd, onCancel, onDelete, onBook, onClose }) {
   const fileRef = useRef(null);
   const [asking, setAsking] = useState(null); // "CANCEL" | "DELETE"
   const [reason, setReason] = useState("");
@@ -68,6 +69,7 @@ function ContractDetail({ contract, client, signedDocument = null, visits = [], 
           <Button variant="danger" loading={busy} onClick={() => act(onDelete)}>Delete draft</Button>
         </>
       )}
+      {!asking && onPrint && <Button variant="ghost" onClick={onPrint}>Print contract</Button>}
       {!asking && status === "DRAFT" && (
         <>
           <Button variant="quiet" onClick={() => setAsking("DELETE")}>Delete</Button>
@@ -117,7 +119,7 @@ function ContractDetail({ contract, client, signedDocument = null, visits = [], 
 
         <section aria-label="Signed copy" style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap", padding: "0.7rem 0.8rem", border: `1px solid ${colors.line}`, borderRadius: "3.75px" }}>
           <span style={{ color: colors.body, fontSize: "0.88rem", marginRight: "auto" }}>
-            {signedDocument ? <>Signed copy: <strong style={{ color: colors.ink }}>{signedDocument.name}</strong></> : contract.signedDocumentId ? "Signed copy on file." : "No signed copy yet. Upload the contract the client signed (PDF or photo)."}
+            {signedDocument ? <>Signed copy: <strong style={{ color: colors.ink }}>{signedDocument.name}</strong></> : contract.signedDocumentId ? "Signed copy on file." : "No signed copy yet. Print the contract, have the client sign it, then upload a scan or photo."}
           </span>
           {signedDocument && <Button size="sm" variant="ghost" onClick={onViewSigned}>View</Button>}
           {(status === "DRAFT" || status === "ACTIVE") && (

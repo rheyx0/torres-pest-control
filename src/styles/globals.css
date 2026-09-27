@@ -508,19 +508,19 @@ a {
 }
 
 .auth-brand img {
-  width: 34px;
-  height: 34px;
+  width: 42px;
+  height: 42px;
   object-fit: contain;
 }
 
 .auth-brand-name {
   display: block;
-  font: 500 17px/1.1 var(--font-display);
+  font: 500 20px/1.1 var(--font-display);
 }
 
 .auth-brand-sub {
   display: block;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--saddle);
@@ -530,35 +530,36 @@ a {
   margin: auto 0;
   align-self: center;
   width: 100%;
-  max-width: 380px;
+  max-width: 470px;
   padding: 40px 0;
 }
 
 .auth-eyebrow {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 13px;
   letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--saddle);
 }
 
 .auth-form h1 {
-  margin: 18px 0 6px;
-  font: 500 34px/1.15 var(--font-display);
+  margin: 18px 0 8px;
+  font: 500 44px/1.12 var(--font-display);
   letter-spacing: -0.4px;
   color: var(--ink);
 }
 
 .auth-lede {
   margin: 0;
+  font-size: 16.5px;
   color: var(--saddle);
 }
 
 .auth-label {
   display: flex;
   align-items: baseline;
-  margin: 18px 0 6px;
-  font-size: 13px;
+  margin: 22px 0 8px;
+  font-size: 15px;
   font-weight: 500;
   color: var(--ink);
 }
@@ -573,17 +574,17 @@ a {
 
 .auth-input {
   width: 100%;
-  height: 42px;
-  padding: 0 12px;
+  height: 54px;
+  padding: 0 16px;
   border: 1px solid var(--loam);
-  border-radius: var(--radius);
+  border-radius: 6px;
   background: var(--panel);
   color: var(--ink);
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .auth-input-wrap .auth-input {
-  padding-right: 44px;
+  padding-right: 52px;
 }
 
 .auth-input::placeholder {
@@ -603,10 +604,10 @@ a {
 .auth-toggle {
   position: absolute;
   top: 50%;
-  right: 6px;
+  right: 8px;
   transform: translateY(-50%);
-  width: 32px;
-  height: 32px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
   border: 0;
@@ -616,30 +617,30 @@ a {
 }
 
 .auth-toggle svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
 .auth-check {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 16px 0 20px;
-  font-size: 13px;
+  margin: 18px 0 24px;
+  font-size: 15px;
   color: var(--saddle);
   cursor: pointer;
 }
 
 .auth-check input {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   margin: 0;
   accent-color: var(--brand);
 }
 
 .auth-link {
   color: var(--brand);
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 500;
   text-decoration: none;
 }
@@ -650,16 +651,16 @@ a {
 
 .auth-submit {
   width: 100%;
-  height: 44px;
+  height: 56px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   border: 1px solid var(--brand);
-  border-radius: var(--radius);
+  border-radius: 6px;
   background: var(--brand);
   color: var(--canvas);
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 500;
 }
 
@@ -676,17 +677,17 @@ a {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 14px 0 0;
-  font-size: 12.5px;
+  margin: 16px 0 0;
+  font-size: 14px;
   color: var(--bark);
 }
 
 .auth-error,
 .auth-status {
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  font-size: 13px;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: 6px;
+  font-size: 14.5px;
 }
 
 .auth-error {
@@ -701,13 +702,13 @@ a {
 
 .auth-footer {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 13.5px;
   color: var(--bark);
 }
 
 /* Brand maroon, not the charcoal-olive inverted surface: the sign-in page
    should look like the product it opens onto. A faint dot grid gives the
-   panel some texture without competing with the drawing. */
+   panel some texture without competing with the facts it shows. */
 .auth-panel {
   display: flex;
   flex-direction: column;
@@ -727,80 +728,14 @@ a {
   color: #f0c891;
 }
 
-.auth-pillars {
-  display: grid;
-  gap: 16px;
-  margin: 30px 0 0;
-  padding: 0;
-  max-width: 440px;
-  list-style: none;
-}
 
-.auth-pillars li {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-}
 
-.auth-pillar-icon {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(252, 250, 241, 0.28);
-  border-radius: 8px;
-  background: rgba(252, 250, 241, 0.06);
-  color: #f5e6d0;
-}
 
-.auth-pillars strong {
-  display: block;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--canvas);
-}
 
-.auth-pillars li > span:last-child > span {
-  display: block;
-  margin-top: 2px;
-  font-size: 13px;
-  line-height: 1.45;
-  color: rgba(252, 250, 241, 0.72);
-}
 
-.auth-panel h2 {
-  margin: 14px 0 0;
-  max-width: 440px;
-  font: 500 38px/1.14 var(--font-display);
-  letter-spacing: -0.42px;
-  color: var(--canvas);
-}
 
-.auth-art {
-  width: 100%;
-  max-width: 460px;
-  margin-top: auto;
-  padding-top: 24px;
-  opacity: 0.9;
-}
 
-.auth-trust {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 22px;
-  margin: 28px 0 0;
-  padding: 0;
-  list-style: none;
-  font-size: 12.5px;
-  color: rgba(252, 250, 241, 0.75);
-}
 
-.auth-trust li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 
 @media (max-width: 860px) {
   .auth-page {
@@ -843,7 +778,13 @@ a {
 
 @media (min-width: 1040px) {
   .tech-day-grid {
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+}
+
+@media (min-width: 1500px) {
+  .tech-day-grid {
+    grid-template-columns: minmax(0, 1fr) 400px;
   }
 }
 
@@ -1122,3 +1063,67 @@ a {
 @media (min-width: 900px) {
   .dash-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+
+/* Ranked bars (Today > Spend by supplier): the row under the pointer lifts. */
+.ranked-bars li { transition: background-color 120ms ease; }
+.ranked-bars li:hover { background: #faf6ee; }
+
+/* Technician side panel: one card, sections divided by hairlines. */
+.tech-side > section:first-child { border-top: 0 !important; }
+
+/* Login panel: one pest fact at a time (AuthLayout's PestFacts). */
+.auth-facts {
+  margin: auto 0;
+  max-width: 520px;
+}
+.auth-fact {
+  margin: 18px 0 0;
+  min-height: 3.6em;
+  font: 500 34px/1.22 var(--font-display);
+  letter-spacing: -0.35px;
+  color: var(--canvas);
+  animation: auth-fact-in 600ms ease both;
+}
+.auth-fact::before { content: "\201C"; }
+.auth-fact::after { content: "\201D"; }
+@keyframes auth-fact-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.auth-fact-dots {
+  display: flex;
+  gap: 8px;
+  margin-top: 28px;
+}
+.auth-fact-dots button {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(252, 250, 241, 0.3);
+  cursor: pointer;
+  transition: width 200ms ease, background-color 200ms ease;
+}
+.auth-fact-dots button:hover { background: rgba(252, 250, 241, 0.6); }
+.auth-fact-dots button.is-current {
+  width: 22px;
+  background: #f0c891;
+}
+.auth-fact-dots button:focus-visible {
+  outline: 2px solid #f0c891;
+  outline-offset: 3px;
+}
+.auth-panel-foot {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: rgba(252, 250, 241, 0.6);
+}
+@media (max-width: 1100px) {
+  .auth-fact { font-size: 28px; }
+}
+
+/* Contract: the two signature blocks side by side, room above each rule. */
+.bd-contract-sign { gap: 40px; margin-top: 12px; }
+.bd-contract-sign .sf-sign-box { flex: 1; width: auto; }

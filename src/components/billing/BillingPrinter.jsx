@@ -1,4 +1,4 @@
-// Prints a quote, invoice or receipt (BillingDocument) the way the service
+// Prints a quote, invoice, receipt or contract (BillingDocument) the way the service
 // form is printed (ServiceReportPrinter): portalled onto <body>, where the
 // print stylesheet shows it alone; the logo decoded first; the document title
 // set so "Save as PDF" suggests a sensible file name.
@@ -19,7 +19,7 @@ const slug = (value) => (value || "")
 
 /** The suggested PDF name: client reference, client name, document reference. */
 export function billingFileName(request) {
-  const reference = request.kind === "QUOTE" ? request.quote?.reference : request.kind === "INVOICE" ? request.invoice?.reference : request.payment?.reference;
+  const reference = { QUOTE: request.quote, INVOICE: request.invoice, RECEIPT: request.payment, CONTRACT: request.contract }[request.kind]?.reference;
   return [slug(request.client?.reference), slug(request.client?.name) || "client", reference].filter(Boolean).join("_");
 }
 

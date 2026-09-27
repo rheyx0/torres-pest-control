@@ -703,7 +703,7 @@ function InventoryPage() {
   };
 
   return (
-    <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+    <div style={{ width: "100%" }}>
       <div style={{ marginBottom: "18px", display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: "16px", flexWrap: "wrap" }}>
         <div>
           <p style={{ margin: 0, fontSize: "11.5px", letterSpacing: "0.09em", textTransform: "uppercase", color: "#50463c" }}>Operations</p>
@@ -1135,7 +1135,7 @@ function InventoryPage() {
       )}
 
       {tab === "history" && (
-        <div style={{ maxWidth: "1200px", width: "100%", margin: "0 auto" }}>
+        <div style={{ width: "100%" }}>
           {/* Filtering and Sorting Toolbar */}
           <div style={{ background: "#ffffff", border: "1px solid #efe9e0", borderRadius: "7.5px", boxShadow: "none", padding: "1rem", marginBottom: "1rem" }}>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "0.85rem" }}>

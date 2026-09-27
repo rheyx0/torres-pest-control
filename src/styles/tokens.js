@@ -176,7 +176,9 @@ export const shadow = {
 export const focusRing = `0 0 0 3px ${brand.ring}`;
 
 export const layout = {
-  pageMaxWidth: "1280px",
+  // No cap: every page uses the full width beside the sidebar. (It was 1280px,
+  // which left an empty band on a wide screen.) Focused forms set their own.
+  pageMaxWidth: "none",
   sidebarWidth: "232px",
   /** Below this width the rail becomes a drawer. Mirrored in globals.css. */
   drawerBreakpoint: 860,

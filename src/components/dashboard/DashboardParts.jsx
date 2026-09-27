@@ -126,29 +126,36 @@ export function Chip({ tone = "done", children }) {
 }
 
 /** Single-series magnitude: one hue, direct labels, no legend. */
+/**
+ * One series, ranked: a row per entry with its name, a bar, and its value.
+ * No track behind the bar (the empty rail read as a second, grey series) and
+ * a thin bar with a rounded data end, anchored at the left. The bars share one
+ * scale, set by the largest; faint guides at 25/50/75% help compare lengths.
+ * Hovering a row lifts it and shows the exact figure.
+ */
 export function RankedBars({ rows, format = (value) => value }) {
   const top = Math.max(...rows.map((row) => row.value), 0);
   if (rows.length === 0) return <Empty>Nothing recorded yet.</Empty>;
   return (
-    <div style={{ display: "grid", gap: "0.6rem" }}>
+    <ul className="ranked-bars" style={{ listStyle: "none", margin: 0, padding: 0, display: "grid" }}>
       {rows.map((row) => (
-        <div key={row.label} style={{ display: "grid", gap: "0.25rem" }}>
-          <div style={{
-            display: "flex", justifyContent: "space-between", gap: "0.75rem",
-            fontSize: "0.8rem", fontWeight: 500, color: colors.body,
-          }}>
-            <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.label}</span>
-            <span style={{ color: colors.muted, fontVariantNumeric: "tabular-nums", flex: "none" }}>{format(row.value)}</span>
-          </div>
-          <div style={{ height: "7px", borderRadius: "3.75px", background: "#f3eaea", overflow: "hidden" }}>
-            <div style={{
-              width: top > 0 ? `${Math.max(2, (row.value / top) * 100)}%` : "0%",
-              height: "100%", borderRadius: "3.75px", background: colors.brandLight,
+        <li
+          key={row.label}
+          title={`${row.label}: ${format(row.value)}`}
+          style={{ display: "grid", gridTemplateColumns: "minmax(0, 11rem) minmax(0, 1fr) auto", alignItems: "center", gap: "0.9rem", padding: "0.45rem 0.5rem", borderRadius: "5px" }}
+        >
+          <span style={{ fontSize: "0.82rem", color: colors.ink, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.label}</span>
+          <span aria-hidden="true" style={{ position: "relative", height: "10px", backgroundImage: "linear-gradient(90deg, transparent calc(25% - 0.5px), #efe9e0 calc(25% - 0.5px) calc(25% + 0.5px), transparent calc(25% + 0.5px), transparent calc(50% - 0.5px), #efe9e0 calc(50% - 0.5px) calc(50% + 0.5px), transparent calc(50% + 0.5px), transparent calc(75% - 0.5px), #efe9e0 calc(75% - 0.5px) calc(75% + 0.5px), transparent calc(75% + 0.5px))" }}>
+            <span style={{
+              position: "absolute", left: 0, top: 0, bottom: 0,
+              width: top > 0 ? `${Math.max(1.5, (row.value / top) * 100)}%` : "0%",
+              borderRadius: "0 4px 4px 0", background: colors.brand,
             }} />
-          </div>
-        </div>
+          </span>
+          <span style={{ fontSize: "0.8rem", color: colors.body, fontVariantNumeric: "tabular-nums", textAlign: "right", whiteSpace: "nowrap" }}>{format(row.value)}</span>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 

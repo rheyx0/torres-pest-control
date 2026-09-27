@@ -53,3 +53,36 @@ test("the PDF is named by client reference, name and document", () => {
   expect(billingFileName({ kind: "INVOICE", invoice, client })).toBe("TPC-C-0002_Ana-Cruz_TPC-INV-00001");
   expect(billingFileName({ kind: "RECEIPT", payment: payment(), client: { name: "Ñoño's Bakery" } })).toBe("Nonos-Bakery_TPC-R-00002");
 });
+
+describe("the service contract", () => {
+  const contract = {
+    id: "k1", reference: "TPC-K-00001", clientId: "c1", title: "Quarterly termite protection", status: "DRAFT",
+    serviceNames: "Termite Control", frequency: "Quarterly", visitCount: 4, startsOn: "2026-10-01", endsOn: "",
+    pricePerVisit: 2500, billingSchedule: "PER_VISIT", paymentTerms: "NET_15",
+    inclusions: "Materials included.", cancellationTerms: "30 days' notice.", notes: "",
+  };
+
+  test("prints the terms, the price and two signature lines", () => {
+    render(<BillingDocument kind="CONTRACT" contract={contract} client={client} />);
+    expect(screen.getByText("Service Contract")).toBeInTheDocument();
+    expect(screen.getByText("TPC-K-00001")).toBeInTheDocument();
+    expect(screen.getByText("Termite Control")).toBeInTheDocument();
+    expect(screen.getByText("4 visits")).toBeInTheDocument();
+    expect(screen.getByText("Contract value").nextElementSibling).toHaveTextContent("₱10,000.00");
+    expect(screen.getByText("Per visit")).toBeInTheDocument();
+    expect(screen.getByText("Materials included.")).toBeInTheDocument();
+    expect(screen.getByText("30 days' notice.")).toBeInTheDocument();
+    expect(screen.getByText(/Client signature over printed name/)).toBeInTheDocument();
+    expect(screen.getByText(/Authorized signature over printed name/)).toBeInTheDocument();
+  });
+
+  test("a contract that runs until a date says so, and has no total", () => {
+    render(<BillingDocument kind="CONTRACT" contract={{ ...contract, visitCount: null, endsOn: "2027-09-30" }} client={client} />);
+    expect(screen.getByText(/^Until /)).toBeInTheDocument();
+    expect(screen.queryByText("Contract value")).not.toBeInTheDocument();
+  });
+
+  test("the PDF is named after the contract", () => {
+    expect(billingFileName({ kind: "CONTRACT", contract, client })).toBe("TPC-C-0002_Ana-Cruz_TPC-K-00001");
+  });
+});

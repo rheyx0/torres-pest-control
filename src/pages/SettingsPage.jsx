@@ -38,7 +38,9 @@ function SettingsPage() {
         description="Your sign-in details, and the formatting standards the whole app uses."
       />
 
-      <div style={{ display: "grid", gap: "1.5rem", maxWidth: "800px" }}>
+      {/* Two columns on a wide screen, one on a narrow one: fills the page
+          without stretching a single form across it. */}
+      <div style={{ display: "grid", gap: "1.5rem", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", alignItems: "start" }}>
         <ChangePassword onSubmit={handleChangePassword} />
         {/* Account Security Card */}
         <section style={{ ...card, padding: "1.5rem" }}>

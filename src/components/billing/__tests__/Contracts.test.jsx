@@ -83,6 +83,13 @@ describe("ContractDetail", () => {
     expect(screen.getByText("Visits · 1 of 2 done")).toBeInTheDocument();
   });
 
+  test("Print contract is offered, for the client to sign", async () => {
+    const onPrint = jest.fn();
+    renderDetail({ contract: contract(), onPrint });
+    await userEvent.click(screen.getByRole("button", { name: "Print contract" }));
+    expect(onPrint).toHaveBeenCalled();
+  });
+
   test("a cancelled contract shows why and offers nothing", () => {
     renderDetail({ contract: contract({ status: "CANCELLED", cancelledAt: "2026-10-05T00:00:00Z", cancellationReason: "Client moved out (3 visits cancelled)" }) });
     expect(screen.getByText(/Client moved out \(3 visits cancelled\)/)).toBeInTheDocument();

@@ -113,7 +113,8 @@ describe("TechnicianDashboard — Your day", () => {
 
   it("lists later visits with the crew, and marks where Jun leads", () => {
     renderDay(appointments);
-    const farm = screen.getByText("Mendoza Poultry Farm").closest("a");
+    // The name also shows on its chip; the row is the link.
+    const farm = screen.getAllByText("Mendoza Poultry Farm").map((node) => node.closest("a")).find(Boolean);
     expect(farm).toHaveTextContent("with Paolo Garcia");
     expect(within(farm).getByText("Lead")).toBeInTheDocument();
   });
@@ -133,7 +134,8 @@ describe("TechnicianDashboard — Your day", () => {
 
   it("nudges for a signature on a finished visit that has none", () => {
     renderDay(appointments);
-    const done = screen.getByText("Jollibee Katipunan").closest("a");
+    // The Done row, not the Recently done side list.
+    const done = screen.getAllByText("Jollibee Katipunan").map((node) => node.closest("a")).find((link) => link && link.textContent.includes("Sign"));
     expect(within(done).getByText("Sign")).toBeInTheDocument();
     expect(done).toHaveAttribute("href", "/visit/done?step=Sign");
   });
@@ -147,17 +149,28 @@ describe("TechnicianDashboard — an empty day still shows its visits section", 
     return date.toISOString();
   };
 
-  it("says there are no visits today and names the next one", () => {
+  it("says there are no visits today, and Up next names the next one", () => {
     renderDay([visit("next", "c2", inDays(2))]);
-    const section = screen.getByRole("region", { name: "Today's visits" });
-    expect(within(section).getByText("No visits today")).toBeInTheDocument();
-    expect(within(section).getByRole("link", { name: "Mendoza Poultry Farm" })).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Today's visits" })).getByText("No visits today")).toBeInTheDocument();
+    const upNext = screen.getByRole("region", { name: "Up next" });
+    expect(within(upNext).getByRole("heading", { name: "No appointment today" })).toBeInTheDocument();
+    expect(within(upNext).getByRole("link", { name: "Mendoza Poultry Farm" })).toBeInTheDocument();
     expect(screen.getByText("A free day")).toBeInTheDocument();
   });
 
-  it("with nothing booked at all it points to the schedule", () => {
+  it("with nothing booked at all, Up next still shows and points to the schedule", () => {
     renderDay([]);
-    expect(within(screen.getByRole("region", { name: "Today's visits" })).getByText(/Nothing else booked for you yet/)).toBeInTheDocument();
+    const upNext = screen.getByRole("region", { name: "Up next" });
+    expect(within(upNext).getByText(/Nothing else booked for you yet/)).toBeInTheDocument();
+    expect(within(upNext).getByRole("link", { name: /Open schedule/ })).toHaveAttribute("href", "/scheduling");
+  });
+
+  it("shows work left as hours and minutes", () => {
+    const later = new Date();
+    later.setHours(23, 0, 0, 0);
+    renderDay([visit("long", "c1", later.toISOString(), { durationMinutes: 90 })]);
+    const tile = screen.getByText("Work left").parentElement;
+    expect(tile).toHaveTextContent(/1hs*30m/);
   });
 
   it("shows the next seven days with their visit counts, today first", () => {
@@ -166,6 +179,8 @@ describe("TechnicianDashboard — an empty day still shows its visits section", 
     expect(days).toHaveLength(7);
     expect(days[2]).toHaveAccessibleName(/2 visits/);
     expect(days[0]).toHaveAccessibleName(/0 visits/);
+    expect(within(days[2]).getByText("2 visits")).toBeInTheDocument();
+    expect(within(days[1]).getByText("Free")).toBeInTheDocument();
   });
 
   it("counts the month in the side panel", () => {
