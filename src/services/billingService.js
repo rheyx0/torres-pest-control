@@ -316,6 +316,7 @@ export function mapContractRow(row) {
     visitCount: row.visit_count ?? null,
     startsOn: String(row.starts_on).slice(0, 10),
     endsOn: row.ends_on ? String(row.ends_on).slice(0, 10) : "",
+    areaSqm: numberOrNull(row.area_sqm), // 064
     pricePerVisit: Number(row.price_per_visit) || 0,
     billingSchedule: row.billing_schedule,
     paymentTerms: row.payment_terms,
@@ -351,6 +352,8 @@ export const saveContract = (contractId, contract) => call("save_contract", {
     visit_count: contract.visitCount === "" || contract.visitCount === null || contract.visitCount === undefined ? null : Number(contract.visitCount),
     starts_on: contract.startsOn,
     ends_on: contract.endsOn || null,
+    // Ignored by 063's save_contract; read by 064's.
+    area_sqm: contract.areaSqm === "" || contract.areaSqm === null || contract.areaSqm === undefined ? null : Number(contract.areaSqm),
     price_per_visit: Number(contract.pricePerVisit) || 0,
     billing_schedule: contract.billingSchedule,
     payment_terms: contract.paymentTerms,

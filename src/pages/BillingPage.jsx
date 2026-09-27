@@ -36,6 +36,7 @@ import { colors, pageShell } from "../styles/theme";
 import { CONTRACT_STATUS_LABELS, INVOICE_STATE_LABELS, QUOTE_STATUS_LABELS } from "../utils/constants";
 import { depositStatus, invoiceBalance, quoteStatus } from "../utils/billing";
 import { servicesOf } from "../utils/scheduling";
+import { includedMaterialsText } from "../utils/pricing";
 import { formatDate, formatPeso } from "../utils/formatters";
 import { SUBSYSTEMS } from "../utils/permissions";
 
@@ -234,7 +235,9 @@ function BillingPage() {
   };
 
   // Quotes, invoices and receipts print through BillingPrinter ("Save as PDF").
-  const printQuote = (quote) => setPrintRequest({ kind: "QUOTE", quote, client: clientById.get(quote.clientId), payments: paymentsForQuote(quote.id) });
+  // What a quote's service line covers, on screen and on the printout.
+  const includesFor = (line) => (line.kind === "SERVICE" ? includedMaterialsText(serviceById(line.serviceId), itemById) : "");
+  const printQuote = (quote) => setPrintRequest({ kind: "QUOTE", quote, client: clientById.get(quote.clientId), payments: paymentsForQuote(quote.id), includesFor });
   const printInvoice = (invoice) => {
     const lineVisits = new Set(invoice.lines.map((line) => line.appointmentId).filter(Boolean));
     setPrintRequest({
@@ -345,6 +348,7 @@ function BillingPage() {
           onInvoice={invoicesAvailable && canCreate ? () => setInvoicing({ quoteId: openQuoteRecord.id, clientId: openQuoteRecord.clientId }) : undefined}
           onOpenInvoice={(id) => { setTab("invoices"); openInvoice(id); }}
           onPrint={() => printQuote(openQuoteRecord)}
+          includesFor={includesFor}
           onReceipt={printReceipt}
           onCheck={checkStatus}
           onReverse={reverse}

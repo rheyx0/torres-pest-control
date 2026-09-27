@@ -45,6 +45,8 @@ function QuoteDetail({
   onReverse,
   onPrint,
   onReceipt,
+  // What a service line's price covers ("includes 1 L …"); "" for none.
+  includesFor = () => "",
   onClose,
 }) {
   const [rejecting, setRejecting] = useState(false);
@@ -139,7 +141,10 @@ function QuoteDetail({
             <tbody>
               {quote.lines.map((line) => (
                 <tr key={line.id} style={{ borderTop: `1px solid ${colors.line}` }}>
-                  <td style={{ padding: "0.45rem 0", color: colors.ink }}>{line.description}</td>
+                  <td style={{ padding: "0.45rem 0", color: colors.ink }}>
+                    {line.description}
+                    {includesFor(line) && <div style={{ fontSize: "0.75rem", color: colors.muted }}>{includesFor(line)}</div>}
+                  </td>
                   <td style={{ padding: "0.45rem 0", textAlign: "right" }}>{line.quantity} {line.unit}</td>
                   <td style={{ padding: "0.45rem 0", textAlign: "right" }}>{formatPeso(line.unitPrice)}</td>
                   <td style={{ padding: "0.45rem 0", textAlign: "right", color: colors.ink }}>{formatPeso(line.amount)}</td>

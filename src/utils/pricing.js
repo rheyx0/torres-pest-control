@@ -73,3 +73,19 @@ export function describeServicePricing(service, formatPeso) {
   }
   return service.defaultPrice === null || service.defaultPrice === undefined ? "No price set" : formatPeso(service.defaultPrice, { minDecimals: 0 });
 }
+
+/**
+ * What a service's price covers, in words, for a quote line: "includes 1 L
+ * Demand CS Residual Spray, 2 pack Rodent Bait Blocks". When a material is
+ * "Charge extra", use above that amount is billed on the invoice, so it says
+ * so. Empty when the service lists no materials.
+ */
+export function includedMaterialsText(service, itemById = () => null) {
+  const materials = (service?.materials || [])
+    .map((material) => ({ material, item: itemById(material.itemId) }))
+    .filter(({ item, material }) => item && Number(material.defaultAmount) > 0);
+  if (materials.length === 0) return "";
+  const list = materials.map(({ item, material }) => `${Number(material.defaultAmount)} ${item.unit || ""} ${item.name}`.replace(/\s+/g, " ").trim());
+  const extra = materials.some(({ material }) => material.billingMode === BILLING_MODES.EXTRA_CHARGED);
+  return `includes ${list.join(", ")}${extra ? " · extra use charged" : ""}`;
+}

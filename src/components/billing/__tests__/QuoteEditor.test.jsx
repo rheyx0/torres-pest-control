@@ -61,3 +61,23 @@ test("an area service without an area is not saved", async () => {
   expect(onSave).not.toHaveBeenCalled();
   expect(screen.getByRole("alert")).toBeInTheDocument();
 });
+
+test("the Area field says what it prices and when it is needed; a flat service without a price says so", async () => {
+  const noPrice = { id: "s3", name: "Inspection", pricingMode: "FLAT", defaultPrice: null, depositPercent: 0, isActive: true };
+  renderEditor({ services: [...services, noPrice] });
+  expect(screen.getByText("Only for per-sqm services.")).toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText("Add a service"), "s1");
+  expect(screen.getByText("Enter the area to price Termite treatment.")).toBeInTheDocument();
+  expect(screen.getByLabelText("Line unit price")).toHaveAttribute("placeholder", "Price");
+  await userEvent.type(screen.getByLabelText("Area in square metres"), "200");
+  expect(screen.getByText("Prices Termite treatment.")).toBeInTheDocument();
+  await userEvent.selectOptions(screen.getByLabelText("Add a service"), "s3");
+  expect(screen.getAllByLabelText("Line unit price")[1]).toHaveAttribute("placeholder", "No price set");
+});
+
+test("a service line says what its price includes", async () => {
+  const withMaterials = [{ ...services[0], materials: [{ itemId: "i1", defaultAmount: 2, billingMode: "EXTRA_CHARGED" }] }, services[1]];
+  renderEditor({ services: withMaterials });
+  await userEvent.selectOptions(screen.getByLabelText("Add a service"), "s1");
+  expect(screen.getByText("includes 2 L Termidor · extra use charged")).toBeInTheDocument();
+});

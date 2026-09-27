@@ -18,7 +18,7 @@ import {
   VAT_RATE,
 } from "./constants";
 import { formatPeso } from "./formatters";
-import { materialCharge } from "./pricing";
+import { customerPrice, materialCharge, PRICING_MODES, servicePrice } from "./pricing";
 import { appointmentReference } from "./scheduling";
 
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
@@ -153,7 +153,8 @@ export function depositToApply(quote, payments = [], invoices = [], total = Infi
  *     a ₱0 line marked "included";
  *   - used beyond the included amount of a "Charge extra" material (060):
  *     charged at the item's customer price;
- *   - not in the service's list at all: a ₱0 line the office can price.
+ *   - not in the service's list at all: charged at the item's customer price,
+ *     since the service does not cover it (the office can still lower it).
  * Two services listing the same item include both amounts.
  */
 export function visitMaterialLines(visit, services = [], itemById = () => null) {
@@ -177,7 +178,7 @@ export function visitMaterialLines(visit, services = [], itemById = () => null) 
     const rule = rules.get(itemId);
     const base = { kind: "MATERIAL", itemId: item.id, appointmentId: visit.id, unit };
     if (!rule) {
-      lines.push({ ...base, description: `${item.name} (used, not in the service) · ${reference}`, quantity, unitPrice: 0 });
+      lines.push({ ...base, description: `${item.name} (not included in the service) · ${reference}`, quantity, unitPrice: customerPrice(item) });
       return;
     }
     const charge = materialCharge(rule, amount, item);
@@ -195,9 +196,10 @@ export function visitMaterialLines(visit, services = [], itemById = () => null) 
  *   - the quote's lines, unless an earlier invoice already billed the quote;
  *   - without a quote, each visit at the price it was booked for (a
  *     multi-day job carries its price on Day 1 only, so the other days add
- *     no line);
+ *     no line); a visit booked with no price gets a line per service at the
+ *     service's price today, or an empty price to fill in;
  *   - every material the visits used (visitMaterialLines): included ones at
- *     ₱0, extra ones charged;
+ *     ₱0, extra ones charged; a multi-day job's days counted together;
  *   - the visits' approved extras not yet on an invoice.
  */
 export function draftInvoiceLines({ quote = null, quoteInvoiced = false, visits = [], extras = [], servicesFor = () => [], itemById = () => null }) {
@@ -215,19 +217,64 @@ export function draftInvoiceLines({ quote = null, quoteInvoiced = false, visits 
   }
   if (!quote) {
     visits.forEach((visit) => {
-      if (!(Number(visit.price) > 0)) return;
-      lines.push({
-        kind: "SERVICE",
-        serviceId: visit.serviceId || "",
-        appointmentId: visit.id,
-        description: `${visit.serviceType || "Service visit"} · ${appointmentReference(visit)}`,
-        quantity: 1,
-        unit: "visit",
-        unitPrice: Number(visit.price),
+      const reference = appointmentReference(visit);
+      if (Number(visit.price) > 0) {
+        lines.push({
+          kind: "SERVICE",
+          serviceId: visit.serviceId || "",
+          appointmentId: visit.id,
+          description: `${visit.serviceType || "Service visit"} · ${reference}`,
+          quantity: 1,
+          unit: "visit",
+          unitPrice: Number(visit.price),
+        });
+        return;
+      }
+      // A multi-day job is charged once, on Day 1: its later days add nothing.
+      if (visit.planKind === "MULTI_DAY" && Number(visit.planPosition) > 1) return;
+      // Booked without a price (often before the services had one): a line per
+      // service at its price today. A per-sqm service, or one with no price,
+      // comes in with the price empty, so the invoice cannot be issued until
+      // someone enters it, rather than the service being left off.
+      const services = servicesFor(visit);
+      const priced = services.length ? services : [null];
+      priced.forEach((service) => {
+        const price = service && service.pricingMode !== PRICING_MODES.AREA ? servicePrice(service) : null;
+        lines.push({
+          kind: "SERVICE",
+          serviceId: service?.id || visit.serviceId || "",
+          appointmentId: visit.id,
+          description: `${service?.name || visit.serviceType || "Service visit"} · ${reference}`,
+          quantity: 1,
+          unit: "visit",
+          unitPrice: price === null ? "" : price,
+        });
       });
     });
   }
-  visits.forEach((visit) => lines.push(...visitMaterialLines(visit, servicesFor(visit), itemById)));
+  // Materials: a multi-day job is one job, so its days' usage is added up and
+  // the service's included amount is applied once, not once per day. Its lines
+  // name Day 1 (the first ticked day), which carries the job's price.
+  const materialGroups = [];
+  const jobs = new Map();
+  visits.forEach((visit) => {
+    if (visit.planKind === "MULTI_DAY" && visit.planId) {
+      if (!jobs.has(visit.planId)) {
+        const days = [];
+        jobs.set(visit.planId, days);
+        materialGroups.push(days);
+      }
+      jobs.get(visit.planId).push(visit);
+    } else {
+      materialGroups.push([visit]);
+    }
+  });
+  materialGroups.forEach((group) => {
+    const days = [...group].sort((a, b) => (Number(a.planPosition) || 0) - (Number(b.planPosition) || 0));
+    const first = days[0];
+    const job = days.length > 1 ? { ...first, stockUsed: days.flatMap((day) => day.stockUsed || []) } : first;
+    lines.push(...visitMaterialLines(job, servicesFor(first), itemById));
+  });
   const visitIds = new Set(visits.map((visit) => visit.id));
   extras
     .filter((extra) => extra.status === "APPROVED" && !extra.invoiceId && visitIds.has(extra.appointmentId))

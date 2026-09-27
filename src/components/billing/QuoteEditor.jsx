@@ -14,7 +14,7 @@ import { Plus, X } from "lucide-react";
 import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
 import { colors } from "../../styles/theme";
 import { LIMITS, PAYMENT_TERMS, VAT_MODES, VAT_RATE } from "../../utils/constants";
-import { customerPrice, servicePrice } from "../../utils/pricing";
+import { customerPrice, includedMaterialsText, servicePrice } from "../../utils/pricing";
 import { lineAmount, quoteTotals, validUntilFrom } from "../../utils/billing";
 import { formatPeso } from "../../utils/formatters";
 import { todayISO, validateMoney } from "../../utils/validators";
@@ -133,7 +133,31 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
     setAdding((current) => ({ ...current, item: "" }));
   };
 
+  // A flat service with no price in the catalog says so in its price box.
+  // Per-sqm services are priced by the one Area field at the top, which
+  // carries their hint (areaHint below).
+  const pricePlaceholder = (line) => {
+    const service = line.kind === "SERVICE" ? servicesById.get(line.serviceId) : null;
+    if (service && service.pricingMode !== "AREA" && (service.defaultPrice === null || service.defaultPrice === undefined)) return "No price set";
+    return "Price";
+  };
+
   const needsArea = lines.some((line) => line.kind === "SERVICE" && servicesById.get(line.serviceId)?.pricingMode === "AREA");
+
+  // The Area field says what it is for: which services it prices, that it is
+  // still needed, or that a service has no rate per sqm to price with.
+  const areaServices = [...new Set(lines
+    .filter((line) => line.kind === "SERVICE" && servicesById.get(line.serviceId)?.pricingMode === "AREA")
+    .map((line) => servicesById.get(line.serviceId)))];
+  const areaNames = areaServices.map((service) => service.name).join(", ");
+  const noRate = areaServices.filter((service) => service.areaRate === null || service.areaRate === undefined);
+  const areaHint = !needsArea
+    ? "Only for per-sqm services."
+    : !(Number(form.areaSqm) > 0)
+      ? <span style={{ color: colors.warning, fontWeight: 500 }}>Enter the area to price {areaNames}.</span>
+      : noRate.length
+        ? <span style={{ color: colors.warning, fontWeight: 500 }}>{noRate.map((service) => service.name).join(", ")} has no rate per sqm. Set it in Services.</span>
+        : `Prices ${areaNames}.`;
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -193,7 +217,7 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
               {PAYMENT_TERMS.map((term) => <option key={term.value} value={term.value}>{term.label}</option>)}
             </Select>
           </Field>
-          <Field label="Area (sqm)" hint={needsArea ? "Prices the per-sqm services." : "Only for per-sqm services."}>
+          <Field label="Area (sqm)" hint={areaHint}>
             <Input aria-label="Area in square metres" type="number" min="0" step="any" value={form.areaSqm} onChange={(event) => setArea(event.target.value)} placeholder="0" />
           </Field>
         </div>
@@ -217,15 +241,23 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
           {lines.length === 0 && <p style={{ margin: 0, color: colors.muted, fontSize: "0.85rem" }}>Add the services first, then any materials or extra work.</p>}
 
           {lines.map((line) => (
-            <div key={line.key} style={{ display: "grid", gridTemplateColumns: "92px minmax(0, 1fr) 90px 120px 110px auto", gap: "0.5rem", alignItems: "center" }}>
+            <div key={line.key} style={{ display: "grid", gap: "0.2rem" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "92px minmax(0, 1fr) 90px 120px 110px auto", gap: "0.5rem", alignItems: "center" }}>
               <span style={{ fontSize: "0.74rem", color: colors.muted }}>{KIND_LABELS[line.kind]}</span>
               <Input aria-label="Line description" value={line.description} maxLength={300} onChange={(event) => updateLine(line.key, { description: event.target.value })} placeholder="Describe the work" />
               <Input aria-label="Line quantity" type="number" min="0" step="any" value={line.quantity} onChange={(event) => updateLine(line.key, { quantity: event.target.value })} />
-              <Input aria-label="Line unit price" type="number" min="0" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(line.key, { unitPrice: event.target.value, autoPriced: false })} placeholder="Price" />
+              <Input aria-label="Line unit price" type="number" min="0" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(line.key, { unitPrice: event.target.value, autoPriced: false })} placeholder={pricePlaceholder(line)} />
               <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", color: colors.ink }}>{formatPeso(lineAmount(line))}</span>
               <Button size="icon" variant="ghost" aria-label={`Remove ${line.description || "line"}`} onClick={() => setLines((current) => current.filter((entry) => entry.key !== line.key))}>
                 <X size={15} />
               </Button>
+            </div>
+            {/* What the service's price covers: information, not a charge. */}
+            {line.kind === "SERVICE" && includedMaterialsText(servicesById.get(line.serviceId), (id) => itemsById.get(id)) && (
+              <span style={{ marginLeft: "calc(92px + 0.5rem)", fontSize: "0.75rem", color: colors.muted }}>
+                {includedMaterialsText(servicesById.get(line.serviceId), (id) => itemsById.get(id))}
+              </span>
+            )}
             </div>
           ))}
         </section>

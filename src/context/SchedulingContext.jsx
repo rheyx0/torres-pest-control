@@ -101,8 +101,11 @@ export function SchedulingProvider({ children }) {
     setAppointments((current) => current.map((entry) => entry.id === appointment.id
       ? { ...entry, ...appointmentFields }
       : entry));
+    // A multi-day job's days change status together (migration 065): reload
+    // so the job's other days show it.
+    if (appointment.planKind === "MULTI_DAY") await refresh();
     return result.appointment;
-  }, []);
+  }, [refresh]);
 
   const submitReport = useCallback(async (appointmentId, reportFields) => {
     const result = await appointmentService.submitReport(appointmentId, reportFields);

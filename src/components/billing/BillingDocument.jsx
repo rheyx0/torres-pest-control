@@ -26,7 +26,7 @@ function Row({ label, value }) {
   );
 }
 
-function Lines({ lines }) {
+function Lines({ lines, includesFor = () => "" }) {
   return (
     <table className="bd-lines">
       <thead>
@@ -35,7 +35,10 @@ function Lines({ lines }) {
       <tbody>
         {lines.map((line) => (
           <tr key={line.id}>
-            <td>{line.description}</td>
+            <td>
+              {line.description}
+              {includesFor(line) && <div className="bd-includes">{includesFor(line)}</div>}
+            </td>
             <td className="sf-num">{line.quantity} {line.unit}</td>
             <td className="sf-num">{formatPeso(line.unitPrice)}</td>
             <td className="sf-num">{formatPeso(line.amount)}</td>
@@ -82,7 +85,7 @@ function Letterhead({ kind, reference }) {
   );
 }
 
-function QuoteBody({ quote, client, payments }) {
+function QuoteBody({ quote, client, payments, includesFor }) {
   const deposit = depositStatus(quote, payments);
   return (
     <>
@@ -97,7 +100,7 @@ function QuoteBody({ quote, client, payments }) {
           {quote.areaSqm && <Row label="Area" value={`${quote.areaSqm} sqm`} />}
         </tbody>
       </table>
-      <section className="sf-block"><h2 className="sf-h2">Scope and price</h2><Lines lines={quote.lines} /></section>
+      <section className="sf-block"><h2 className="sf-h2">Scope and price</h2><Lines lines={quote.lines} includesFor={includesFor} /></section>
       <Totals record={quote}>
         {deposit.required > 0 && <tr className="bd-strong"><th>Down payment to book</th><td>{formatPeso(deposit.required)}</td></tr>}
       </Totals>
@@ -225,6 +228,7 @@ function ContractBody({ contract, client }) {
           <Row label="Contract" value={contract.title} />
           <Row label="Services" value={contract.serviceNames} />
           <Row label="How often" value={contract.frequency} />
+          {contract.areaSqm ? <Row label="Area" value={`${contract.areaSqm} sqm`} /> : null}
           <Row label="Starts" value={formatDate(contract.startsOn)} />
           <Row label="Length" value={length} />
         </tbody>
@@ -275,14 +279,14 @@ function ContractBody({ contract, client }) {
   );
 }
 
-function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, payments = [], visits = [] }) {
+function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, payments = [], visits = [], includesFor }) {
   if (!client) return null;
   const reference = { QUOTE: quote, INVOICE: invoice, RECEIPT: payment, CONTRACT: contract }[kind]?.reference;
   if (!reference) return null;
   return (
     <div className="service-form billing-document">
       <Letterhead kind={kind} reference={reference} />
-      {kind === "QUOTE" && <QuoteBody quote={quote} client={client} payments={payments} />}
+      {kind === "QUOTE" && <QuoteBody quote={quote} client={client} payments={payments} includesFor={includesFor} />}
       {kind === "INVOICE" && <InvoiceBody invoice={invoice} client={client} quote={quote} payments={payments} visits={visits} />}
       {kind === "RECEIPT" && <ReceiptBody payment={payment} client={client} quote={quote} invoice={invoice} payments={payments} />}
       {kind === "CONTRACT" && <ContractBody contract={contract} client={client} />}

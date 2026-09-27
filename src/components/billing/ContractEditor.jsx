@@ -1,6 +1,10 @@
 // Create or change a draft service contract (Sprint 3, migration 063): the
 // terms a recurring service is sold on. Once it is signed and made active the
 // terms are fixed; the server refuses to change them.
+//
+// The price per visit starts from the services ticked: a flat service's price,
+// and a per-sqm service priced from the contract's area (064), never below its
+// minimum charge. It stays editable, and once typed over it is left alone.
 
 import { useState } from "react";
 import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
@@ -9,6 +13,7 @@ import { BILLING_SCHEDULES, LIMITS, PAYMENT_TERMS, SERVICE_FREQUENCIES } from ".
 import { MAX_PLAN_VISITS } from "../../utils/plans";
 import { formatPeso } from "../../utils/formatters";
 import { todayISO, validateMoney } from "../../utils/validators";
+import { PRICING_MODES, servicePrice } from "../../utils/pricing";
 
 const FREQUENCIES = SERVICE_FREQUENCIES.filter((frequency) => frequency !== "One-time");
 const DEFAULT_CANCELLATION = "Either party may cancel with 30 days' written notice. Visits already done are billed; visits not yet done are cancelled.";
@@ -42,6 +47,7 @@ function ContractEditor({ contract = null, clients = [], services = [], initialC
     lengthBy: contract && !contract.visitCount ? "until" : "count",
     visitCount: contract?.visitCount ? String(contract.visitCount) : "4",
     endsOn: contract?.endsOn || "",
+    areaSqm: contract?.areaSqm ?? "",
     pricePerVisit: contract ? String(contract.pricePerVisit) : "",
     billingSchedule: contract?.billingSchedule || "PER_VISIT",
     paymentTerms: contract?.paymentTerms || "DUE_ON_RECEIPT",
@@ -59,22 +65,39 @@ function ContractEditor({ contract = null, clients = [], services = [], initialC
     setValues((current) => ({ ...current, [field]: event.target.value }));
   };
 
-  // Ticking services fills the price with their prices added up, until the
-  // office types its own.
+  const chosenServices = (ids) => ids.map((serviceId) => services.find((service) => service.id === serviceId)).filter(Boolean);
+  // A visit's price from the services ticked: flat prices, and per-sqm
+  // services priced from the area (nothing until an area is entered).
+  const priceFor = (ids, area) => chosenServices(ids).reduce((sum, service) => sum + (Number(servicePrice(service, area)) || 0), 0);
+  const needsArea = chosenServices(values.serviceIds).some((service) => service.pricingMode === PRICING_MODES.AREA);
+
+  // Ticking services, or changing the area, fills the price until the office
+  // types its own.
   const toggleService = (id) => {
     setError("");
     setValues((current) => {
       const serviceIds = current.serviceIds.includes(id) ? current.serviceIds.filter((entry) => entry !== id) : [...current.serviceIds, id];
-      const chosen = serviceIds.map((serviceId) => services.find((service) => service.id === serviceId)).filter(Boolean);
+      const chosen = chosenServices(serviceIds);
       const title = current.title || (chosen.length ? `${chosen.map((service) => service.name).join(" + ")} contract` : "");
-      const price = chosen.reduce((sum, service) => sum + (Number(service.defaultPrice) || 0), 0);
+      const price = priceFor(serviceIds, current.areaSqm);
       return { ...current, serviceIds, title, ...(priceTouched ? {} : { pricePerVisit: price > 0 ? String(price) : "" }) };
+    });
+  };
+
+  const setArea = (event) => {
+    setError("");
+    const areaSqm = event.target.value;
+    setValues((current) => {
+      const price = priceFor(current.serviceIds, areaSqm);
+      return { ...current, areaSqm, ...(priceTouched ? {} : { pricePerVisit: price > 0 ? String(price) : "" }) };
     });
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const problem = validateContract(values);
+    // The area first: a per-sqm price cannot exist without it.
+    const problem = (needsArea && !(Number(values.areaSqm) > 0) ? "Enter the area (sqm) for the per-sqm services." : null)
+      || validateContract(values);
     if (problem) {
       setError(problem);
       return;
@@ -84,6 +107,7 @@ function ContractEditor({ contract = null, clients = [], services = [], initialC
       ...values,
       visitCount: values.lengthBy === "count" ? Number(values.visitCount) : null,
       endsOn: values.lengthBy === "until" ? values.endsOn : "",
+      areaSqm: needsArea ? values.areaSqm : "",
     });
     setSaving(false);
     if (result !== true) setError(typeof result === "string" ? result : "The contract was not saved.");
@@ -163,6 +187,11 @@ function ContractEditor({ contract = null, clients = [], services = [], initialC
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "1rem", alignItems: "start" }}>
+          {needsArea && (
+            <Field label="Area (sqm)" required hint="Prices the per-sqm services.">
+              <Input aria-label="Area in square metres" type="number" min="0" step="any" value={values.areaSqm} onChange={setArea} placeholder="0" />
+            </Field>
+          )}
           <Field label="Price per visit (₱)" required>
             <Input aria-label="Price per visit" type="number" min="0" step="0.01" value={values.pricePerVisit} onChange={set("pricePerVisit")} />
           </Field>

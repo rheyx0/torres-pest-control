@@ -96,3 +96,29 @@ describe("ContractDetail", () => {
     expect(screen.queryByRole("button", { name: /Activate|Book visits|Cancel contract/ })).not.toBeInTheDocument();
   });
 });
+
+test("ContractEditor: a per-sqm service is priced from the area, never below its minimum", async () => {
+  const services = [{ id: "s1", name: "Termite Control", pricingMode: "AREA", areaRate: 20, minimumCharge: 3000, isActive: true }];
+  const onSave = jest.fn().mockResolvedValue(true);
+  render(<ContractEditor clients={[{ id: "c1", name: "Juan Dela Cruz", status: "ACTIVE" }]} services={services} initialClientId="c1" onSave={onSave} onClose={jest.fn()} />);
+  await userEvent.click(screen.getByRole("checkbox", { name: "Termite Control" }));
+  expect(screen.getByLabelText("Price per visit")).toHaveValue(null);
+
+  await userEvent.click(screen.getByRole("button", { name: "Save as draft" }));
+  expect(onSave).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert")).toHaveTextContent(/area/);
+
+  await userEvent.type(screen.getByLabelText("Area in square metres"), "200");
+  expect(screen.getByLabelText("Price per visit")).toHaveValue(4000);
+  await userEvent.clear(screen.getByLabelText("Area in square metres"));
+  await userEvent.type(screen.getByLabelText("Area in square metres"), "50");
+  expect(screen.getByLabelText("Price per visit")).toHaveValue(3000);
+
+  await userEvent.click(screen.getByRole("button", { name: "Save as draft" }));
+  expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ areaSqm: "50", pricePerVisit: "3000" }));
+});
+
+test("ContractEditor: flat services need no area", () => {
+  render(<ContractEditor clients={[]} services={[{ id: "s2", name: "General Treatment", pricingMode: "FLAT", defaultPrice: 1500, isActive: true }]} onSave={jest.fn()} onClose={jest.fn()} />);
+  expect(screen.queryByLabelText("Area in square metres")).not.toBeInTheDocument();
+});

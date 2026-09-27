@@ -108,6 +108,7 @@ function ContractDetail({ contract, client, signedDocument = null, visits = [], 
           {row("Services", contract.serviceNames)}
           {row("How often", contract.frequency)}
           {row("Period", `${formatDate(contract.startsOn)} – ${contract.endsOn ? formatDate(contract.endsOn) : `${contract.visitCount} visits`}`)}
+          {contract.areaSqm ? row("Area", `${contract.areaSqm} sqm`) : null}
           {row("Price per visit", formatPeso(contract.pricePerVisit))}
           {contract.visitCount ? row("Contract value", formatPeso(contract.visitCount * contract.pricePerVisit)) : null}
           {row("Billed", labelOf(BILLING_SCHEDULES, contract.billingSchedule))}

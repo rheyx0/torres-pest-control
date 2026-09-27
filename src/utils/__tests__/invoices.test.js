@@ -85,8 +85,8 @@ describe("visitMaterialLines", () => {
     expect(visitMaterialLines(visit(9), [general], itemById)).toEqual([expect.objectContaining({ quantity: 9, unitPrice: 0 })]);
   });
 
-  test("an item not in the service is listed at ₱0 for the office to price", () => {
-    expect(visitMaterialLines(visit(1), [], itemById)).toEqual([expect.objectContaining({ quantity: 1, unitPrice: 0, description: "Termidor (used, not in the service) · TPC-V-00007" })]);
+  test("an item not in the service is charged at its customer price", () => {
+    expect(visitMaterialLines(visit(1), [], itemById)).toEqual([expect.objectContaining({ quantity: 1, unitPrice: 1500, description: "Termidor (not included in the service) · TPC-V-00007" })]);
   });
 
   test("one line per item, however many stock-out rows it came from; unknown items skipped", () => {
@@ -114,11 +114,42 @@ describe("draftInvoiceLines", () => {
     expect(draftInvoiceLines({ quote, quoteInvoiced: true, visits: [visit], extras }).map((line) => line.description)).toEqual(["Storage room"]);
   });
 
-  test("without a quote: each visit at its booked price; a day with no price adds no line", () => {
-    const lines = draftInvoiceLines({ visits: [visit, { ...visit, id: "a2", price: null }] });
+  test("without a quote: each visit at its booked price", () => {
+    const lines = draftInvoiceLines({ visits: [visit] });
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ kind: "SERVICE", appointmentId: "a1", quantity: 1, unitPrice: 4000 });
     expect(lines[0].description).toBe("Termite treatment · TPC-V-00007");
+  });
+
+  test("a visit booked with no price gets its services at today's price, or an empty price to fill in", () => {
+    const flat = { id: "s2", name: "General Treatment", pricingMode: "FLAT", defaultPrice: 1500 };
+    const area = { id: "s1", name: "Termite Control", pricingMode: "AREA", areaRate: 20, minimumCharge: 3000 };
+    const unpriced = { ...visit, id: "a2", reference: "TPC-V-00008", price: null };
+    const lines = draftInvoiceLines({ visits: [unpriced], servicesFor: () => [flat, area] });
+    expect(lines.map((line) => [line.description, line.unitPrice])).toEqual([
+      ["General Treatment · TPC-V-00008", 1500],
+      ["Termite Control · TPC-V-00008", ""],
+    ]);
+  });
+
+  test("a visit with no price and no known service still gets a line to price", () => {
+    const lines = draftInvoiceLines({ visits: [{ ...visit, price: null, serviceType: "" }] });
+    expect(lines).toEqual([expect.objectContaining({ description: "Service visit · TPC-V-00007", unitPrice: "" })]);
+  });
+
+  test("a multi-day job's materials are counted together: the included amount applies once", () => {
+    const day = (id, position, used) => ({ ...visit, id, reference: `TPC-V-0000${position}`, planId: "p1", planKind: "MULTI_DAY", planPosition: position, price: position === 1 ? 12000 : null, stockUsed: [{ itemId: "i1", amount: used }] });
+    // Termite includes 2 L of Termidor, charge extra; 1 L + 1 L + 1 L used.
+    const lines = draftInvoiceLines({ visits: [day("d2", 2, 1), day("d1", 1, 1), day("d3", 3, 1)], servicesFor: () => [termite], itemById });
+    expect(lines.filter((line) => line.kind === "SERVICE")).toHaveLength(1);
+    const materials = lines.filter((line) => line.kind === "MATERIAL");
+    expect(materials).toEqual([expect.objectContaining({ appointmentId: "d1", quantity: 1, unitPrice: 1500 })]);
+    expect(materials[0].description).toBe("Termidor: 3 L used, 2 L included, extra charged · TPC-V-00001");
+  });
+
+  test("a multi-day job's later days add no line", () => {
+    const day2 = { ...visit, id: "a3", price: null, planKind: "MULTI_DAY", planPosition: 2 };
+    expect(draftInvoiceLines({ visits: [day2] })).toEqual([]);
   });
 
   test("extra materials are added from the visit's usage", () => {

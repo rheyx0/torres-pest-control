@@ -1,6 +1,6 @@
 // Pricing (Sprint 3, migration 060).
 
-import { customerPrice, defaultDeposit, describeServicePricing, itemMargin, materialCharge, servicePrice } from "../pricing";
+import { customerPrice, defaultDeposit, describeServicePricing, includedMaterialsText, itemMargin, materialCharge, servicePrice } from "../pricing";
 import { formatPeso } from "../formatters";
 
 describe("customerPrice and itemMargin", () => {
@@ -62,5 +62,26 @@ describe("defaults and wording", () => {
   it("describes how a service is priced", () => {
     expect(describeServicePricing({ pricingMode: "AREA", areaRate: 50, minimumCharge: 3000 }, formatPeso)).toBe("₱50 / sqm, min ₱3,000");
     expect(describeServicePricing({ pricingMode: "FLAT", defaultPrice: 2500 }, formatPeso)).toBe("₱2,500");
+  });
+});
+
+describe("includedMaterialsText", () => {
+  const items = { i1: { id: "i1", name: "Demand CS Residual Spray", unit: "L" }, i2: { id: "i2", name: "Rodent Bait Blocks", unit: "pack" } };
+  const itemById = (id) => items[id] || null;
+
+  test("lists what the service's price covers", () => {
+    const service = { materials: [{ itemId: "i1", defaultAmount: 1, billingMode: "INCLUDED" }, { itemId: "i2", defaultAmount: 2, billingMode: "INCLUDED" }] };
+    expect(includedMaterialsText(service, itemById)).toBe("includes 1 L Demand CS Residual Spray, 2 pack Rodent Bait Blocks");
+  });
+
+  test("says when extra use is charged", () => {
+    const service = { materials: [{ itemId: "i1", defaultAmount: 1, billingMode: "EXTRA_CHARGED" }] };
+    expect(includedMaterialsText(service, itemById)).toBe("includes 1 L Demand CS Residual Spray · extra use charged");
+  });
+
+  test("nothing for a service without materials, or with unknown items", () => {
+    expect(includedMaterialsText({ materials: [] }, itemById)).toBe("");
+    expect(includedMaterialsText({ materials: [{ itemId: "gone", defaultAmount: 1 }] }, itemById)).toBe("");
+    expect(includedMaterialsText(null, itemById)).toBe("");
   });
 });

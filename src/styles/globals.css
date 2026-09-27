@@ -1127,3 +1127,6 @@ a {
 /* Contract: the two signature blocks side by side, room above each rule. */
 .bd-contract-sign { gap: 40px; margin-top: 12px; }
 .bd-contract-sign .sf-sign-box { flex: 1; width: auto; }
+
+/* Quote printout: what a service line's price covers, under its name. */
+.bd-includes { font-size: 10px; color: #6b7280; margin-top: 1px; }
