@@ -17,15 +17,20 @@ import useInventory from "../../hooks/useInventory";
 import { useScheduling } from "../../context/SchedulingContext";
 import { lowStockItems, needsScheduling } from "../../utils/dashboardMetrics";
 import { SUBSYSTEMS } from "../../utils/permissions";
+import { useOptionalBilling } from "../../hooks/useBilling";
+import { paymentReminders } from "../../utils/sprint4";
 import { layout } from "../../styles/tokens";
 import { appBackground } from "../../styles/theme";
 
 /**
- * Sidebar counts: visits nobody has been assigned to, and active items at or
- * below their reorder level. Each only for someone who can act on it.
+ * Sidebar counts: visits nobody has been assigned to, active items at or
+ * below their reorder level, and invoices overdue or due within 3 days
+ * (Sprint 4's payment reminders). Each only for someone who can act on it.
  */
-export function navBadges({ appointments, inventory, canSchedule, canStock }) {
+export function navBadges({ appointments, inventory, canSchedule, canStock, billing = null }) {
+  const reminders = billing ? paymentReminders(billing.invoices || [], billing.payments || []) : null;
   return {
+    billing: reminders ? reminders.overdue.length + reminders.dueSoon.length : 0,
     scheduling: canSchedule ? needsScheduling(appointments).length : 0,
     inventory: canStock
       ? lowStockItems(inventory.filter((item) => item.status !== "DISABLED")).length
@@ -42,6 +47,7 @@ function Layout({ children }) {
   const inVisit = location.pathname.startsWith("/visit/");
   const { appointments } = useScheduling();
   const { inventory } = useInventory();
+  const billing = useOptionalBilling();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef(null);
 
@@ -52,8 +58,9 @@ function Layout({ children }) {
         inventory,
         canSchedule: can(SUBSYSTEMS.SCHEDULING, "create"),
         canStock: can(SUBSYSTEMS.INVENTORY, "edit"),
+        billing: billing?.office && billing.invoicesAvailable ? billing : null,
       }),
-    [appointments, inventory, can]
+    [appointments, inventory, can, billing]
   );
 
   const closeDrawer = useCallback(() => {

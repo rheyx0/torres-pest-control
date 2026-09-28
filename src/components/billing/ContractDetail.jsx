@@ -8,18 +8,21 @@
 // Cancelling cancels the visits still to come on its plan.
 
 import { useRef, useState } from "react";
-import { Button, Input, Modal, StatusPill } from "../ui";
+import { Ban, Mail, Printer, Trash2 } from "lucide-react";
+import { Button, Input, Modal, MoreMenu, StatusPill } from "../ui";
 import { colors } from "../../styles/theme";
 import { BILLING_SCHEDULES, CONTRACT_STATUS_LABELS, PAYMENT_TERMS } from "../../utils/constants";
 import { appointmentReference } from "../../utils/scheduling";
 import { formatDate, formatPeso } from "../../utils/formatters";
 import { validateDocument } from "../../utils/validators";
 
+const noteStyle = { marginRight: "auto", alignSelf: "center", color: colors.muted, fontSize: "0.82rem", maxWidth: "340px" };
+
 export const CONTRACT_TONES = { DRAFT: "neutral", ACTIVE: "success", ENDED: "neutral", CANCELLED: "danger" };
 
 const labelOf = (list, value) => list.find((entry) => entry.value === value)?.label || value;
 
-function ContractDetail({ contract, client, signedDocument = null, visits = [], onEdit, onPrint, onUploadSigned, onViewSigned, onActivate, onEnd, onCancel, onDelete, onBook, onClose }) {
+function ContractDetail({ contract, client, signedDocument = null, visits = [], onEdit, onPrint, onEmail, onUploadSigned, onViewSigned, onActivate, onEnd, onCancel, onDelete, onBook, onClose }) {
   const fileRef = useRef(null);
   const [asking, setAsking] = useState(null); // "CANCEL" | "DELETE"
   const [reason, setReason] = useState("");
@@ -69,18 +72,29 @@ function ContractDetail({ contract, client, signedDocument = null, visits = [], 
           <Button variant="danger" loading={busy} onClick={() => act(onDelete)}>Delete draft</Button>
         </>
       )}
-      {!asking && onPrint && <Button variant="ghost" onClick={onPrint}>Print contract</Button>}
+      {!asking && !error && status === "DRAFT" && !contract.signedDocumentId && (
+        <span style={noteStyle}>Activate is locked: upload the signed copy first.</span>
+      )}
+      {!asking && (
+        <MoreMenu
+          label="More"
+          placement="up"
+          items={[
+            onPrint && { label: "Print contract", icon: <Printer size={14} />, onClick: onPrint },
+            onEmail && status !== "CANCELLED" && { label: "Send by Gmail", icon: <Mail size={14} />, onClick: onEmail },
+            (status === "DRAFT" || status === "ACTIVE") && { label: "Cancel contract", icon: <Ban size={14} />, danger: true, separated: true, onClick: () => setAsking("CANCEL") },
+            status === "DRAFT" && { label: "Delete draft", icon: <Trash2 size={14} />, danger: true, onClick: () => setAsking("DELETE") },
+          ]}
+        />
+      )}
       {!asking && status === "DRAFT" && (
         <>
-          <Button variant="quiet" onClick={() => setAsking("DELETE")}>Delete</Button>
-          <Button variant="quiet" onClick={() => setAsking("CANCEL")}>Cancel</Button>
           <Button onClick={onEdit}>Edit</Button>
           <Button variant="primary" loading={busy} disabled={!contract.signedDocumentId} title={contract.signedDocumentId ? undefined : "Upload the signed copy first."} onClick={() => act(onActivate)}>Activate</Button>
         </>
       )}
       {!asking && status === "ACTIVE" && (
         <>
-          <Button variant="quiet" onClick={() => setAsking("CANCEL")}>Cancel contract</Button>
           <Button onClick={() => act(onEnd)} loading={busy}>Mark ended</Button>
           {!contract.planId && <Button variant="primary" onClick={onBook}>Book visits</Button>}
         </>

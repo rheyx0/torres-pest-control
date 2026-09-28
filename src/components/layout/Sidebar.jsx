@@ -20,6 +20,7 @@ import {
   Lock,
   Package,
   Receipt,
+  BarChart3,
   Tag,
   Users,
 } from "lucide-react";
@@ -58,7 +59,8 @@ const NAV_GROUPS = [
   {
     label: "Money",
     items: [
-      { label: "Billing", path: "/billing", subsystem: SUBSYSTEMS.BILLING, action: "view", Icon: Receipt },
+      { label: "Billing", path: "/billing", subsystem: SUBSYSTEMS.BILLING, action: "view", Icon: Receipt, badge: "billing" },
+      { label: "Reports", path: "/reports", subsystem: SUBSYSTEMS.REPORTS, action: "view", Icon: BarChart3 },
     ],
   },
   {

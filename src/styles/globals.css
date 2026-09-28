@@ -825,7 +825,7 @@ a {
   border-bottom: 2px solid #7f1111;
 }
 
-.sf-logo { width: 62px; height: auto; flex: none; }
+.sf-logo { width: 76px; height: 76px; object-fit: contain; flex: none; }
 .sf-org { flex: 1; }
 .sf-org-name { font-size: 17px; font-weight: 800; color: #7f1111; letter-spacing: -0.01em; }
 .sf-org-line { font-size: 10.5px; color: #4b5563; }
@@ -1130,3 +1130,60 @@ a {
 
 /* Quote printout: what a service line's price covers, under its name. */
 .bd-includes { font-size: 10px; color: #6b7280; margin-top: 1px; }
+
+/* ---------------------------------------------------------------------------
+ * Loading placeholders (components/ui/Skeleton, DataTable loading rows).
+ * ------------------------------------------------------------------------- */
+.skeleton {
+  border-radius: 4px;
+  background: linear-gradient(90deg, #f1ebe1 0%, #f8f4ec 45%, #f1ebe1 90%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.3s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+ * Tables on a phone: each row a card, each cell a labelled line
+ * (DataTable's .dt; the label comes from data-label). No sideways scrolling.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .dt, .dt tbody, .dt tr, .dt td { display: block; width: 100%; }
+  .dt thead { display: none; }
+  .dt tr {
+    padding: 10px 14px;
+    border-bottom: 1px solid #efe9e0;
+  }
+  .dt tbody tr:last-child { border-bottom: 0; }
+  .dt td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 3px 0 !important;
+    border: 0 !important;
+    text-align: right !important;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .dt td[data-label]::before {
+    content: attr(data-label);
+    flex: none;
+    max-width: 45%;
+    text-align: left;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #96897b;
+  }
+  /* The first cell (the reference or name) leads the card, unlabelled. */
+  .dt td:first-child { justify-content: flex-start; text-align: left !important; font-weight: 500; }
+  .dt td:first-child::before { display: none; }
+  .dt tr.dt-empty td { justify-content: center; text-align: center !important; padding: 16px 0 !important; }
+  .dt tr.dt-loading td:not(:first-child) { display: none; }
+}

@@ -26,6 +26,8 @@ export const SUBSYSTEMS = {
   // reads and writes billing (assert_billing_office), only an admin reverses
   // or voids ("delete" here), and technicians have none.
   BILLING: "billing",
+  // The Reports page (Sprint 4): sales, stock usage and technician reports.
+  REPORTS: "reports",
 };
 
 const ALL = ["view", "create", "edit", "delete"];
@@ -42,6 +44,7 @@ const MATRIX = {
     logs: READ_ONLY,
     settings: ALL,
     billing: ALL,
+    reports: READ_ONLY,
   },
   [ROLES.STAFF]: {
     users: NONE,
@@ -52,6 +55,7 @@ const MATRIX = {
     logs: NONE,
     settings: NONE,
     billing: ["view", "create", "edit"],
+    reports: NONE,
   },
   [ROLES.TECHNICIAN]: {
     users: NONE,
@@ -62,6 +66,7 @@ const MATRIX = {
     logs: NONE,
     settings: NONE,
     billing: NONE,
+    reports: NONE,
   },
 };
 

@@ -178,6 +178,8 @@ function Modal({
             style={{
               display: "flex",
               justifyContent: "flex-end",
+              alignItems: "center",
+              flexWrap: "wrap",
               gap: "10px",
               padding: "15px 24px",
               borderTop: `1px solid ${surface.sunken}`,

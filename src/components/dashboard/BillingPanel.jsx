@@ -15,6 +15,7 @@ import { neutral, status as semantic } from "../../styles/tokens";
 import { useScheduling } from "../../context/SchedulingContext";
 import { useOptionalBilling } from "../../hooks/useBilling";
 import { billingSummary } from "../../utils/billing";
+import { contractInvoicesDue, prepaidPlanIds } from "../../utils/sprint4";
 import { peso, pesoCompact } from "../../utils/dashboardMetrics";
 import { plural } from "../../utils/formatters";
 import { Panel } from "./DashboardParts";
@@ -34,7 +35,9 @@ function BillingPanel() {
   const { appointments } = useScheduling();
   if (!billing || !billing.office || !billing.available) return null;
 
-  const summary = billingSummary({ quotes: billing.quotes, invoices: billing.invoices, payments: billing.payments, appointments });
+  const contracts = billing.contracts || [];
+  const summary = billingSummary({ quotes: billing.quotes, invoices: billing.invoices, payments: billing.payments, appointments, prepaid: prepaidPlanIds(contracts, billing.invoices) });
+  const contractReady = billing.invoicesAvailable ? contractInvoicesDue({ contracts, appointments, invoices: billing.invoices }).length : 0;
   const segments = billingSegments(summary);
   const total = segments.reduce((sum, segment) => sum + segment.amount, 0);
   const loose = [
@@ -42,6 +45,7 @@ function BillingPanel() {
     summary.depositsDue.count > 0 && { key: "deposits", text: `${plural(summary.depositsDue.count, "down payment")} not yet received`, amount: summary.depositsDue.amount },
     summary.pendingChecks.count > 0 && { key: "checks", text: `${plural(summary.pendingChecks.count, "check")} waiting to clear`, amount: summary.pendingChecks.amount },
     billing.invoicesAvailable && summary.toInvoice.count > 0 && { key: "invoice", text: `${plural(summary.toInvoice.count, "completed visit")} not yet invoiced` },
+    contractReady > 0 && { key: "contracts", text: `${plural(contractReady, "contract invoice")} ready to review` },
   ].filter(Boolean);
 
   return (

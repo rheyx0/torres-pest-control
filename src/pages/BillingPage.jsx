@@ -34,9 +34,12 @@ import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
 import { colors, pageShell } from "../styles/theme";
 import { CONTRACT_STATUS_LABELS, INVOICE_STATE_LABELS, QUOTE_STATUS_LABELS } from "../utils/constants";
-import { depositStatus, invoiceBalance, quoteStatus } from "../utils/billing";
+import { billingOverview, depositStatus, invoiceBalance, quoteStatus } from "../utils/billing";
+import { StatTile, TileRow } from "../components/dashboard/DashboardParts";
 import { servicesOf } from "../utils/scheduling";
 import { includedMaterialsText } from "../utils/pricing";
+import { contractInvoicesDue, prepaidPlanIds } from "../utils/sprint4";
+import { documentEmail, gmailComposeUrl } from "../utils/gmail";
 import { formatDate, formatPeso } from "../utils/formatters";
 import { SUBSYSTEMS } from "../utils/permissions";
 
@@ -67,7 +70,7 @@ function BillingPage() {
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null); // { quote } — quote null means new
-  const [invoicing, setInvoicing] = useState(null); // { quoteId, clientId }
+  const [invoicing, setInvoicing] = useState(null); // { quoteId, clientId } or a contract's { contract, visitIds, lines }
   const [paying, setPaying] = useState(null); // { quote } for a down payment, { invoice } for a payment
   const [printRequest, setPrintRequest] = useState(null);
 
@@ -84,6 +87,8 @@ function BillingPage() {
   const openInvoiceRecord = invoiceById(searchParams.get("invoice"));
   const openContractRecord = billing.contractById(searchParams.get("contract"));
   const startNew = searchParams.get("new") === "1" && canCreate;
+  // "Create quote from inspection" (Sprint 4) arrives as &inspection=<visit>.
+  const inspectionVisit = startNew ? appointments.find((visit) => visit.id === searchParams.get("inspection")) || null : null;
   const quoteEditorOpen = editing || startNew;
   const [contractEditing, setContractEditing] = useState(null); // { contract } — null contract means new
   const modalOpen = quoteEditorOpen || invoicing || paying || contractEditing;
@@ -100,22 +105,25 @@ function BillingPage() {
   const needle = search.trim().toLowerCase();
   const matches = (record) => !needle || `${record.reference} ${record.clientName}`.toLowerCase().includes(needle);
 
-  const quoteRows = useMemo(() => quotes
+  // Every row matching the search; the status filter is applied after, so
+  // each filter chip can say how many it would show.
+  const quoteMatches = useMemo(() => quotes
     .map((quote) => ({ ...quote, state: QUOTE_STATUS_LABELS[quoteStatus(quote)], clientName: clientById.get(quote.clientId)?.name || "—" }))
-    .filter((quote) => filter === "All" || quote.state === filter)
     .filter(matches),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [quotes, clientById, filter, needle]);
+  [quotes, clientById, needle]);
+  const quoteRows = useMemo(() => quoteMatches.filter((quote) => filter === "All" || quote.state === filter), [quoteMatches, filter]);
 
-  const invoiceRows = useMemo(() => invoices
+  const invoiceMatches = useMemo(() => invoices
     .map((invoice) => {
       const balance = invoiceBalance(invoice, payments);
       return { ...invoice, balance, state: INVOICE_STATE_LABELS[balance.state], clientName: clientById.get(invoice.clientId)?.name || "—" };
     })
-    .filter((invoice) => filter === "All" || invoice.state === filter)
     .filter(matches),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [invoices, payments, clientById, filter, needle]);
+  [invoices, payments, clientById, needle]);
+  const invoiceRows = useMemo(() => invoiceMatches.filter((invoice) => filter === "All" || invoice.state === filter), [invoiceMatches, filter]);
+  const overview = useMemo(() => billingOverview({ quotes, invoices: invoicesAvailable ? invoices : [], payments }), [quotes, invoices, payments, invoicesAvailable]);
 
   const quoteColumns = [
     { key: "reference", label: "Quote", sortable: true, render: (quote) => <strong style={{ color: colors.ink }}>{quote.reference}</strong> },
@@ -144,10 +152,11 @@ function BillingPage() {
     { key: "balance", label: "Balance", align: "right", sortable: true, sortValue: (invoice) => invoice.balance.balance, render: (invoice) => (invoice.status === "VOID" ? "—" : formatPeso(invoice.balance.balance)) },
   ];
 
-  const contractRows = (billing.contracts || [])
+  const contractMatches = (billing.contracts || [])
     .map((contract) => ({ ...contract, state: CONTRACT_STATUS_LABELS[contract.status], clientName: clientName(contract.clientId) }))
-    .filter((contract) => filter === "All" || contract.state === filter)
     .filter((contract) => !needle || `${contract.reference} ${contract.clientName} ${contract.title}`.toLowerCase().includes(needle));
+
+  const contractRows = contractMatches.filter((contract) => filter === "All" || contract.state === filter);
 
   const contractColumns = [
     { key: "reference", label: "Contract", sortable: true, render: (contract) => <strong style={{ color: colors.ink }}>{contract.reference}</strong> },
@@ -201,6 +210,8 @@ function BillingPage() {
     const result = await billing.saveQuote(quote?.id || null, form, lines);
     if (typeof result === "string") return result;
     showSuccess(quote ? `${quote.reference} saved.` : `Quote ${result?.reference || ""} created.`);
+    // A new quote from an inspection names it.
+    if (!quote && inspectionVisit && result?.id) await billing.setQuoteInspection(result.id, inspectionVisit.id);
     setEditing(null);
     if (result?.id) openQuote(result.id);
     else if (startNew) setParams({});
@@ -210,6 +221,8 @@ function BillingPage() {
   const issueInvoice = async (form, lines) => {
     const result = await billing.createInvoice(form, lines);
     if (typeof result === "string") return result;
+    // A contract's invoice names the contract, so it is not billed twice.
+    if (invoicing?.contract && result?.id) await billing.linkInvoiceContract(result.id, invoicing.contract.id);
     showSuccess(`Invoice ${result?.reference || ""} issued.`);
     setInvoicing(null);
     setTab("invoices");
@@ -258,6 +271,32 @@ function BillingPage() {
     payments: payment.invoiceId ? paymentsForInvoice(payment.invoiceId) : [],
   });
 
+  // Send by Gmail (Sprint 4): a draft to the client with the message written,
+  // and "Save as PDF" for the document, to attach to it.
+  const sendDocument = (kind, record, request) => {
+    const client = request.client;
+    if (!client?.email) {
+      showError(`${client?.name || "This client"} has no email address. Add it to their profile first.`);
+      return;
+    }
+    window.open(gmailComposeUrl({ to: client.email, ...documentEmail(kind, record, client) }), "_blank", "noopener");
+    setPrintRequest(request);
+    showSuccess("Gmail is open in a new tab. Save the PDF, then attach it to the email.");
+  };
+  const sendReceipt = (payment) => sendDocument("RECEIPT", payment, {
+    kind: "RECEIPT",
+    payment,
+    client: clientById.get(payment.clientId),
+    quote: quoteById(payment.quoteId),
+    invoice: invoiceById(payment.invoiceId),
+    payments: payment.invoiceId ? paymentsForInvoice(payment.invoiceId) : [],
+  });
+
+  // Contract invoicing (Sprint 4): what each contract's billing schedule says
+  // is ready, each opening the invoice form filled in for review.
+  const prepaid = prepaidPlanIds(billing.contracts || [], invoices);
+  const contractReady = invoicesAvailable ? contractInvoicesDue({ contracts: billing.contracts || [], appointments, invoices }) : [];
+
   const checkStatus = (payment, status, note) => billing.setCheckStatus(payment, status, null, note);
   const reverse = (payment, reason) => billing.reversePayment(payment, reason);
 
@@ -272,7 +311,24 @@ function BillingPage() {
     );
   }
 
-  const filters = tab === "quotes" ? QUOTE_FILTERS : tab === "contracts" ? CONTRACT_FILTERS : INVOICE_FILTERS;
+  // Each filter chip carries its count ("Overdue 2"); the value stays the plain word.
+  const filterRows = tab === "quotes" ? quoteMatches : tab === "contracts" ? contractMatches : invoiceMatches;
+  const filters = (tab === "quotes" ? QUOTE_FILTERS : tab === "contracts" ? CONTRACT_FILTERS : INVOICE_FILTERS).map((value) => {
+    const count = value === "All" ? filterRows.length : filterRows.filter((row) => row.state === value).length;
+    return {
+      value,
+      label: (
+        <>
+          {value}
+          {count > 0 && <span aria-hidden="true" style={{ color: colors.muted, fontVariantNumeric: "tabular-nums" }}>{count}</span>}
+        </>
+      ),
+    };
+  });
+  const goTo = (nextTab, nextFilter) => {
+    setTab(nextTab);
+    setFilter(nextFilter);
+  };
   const tabs = TABS.filter((entry) => (entry.value !== "invoices" || invoicesAvailable) && (entry.value !== "contracts" || billing.contractsAvailable));
 
   return (
@@ -300,22 +356,52 @@ function BillingPage() {
         )}
       </div>
 
+      {/* Where the money stands; each tile opens the list it counts. */}
+      <div style={{ marginBottom: "1rem" }}>
+        <TileRow min="170px">
+          {invoicesAvailable && (
+            <StatTile label="To collect" value={formatPeso(overview.toCollect)} note={`${overview.toCollectCount} unpaid invoice${overview.toCollectCount === 1 ? "" : "s"}`} onClick={() => goTo("invoices", "All")} />
+          )}
+          {invoicesAvailable && (
+            <StatTile label="Overdue" tone={overview.overdueCount ? "crit" : "plain"} value={formatPeso(overview.overdue)} note={overview.overdueCount ? `${overview.overdueCount} past the due date` : "Nothing overdue"} onClick={() => goTo("invoices", "Overdue")} />
+          )}
+          <StatTile label="Collected this month" tone="done" value={formatPeso(overview.collectedThisMonth)} note="Payments and down payments" onClick={() => goTo("payments", "All")} />
+          <StatTile label="Down payments due" tone={overview.depositsDueCount ? "attn" : "plain"} value={formatPeso(overview.depositsDue)} note={`${overview.depositsDueCount} approved quote${overview.depositsDueCount === 1 ? "" : "s"} waiting`} onClick={() => goTo("quotes", "Approved")} />
+        </TileRow>
+      </div>
+
       {error && <p role="alert" style={{ color: colors.danger }}>{error}</p>}
       {!invoicesAvailable && <p style={{ color: colors.muted, fontSize: "0.85rem" }}>Invoices need migration 062.</p>}
 
       {tab === "quotes" && (
         <Card padded={false}>
-          <DataTable caption="Quotes" columns={quoteColumns} rows={quoteRows} initialSort={{ key: "reference", direction: "desc" }} onRowClick={(quote) => openQuote(quote.id)} empty={loading ? "Loading quotes…" : "No quotes yet."} />
+          <DataTable caption="Quotes" columns={quoteColumns} rows={quoteRows} initialSort={{ key: "reference", direction: "desc" }} onRowClick={(quote) => openQuote(quote.id)} loading={loading} empty={loading ? "Loading quotes…" : "No quotes yet."} />
+        </Card>
+      )}
+      {tab === "invoices" && contractReady.length > 0 && (
+        <Card title="Ready to invoice from contracts" style={{ marginBottom: "1rem" }}>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {contractReady.map((item) => (
+              <li key={item.key} style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap", padding: "0.55rem 0", borderTop: `1px solid ${colors.line}` }}>
+                <span style={{ flex: "1 1 260px", color: colors.ink }}>
+                  {clientName(item.contract.clientId)} · {item.label}
+                </span>
+                <Button size="sm" variant="primary" onClick={() => setInvoicing({ clientId: item.contract.clientId, quoteId: "", contract: item.contract, visitIds: item.visits.map((visit) => visit.id), lines: item.lines || [] })}>
+                  Review and issue
+                </Button>
+              </li>
+            ))}
+          </ul>
         </Card>
       )}
       {tab === "invoices" && (
         <Card padded={false}>
-          <DataTable caption="Invoices" columns={invoiceColumns} rows={invoiceRows} initialSort={{ key: "reference", direction: "desc" }} onRowClick={(invoice) => openInvoice(invoice.id)} empty={loading ? "Loading invoices…" : "No invoices yet."} />
+          <DataTable caption="Invoices" columns={invoiceColumns} rows={invoiceRows} initialSort={{ key: "reference", direction: "desc" }} onRowClick={(invoice) => openInvoice(invoice.id)} loading={loading} empty={loading ? "Loading invoices…" : "No invoices yet."} />
         </Card>
       )}
       {tab === "contracts" && (
         <Card padded={false}>
-          <DataTable caption="Contracts" columns={contractColumns} rows={contractRows} initialSort={{ key: "reference", direction: "desc" }} onRowClick={(contract) => openContract(contract.id)} empty={loading ? "Loading contracts…" : "No contracts yet."} />
+          <DataTable caption="Contracts" columns={contractColumns} rows={contractRows} initialSort={{ key: "reference", direction: "desc" }} onRowClick={(contract) => openContract(contract.id)} loading={loading} empty={loading ? "Loading contracts…" : "No contracts yet."} />
         </Card>
       )}
       {tab === "payments" && (
@@ -348,6 +434,9 @@ function BillingPage() {
           onInvoice={invoicesAvailable && canCreate ? () => setInvoicing({ quoteId: openQuoteRecord.id, clientId: openQuoteRecord.clientId }) : undefined}
           onOpenInvoice={(id) => { setTab("invoices"); openInvoice(id); }}
           onPrint={() => printQuote(openQuoteRecord)}
+          onEmail={() => sendDocument("QUOTE", openQuoteRecord, { kind: "QUOTE", quote: openQuoteRecord, client: clientById.get(openQuoteRecord.clientId), payments: paymentsForQuote(openQuoteRecord.id), includesFor })}
+          onSendReceipt={sendReceipt}
+          inspection={openQuoteRecord.inspectionId ? appointments.find((visit) => visit.id === openQuoteRecord.inspectionId) || null : null}
           includesFor={includesFor}
           onReceipt={printReceipt}
           onCheck={checkStatus}
@@ -375,6 +464,15 @@ function BillingPage() {
           onReverse={reverse}
           onOpenQuote={() => { setTab("quotes"); openQuote(openInvoiceRecord.quoteId); }}
           onPrint={() => printInvoice(openInvoiceRecord)}
+          onEmail={() => sendDocument("INVOICE", openInvoiceRecord, {
+            kind: "INVOICE",
+            invoice: openInvoiceRecord,
+            client: clientById.get(openInvoiceRecord.clientId),
+            quote: quoteById(openInvoiceRecord.quoteId),
+            payments: paymentsForInvoice(openInvoiceRecord.id),
+            visits: appointments.filter((visit) => visit.invoiceId === openInvoiceRecord.id),
+          })}
+          onSendReceipt={sendReceipt}
           onReceipt={printReceipt}
           onClose={() => openInvoice(null)}
         />
@@ -387,6 +485,7 @@ function BillingPage() {
           services={activeServices}
           inventory={inventory}
           initialClientId={startNew ? searchParams.get("client") || "" : ""}
+          inspection={editing?.quote ? null : inspectionVisit}
           onSave={saveQuote}
           onClose={closeQuoteEditor}
         />
@@ -409,6 +508,7 @@ function BillingPage() {
             visits={contract.planId ? appointments.filter((visit) => visit.planId === contract.planId) : []}
             onEdit={() => setContractEditing({ contract })}
             onPrint={() => setPrintRequest({ kind: "CONTRACT", contract, client })}
+            onEmail={() => sendDocument("CONTRACT", contract, { kind: "CONTRACT", contract, client })}
             onUploadSigned={(file) => uploadSigned(contract, file)}
             onViewSigned={() => signedDocument && viewDocument(signedDocument)}
             onActivate={() => toast(`${contract.reference} is active.`)(() => billing.setContractStatus(contract, "ACTIVE"))}
@@ -449,6 +549,10 @@ function BillingPage() {
           itemById={itemById}
           initialClientId={invoicing.clientId}
           initialQuoteId={invoicing.quoteId}
+          initialVisitIds={invoicing.visitIds || null}
+          presetLines={invoicing.lines || []}
+          contract={invoicing.contract || null}
+          prepaid={prepaid}
           onSave={issueInvoice}
           onClose={() => setInvoicing(null)}
         />

@@ -681,4 +681,37 @@ describe("booking under a quote or contract (Sprint 3)", () => {
     expect(screen.queryByLabelText("Quote or contract")).not.toBeInTheDocument();
     expect(screen.queryByText(/No quote or contract linked/)).not.toBeInTheDocument();
   });
+
+// Sprint 4: a treatment needs a paid quotation, unless the office says why not.
+describe("NewAppointmentModal payment check", () => {
+  const refuse = () => ({ ok: false, reason: "Rhey Garcia has no approved quotation with its down payment paid, and no active contract." });
+
+  it("blocks a booking the check refuses", async () => {
+    const { onCreate } = renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1", paymentCheckFor: refuse });
+
+    expect(screen.getByRole("group", { name: "Payment check" })).toHaveTextContent(/no approved quotation/);
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByText(/Still make appointment without an approved quotation".$/)).toBeInTheDocument();
+  });
+
+  it("books with the override once a reason is written, and sends the reason", async () => {
+    const { onCreate } = renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1", paymentCheckFor: refuse });
+
+    await userEvent.click(screen.getByRole("button", { name: /Still make appointment without an approved quotation/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByText(/Write why this appointment/)).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Why it is booked without an approved quotation"), "Emergency, pays on the day");
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ paymentOverride: "Emergency, pays on the day" }));
+  });
+
+  it("shows nothing when the check passes", () => {
+    renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1", paymentCheckFor: () => ({ ok: true, reason: "" }) });
+    expect(screen.queryByRole("group", { name: "Payment check" })).not.toBeInTheDocument();
+  });
+});
 });

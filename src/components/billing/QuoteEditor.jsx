@@ -48,28 +48,46 @@ export function validateQuote(form, lines, today = todayISO()) {
   return null;
 }
 
-function QuoteEditor({ quote = null, clients = [], services = [], inventory = [], initialClientId = "", onSave, onClose }) {
+function QuoteEditor({ quote = null, clients = [], services = [], inventory = [], initialClientId = "", inspection = null, onSave, onClose }) {
+  // Made from an inspection (Sprint 4): its area and recommended services.
+  const fromInspection = !quote && inspection
+    ? (inspection.recommendedServiceIds || []).map((id) => services.find((service) => service.id === id)).filter(Boolean)
+    : [];
+  const inspectionDeposit = fromInspection.find((service) => service.depositPercent > 0)?.depositPercent || 0;
   const [form, setForm] = useState(() => ({
     clientId: quote?.clientId || initialClientId || "",
     validUntil: quote?.validUntil || validUntilFrom(30),
     paymentTerms: quote?.paymentTerms || "DUE_ON_RECEIPT",
-    areaSqm: quote?.areaSqm ?? "",
+    areaSqm: quote?.areaSqm ?? inspection?.inspectionAreaSqm ?? "",
     discountType: quote?.discountType || "AMOUNT",
     discountValue: quote?.discountValue ?? 0,
     vatMode: quote?.vatMode || "ADDED",
-    depositType: quote?.depositType || "NONE",
-    depositValue: quote?.depositValue ?? 0,
+    depositType: quote?.depositType || (inspectionDeposit ? "PERCENT" : "NONE"),
+    depositValue: quote?.depositValue ?? inspectionDeposit,
     notes: quote?.notes || "",
   }));
-  const [lines, setLines] = useState(() => (quote?.lines || []).map((line) => newLine({
-    kind: line.kind,
-    serviceId: line.serviceId,
-    itemId: line.itemId,
-    description: line.description,
-    quantity: String(line.quantity),
-    unit: line.unit,
-    unitPrice: String(line.unitPrice),
-  })));
+  const [lines, setLines] = useState(() => (quote
+    ? (quote.lines || []).map((line) => newLine({
+      kind: line.kind,
+      serviceId: line.serviceId,
+      itemId: line.itemId,
+      description: line.description,
+      quantity: String(line.quantity),
+      unit: line.unit,
+      unitPrice: String(line.unitPrice),
+    }))
+    : fromInspection.map((service) => {
+      const price = servicePrice(service, inspection?.inspectionAreaSqm);
+      return newLine({
+        kind: "SERVICE",
+        serviceId: service.id,
+        description: service.name,
+        quantity: "1",
+        unit: service.pricingMode === "AREA" ? "job" : "visit",
+        unitPrice: price === null ? "" : String(price),
+        autoPriced: true,
+      });
+    })));
   const [adding, setAdding] = useState({ service: "", item: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -185,7 +203,7 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
   return (
     <Modal
       title={quote ? `Edit ${quote.reference}` : "New quote"}
-      eyebrow={quote?.status === "SENT" ? "Saving sends it back to draft" : "Quote"}
+      eyebrow={quote?.status === "SENT" ? "Saving sends it back to draft" : inspection ? `From inspection ${inspection.reference || ""}`.trim() : "Quote"}
       size="xl"
       onClose={onClose}
       footer={

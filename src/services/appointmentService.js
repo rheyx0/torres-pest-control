@@ -7,7 +7,7 @@ const ATTACHMENT_BUCKET = "report-attachments";
 const ATTACHMENT_COLUMNS = "id, appointment_id, name, mime_type, size_bytes, storage_path, category, uploaded_at";
 const SIGNED_URL_TTL_SECONDS = 60;
 
-const APPOINTMENT_COLUMNS = "id, reference, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, plan_id, plan_position, day_done_at, quote_id, invoice_id, activity_level, open_issues, created_at, updated_at";
+const APPOINTMENT_COLUMNS = "id, reference, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, plan_id, plan_position, day_done_at, quote_id, invoice_id, activity_level, open_issues, inspection_area_sqm, recommended_service_ids, created_at, updated_at";
 const REPORT_COLUMNS = "appointment_id, findings, treatment_performed, recommendations, follow_up_date, submitted_by, submitted_at, customer_name, signature_path, signed_at, completion_note, technician_signature_path, technician_signed_at";
 
 function describeError(error) {
@@ -55,6 +55,9 @@ export function mapAppointmentRow(row, report = null) {
     invoiceId: row.invoice_id || "",
     activityLevel: row.activity_level || "",
     openIssues: row.open_issues || "",
+    // Inspection results (066): the area measured and the services recommended.
+    inspectionAreaSqm: row.inspection_area_sqm === null || row.inspection_area_sqm === undefined ? null : Number(row.inspection_area_sqm),
+    recommendedServiceIds: row.recommended_service_ids || [],
     planPosition: row.plan_position ?? null,
     planKind: row.planKind || "",
     planFrequency: row.planFrequency || "",
@@ -90,7 +93,7 @@ export function mapAppointmentRow(row, report = null) {
 // naming a column that doesn't exist. Rather than blank the whole schedule
 // when the app is deployed ahead of a migration, retry without whichever
 // column it named.
-const OPTIONAL_COLUMNS = ["reference", "started_at", "plan_id", "plan_position", "day_done_at", "quote_id", "invoice_id", "activity_level", "open_issues"];
+const OPTIONAL_COLUMNS = ["reference", "started_at", "plan_id", "plan_position", "day_done_at", "quote_id", "invoice_id", "activity_level", "open_issues", "inspection_area_sqm", "recommended_service_ids"];
 
 async function selectAppointments() {
   let columns = APPOINTMENT_COLUMNS;
@@ -423,7 +426,19 @@ export async function startVisit(appointmentId) {
  * parameter is not sent at all, so a report that doesn't change them still
  * files before 051 is applied.
  */
-export async function submitReport(appointmentId, { findings, treatmentPerformed, recommendations, followUpDate, customerName, signaturePath, completionNote, technicianSignaturePath, serviceIds, activityLevel, openIssues }) {
+export async function submitReport(appointmentId, { findings, treatmentPerformed, recommendations, followUpDate, customerName, signaturePath, completionNote, technicianSignaturePath, serviceIds, activityLevel, openIssues, inspectionAreaSqm, recommendedServiceIds }) {
+  // Inspection results (066), the same way as monitoring below: their own
+  // RPC, skipped before the migration.
+  if (inspectionAreaSqm !== undefined || recommendedServiceIds !== undefined) {
+    const inspection = await supabase.rpc("record_inspection", {
+      p_appointment_id: appointmentId,
+      p_area_sqm: inspectionAreaSqm === "" || inspectionAreaSqm === null || inspectionAreaSqm === undefined ? null : Number(inspectionAreaSqm),
+      p_service_ids: recommendedServiceIds || [],
+    });
+    if (inspection.error && !/record_inspection|schema cache|does not exist/i.test(`${inspection.error.message || ""} ${inspection.error.details || ""}`)) {
+      return { error: describeError(inspection.error) };
+    }
+  }
   // Site monitoring (063) first, through its own RPC so the report function
   // stays 052's. Before 063 the function doesn't exist; the report still saves.
   if (activityLevel !== undefined || openIssues !== undefined) {
@@ -543,4 +558,30 @@ export async function stockOutBatch(appointmentId, items, date = todayISO()) {
   if (error) return { error: describeError(error) };
   const rows = Array.isArray(data) ? data : data ? [data] : [];
   return { movements: rows };
+}
+
+// ---------------------------------------------------------------------------
+// Status history (066)
+// ---------------------------------------------------------------------------
+
+export function mapStatusHistoryRow(row) {
+  return {
+    id: row.id,
+    fromStatus: row.from_status || "",
+    toStatus: row.to_status,
+    changedAt: row.changed_at,
+    changedByName: row.changed_by_name || "",
+  };
+}
+
+/** A visit's status changes, oldest first. Before 066 there are none. */
+export async function fetchStatusHistory(appointmentId) {
+  const { data, error } = await supabase
+    .from("appointment_status_history")
+    .select("id, from_status, to_status, changed_at, changed_by_name")
+    .eq("appointment_id", appointmentId)
+    .order("changed_at", { ascending: true });
+  if (error && /appointment_status_history|schema cache|does not exist/i.test(`${error.message || ""} ${error.details || ""}`)) return { history: [], available: false, error: null };
+  if (error) return { history: [], available: true, error: describeError(error) };
+  return { history: (data || []).map(mapStatusHistoryRow), available: true, error: null };
 }

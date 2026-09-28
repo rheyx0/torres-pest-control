@@ -256,6 +256,9 @@ export const DOCUMENT_CATEGORIES = [
   { value: "CLIENT_ID", label: "Valid ID", uploadLabel: "Add valid ID" },
   { value: "PROPERTY", label: "Property documents", uploadLabel: "Add property document" },
   { value: "PERMIT", label: "General permits", uploadLabel: "Add permit" },
+  // Signed service contracts (Sprint 4). Uploaded from the contract itself,
+  // which links the file to it; the check constraint has allowed it since 031.
+  { value: "CONTRACT", label: "Contracts", uploadLabel: "Add signed contract" },
   { value: "OTHER", label: "Other client files", uploadLabel: "Add document" },
 ];
 
@@ -294,7 +297,7 @@ export const COMPANY = {
   phone: "0917 139 1908",
   email: "torresprestcontrol@gmail.com",
   licenseNo: "LTO-3000001234567",
-  logo: "/brand-logo.png",
+  logo: "/login-logo.png", // the round TP mark; the name is printed beside it
 };
 
 export const MIN_PASSWORD_LENGTH = 6;

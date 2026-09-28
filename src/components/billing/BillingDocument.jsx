@@ -10,12 +10,12 @@
 // The receipt is an acknowledgement receipt, not a BIR official receipt: the
 // office still issues those from its registered booklet.
 
-import { BILLING_SCHEDULES, COMPANY, PAYMENT_METHOD_LABELS, PAYMENT_TERMS } from "../../utils/constants";
+import { ACTIVITY_LEVELS, BILLING_SCHEDULES, COMPANY, PAYMENT_METHOD_LABELS, PAYMENT_TERMS } from "../../utils/constants";
 import { depositStatus, invoiceBalance } from "../../utils/billing";
 import { appointmentReference } from "../../utils/scheduling";
 import { formatDate, formatDateTime, formatPeso } from "../../utils/formatters";
 
-const TITLES = { QUOTE: "Quotation", INVOICE: "Invoice", RECEIPT: "Acknowledgement Receipt", CONTRACT: "Service Contract" };
+const TITLES = { QUOTE: "Quotation", INVOICE: "Invoice", RECEIPT: "Acknowledgement Receipt", CONTRACT: "Service Contract", MONITORING: "Site Monitoring Report" };
 
 function Row({ label, value }) {
   return (
@@ -67,7 +67,7 @@ function Totals({ record, children }) {
 const termsLabel = (value) => PAYMENT_TERMS.find((term) => term.value === value)?.label || "";
 const clientLine = (client) => [client.reference, client.name].filter(Boolean).join(" — ");
 
-function Letterhead({ kind, reference }) {
+function Letterhead({ kind, reference, title = null }) {
   return (
     <header className="sf-head">
       <img className="sf-logo" src={COMPANY.logo} alt="" />
@@ -78,7 +78,7 @@ function Letterhead({ kind, reference }) {
         <div className="sf-org-line">License no. {COMPANY.licenseNo}</div>
       </div>
       <div className="sf-doc">
-        <div className="sf-doc-title">{TITLES[kind]}</div>
+        <div className="sf-doc-title">{title || TITLES[kind]}</div>
         <div className="sf-doc-ref">{reference}</div>
       </div>
     </header>
@@ -279,9 +279,102 @@ function ContractBody({ contract, client }) {
   );
 }
 
-function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, payments = [], visits = [], includesFor }) {
+const TREND_WORDS = { better: "Less activity than the visit before", worse: "More activity than the visit before", steady: "Same as the visit before", none: "Not enough visits to compare" };
+const activityWord = (value) => ACTIVITY_LEVELS.find((level) => level.value === value)?.label || "Not recorded";
+
+/** Sprint 4: a client's treatment results over a period, visit by visit. */
+function MonitoringBody({ monitoring, client }) {
+  const { visits, from, to, trend } = monitoring;
+  const latest = [...visits].reverse().find((visit) => visit.activityLevel);
+  return (
+    <>
+      <table className="sf-meta">
+        <tbody>
+          <Row label="Client" value={clientLine(client)} />
+          <Row label="Service address" value={client.address} />
+          <Row label="Period" value={`${formatDate(from)} – ${formatDate(to)}`} />
+          <Row label="Visits in period" value={String(visits.length)} />
+          <Row label="Latest pest activity" value={latest ? `${activityWord(latest.activityLevel)} (${formatDate(latest.scheduledAt)})` : "Not recorded"} />
+          <Row label="Trend" value={TREND_WORDS[trend?.direction || "none"]} />
+        </tbody>
+      </table>
+      <section className="sf-block">
+        <h2 className="sf-h2">Visit by visit</h2>
+        {visits.length === 0 ? (
+          <div className="sf-prose">No visits in this period.</div>
+        ) : (
+          <table className="bd-lines">
+            <thead>
+              <tr><th>Date · visit</th><th>Service</th><th>Pest activity</th><th>Open issues</th><th>Materials used</th></tr>
+            </thead>
+            <tbody>
+              {visits.map((visit) => (
+                <tr key={visit.id}>
+                  <td>{formatDate(visit.scheduledAt)}<div className="bd-includes">{appointmentReference(visit)}</div></td>
+                  <td>{visit.serviceType || "—"}</td>
+                  <td>{activityWord(visit.activityLevel)}</td>
+                  <td>{visit.openIssues || "—"}</td>
+                  <td>{(visit.stockUsed || []).map((entry) => `${entry.name} ${entry.amount} ${entry.unit}`.trim()).join(", ") || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+      {trend?.openIssues && (
+        <section className="sf-block"><h2 className="sf-h2">Still open at the site</h2><div className="sf-prose">{trend.openIssues}</div></section>
+      )}
+    </>
+  );
+}
+
+/**
+ * A report from the Reports page (Sprint 4): its summary figures and tables.
+ * report = { title, reference, period, summary: [{ label, value }], tables: [{ title, columns, rows }] }
+ */
+function ReportBody({ report }) {
+  return (
+    <>
+      <table className="sf-meta">
+        <tbody>
+          <Row label="Period" value={report.period} />
+          {report.summary.map((entry) => <Row key={entry.label} label={entry.label} value={String(entry.value)} />)}
+        </tbody>
+      </table>
+      {report.tables.map((table) => (
+        <section key={table.title} className="sf-block">
+          <h2 className="sf-h2">{table.title}</h2>
+          {table.rows.length === 0 ? (
+            <div className="sf-prose">Nothing in this period.</div>
+          ) : (
+            <table className="bd-lines">
+              <thead><tr>{table.columns.map((column) => <th key={column.key} className={column.numeric ? "sf-num" : undefined}>{column.label}</th>)}</tr></thead>
+              <tbody>
+                {table.rows.map((row, index) => (
+                  <tr key={index}>{table.columns.map((column) => <td key={column.key} className={column.numeric ? "sf-num" : undefined}>{column.format ? column.format(row[column.key]) : row[column.key]}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      ))}
+    </>
+  );
+}
+
+function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, monitoring = null, report = null, payments = [], visits = [], includesFor }) {
+  if (kind === "REPORT") {
+    if (!report) return null;
+    return (
+      <div className="service-form billing-document">
+        <Letterhead kind={kind} reference={report.reference} title={report.title} />
+        <ReportBody report={report} />
+        <footer className="sf-foot">{COMPANY.name} · {report.title} · Printed {formatDateTime(new Date().toISOString())}</footer>
+      </div>
+    );
+  }
   if (!client) return null;
-  const reference = { QUOTE: quote, INVOICE: invoice, RECEIPT: payment, CONTRACT: contract }[kind]?.reference;
+  const reference = { QUOTE: quote, INVOICE: invoice, RECEIPT: payment, CONTRACT: contract, MONITORING: monitoring }[kind]?.reference;
   if (!reference) return null;
   return (
     <div className="service-form billing-document">
@@ -290,6 +383,7 @@ function BillingDocument({ kind, client, quote = null, invoice = null, payment =
       {kind === "INVOICE" && <InvoiceBody invoice={invoice} client={client} quote={quote} payments={payments} visits={visits} />}
       {kind === "RECEIPT" && <ReceiptBody payment={payment} client={client} quote={quote} invoice={invoice} payments={payments} />}
       {kind === "CONTRACT" && <ContractBody contract={contract} client={client} />}
+      {kind === "MONITORING" && <MonitoringBody monitoring={monitoring} client={client} />}
       <footer className="sf-foot">
         {COMPANY.name} · {TITLES[kind]} {reference} · Printed {formatDateTime(new Date().toISOString())}
       </footer>

@@ -125,6 +125,9 @@ function NewAppointmentModal({
   // warning. initialSource is "quote:<id>" or "contract:<id>".
   billingSources = null,
   initialSource = "",
+  // The payment check before booking (Sprint 4): (clientId, serviceIds,
+  // source) => { ok, reason }. Null where billing is not in use.
+  paymentCheckFor = null,
   onClose,
   onCreate,
   onBook,
@@ -163,6 +166,9 @@ function NewAppointmentModal({
 
   const selectedClient = clients.find((client) => client.id === clientId) || null;
   const [source, setSource] = useState(initialSource);
+  // "Still make appointment without an approved quotation", with its reason.
+  const [override, setOverride] = useState(false);
+  const [overrideReason, setOverrideReason] = useState("");
   const sourceQuotes = (billingSources?.quotes || []).filter((quote) => quote.clientId === clientId);
   const sourceContracts = (billingSources?.contracts || []).filter((contract) => contract.clientId === clientId);
 
@@ -326,6 +332,8 @@ function NewAppointmentModal({
   // Recomputed per render: the picker's lower bound moves with the clock.
   const earliest = toDateTimeLocal(new Date());
 
+  const check = paymentCheckFor && clientId ? paymentCheckFor(clientId, serviceIds, source) : { ok: true, reason: "" };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!clientId) {
@@ -354,6 +362,14 @@ function NewAppointmentModal({
       return;
     }
     const [sourceType, sourceId] = source ? source.split(":") : ["", ""];
+    if (!check.ok && !override) {
+      setFormError(`${check.reason} Record the down payment first, or use "Still make appointment without an approved quotation".`);
+      return;
+    }
+    if (!check.ok && override && !overrideReason.trim()) {
+      setFormError("Write why this appointment is made without an approved quotation.");
+      return;
+    }
     if (sourceType === "contract" && kind !== PLAN_KINDS.RECURRING) {
       setFormError("A contract's visits are booked as a recurring plan: choose how often, and the number of visits.");
       return;
@@ -380,6 +396,8 @@ function NewAppointmentModal({
       notes: values.get("notes"),
       // Linked once booked (SchedulingPage): quote_id, or the contract's plan.
       source: sourceId ? { type: sourceType, id: sourceId } : null,
+      // Booked past the payment check: the reason goes in the activity log.
+      ...(!check.ok ? { paymentOverride: overrideReason.trim() } : {}),
     };
     // A plan, or one visit carrying several services, is booked in one go
     // (book_appointments, 052). A plain single visit keeps the older path,
@@ -452,7 +470,11 @@ function NewAppointmentModal({
                 setClientId(id);
                 setServiceLocation(client?.address || "");
                 // A quote or contract belongs to one client.
-                if (id !== clientId) setSource("");
+                if (id !== clientId) {
+                  setSource("");
+                  setOverride(false);
+                  setOverrideReason("");
+                }
               }}
             />
           </Field>
@@ -755,7 +777,38 @@ function NewAppointmentModal({
 
         {/* Skipping billing is allowed (an inspection, a follow-up), but it
             should be a choice, not an accident. */}
-        {billingSources && clientId && !source && (
+        {!check.ok && (
+          <div
+            role="group"
+            aria-label="Payment check"
+            style={{ gridColumn: "1 / -1", display: "grid", gap: "8px", padding: "10px 12px", background: status.dangerSurface, color: status.danger, borderRadius: radius.control, ...text.small }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+              <AlertTriangle size={14} aria-hidden="true" />
+              <span><strong style={{ fontWeight: weight.medium }}>Payment needed before booking.</strong> {check.reason}</span>
+            </span>
+            {!override ? (
+              <span>
+                <Button size="sm" onClick={() => setOverride(true)}>Still make appointment without an approved quotation</Button>
+              </span>
+            ) : (
+              <span style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                <Input
+                  aria-label="Why it is booked without an approved quotation"
+                  value={overrideReason}
+                  maxLength={300}
+                  onChange={(event) => setOverrideReason(event.target.value)}
+                  placeholder="Why? e.g. emergency visit, pays on the day"
+                  style={{ flex: "1 1 260px" }}
+                  autoFocus
+                />
+                <Button size="sm" variant="quiet" onClick={() => { setOverride(false); setOverrideReason(""); }}>Cancel</Button>
+              </span>
+            )}
+          </div>
+        )}
+
+        {billingSources && clientId && !source && check.ok && (
           <p
             role="status"
             style={{

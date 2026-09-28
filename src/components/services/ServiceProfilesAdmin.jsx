@@ -24,6 +24,7 @@ import { LIMITS } from "../../utils/constants";
 import { validateDuration, validateMoney, validateQuantity } from "../../utils/validators";
 import { formatPeso } from "../../utils/formatters";
 import { card, colors } from "../../styles/theme";
+import Skeleton from "../ui/Skeleton";
 
 const peso = (value) => formatPeso(value);
 
@@ -113,6 +114,8 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
     areaRate: initial?.areaRate ?? "",
     minimumCharge: initial?.minimumCharge ?? "",
     depositPercent: initial?.depositPercent ?? 0,
+    // 066: booked without a paid quote first (inspections, follow-ups).
+    skipPaymentCheck: Boolean(initial?.skipPaymentCheck),
     materials: (initial?.materials || []).length
       ? initial.materials.map((material) => newRow(material.itemId, material.defaultAmount, material.billingMode))
       : [newRow()],
@@ -176,6 +179,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
       areaRate: area && form.areaRate !== "" ? Number(form.areaRate) : null,
       minimumCharge: area && form.minimumCharge !== "" ? Number(form.minimumCharge) : null,
       depositPercent: form.depositPercent === "" ? 0 : Number(form.depositPercent),
+      skipPaymentCheck: form.skipPaymentCheck,
       materials: form.materials
         .filter((row) => row.itemId)
         .map((row) => ({ itemId: row.itemId, defaultAmount: Number(row.defaultAmount), billingMode: row.billingMode })),
@@ -287,6 +291,13 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
               invalid={Boolean(errors.depositPercent)}
             />
           </Field>
+          <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", gridColumn: "1 / -1", fontSize: "0.88rem", color: colors.body, cursor: "pointer" }}>
+            <input type="checkbox" checked={form.skipPaymentCheck} onChange={(event) => set("skipPaymentCheck", event.target.checked)} style={{ marginTop: "3px" }} />
+            <span>
+              <strong style={{ fontWeight: 500, color: colors.ink }}>Can be booked without payment</strong>
+              <span style={{ display: "block", color: colors.muted, fontSize: "0.8rem" }}>For inspections and follow-ups: booking skips the check for a paid quote or contract.</span>
+            </span>
+          </label>
           <Field label="Default duration" hint="Hours and minutes, up to 13 h." error={errors.defaultDurationMinutes} style={{ alignContent: "start" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
               <Input aria-label="Default duration hours" type="number" min="0" max="13" step="1" value={durationHours} onChange={(event) => setDurationPart("hours", event.target.value)} placeholder="Hours" invalid={Boolean(errors.defaultDurationMinutes)} />
@@ -300,7 +311,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
             <div>
               <strong style={{ color: colors.ink, fontSize: "0.85rem" }}>Default materials</strong>
               <div style={{ color: colors.muted, fontSize: "0.74rem", marginTop: "0.15rem" }}>
-                The quantity is what the service includes; it prefills the Stock-Out tab. "Charge extra" bills anything used above it at the item's customer price.
+                The quantity is what the service includes; it prefills the Stock-Out tab. "Charge extra" bills anything used above it, and "Charge all" bills everything used, at the item's customer price.
               </div>
             </div>
             <Button size="sm" onClick={() => setForm((current) => ({ ...current, materials: [...current.materials, newRow()] }))}>
@@ -344,6 +355,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
                 >
                   <option value="INCLUDED">Included</option>
                   <option value="EXTRA_CHARGED">Charge extra</option>
+                  <option value="CHARGE_ALL">Charge all</option>
                 </Select>
                 <Button size="icon" variant="ghost" aria-label="Remove material" onClick={() => removeRow(row.key)}>
                   <X size={15} />
@@ -419,7 +431,7 @@ export default function ServiceProfilesAdmin() {
         </Button>
       </div>
 
-      {loading && <div style={{ padding: "1.5rem", textAlign: "center", color: colors.muted }}>Loading…</div>}
+      {loading && <Skeleton label="Loading…" lines={5} />}
       {!loading && error && (
         <div role="alert" style={{ padding: "0.9rem", borderRadius: "3.75px", background: colors.brandWash, color: colors.danger, fontSize: "0.84rem" }}>
           Could not load services: {error}. If this mentions a missing table, apply supabase/migrations/047-service-profiles-and-safeguards.sql.
@@ -454,6 +466,7 @@ export default function ServiceProfilesAdmin() {
               </div>
               <div style={{ color: colors.muted, fontSize: "0.76rem", marginTop: "0.25rem", display: "flex", gap: "0.9rem", flexWrap: "wrap" }}>
                 <span>Price: {describeServicePricing(service, formatPeso)}</span>
+                {service.skipPaymentCheck && <span>· No payment needed to book</span>}
                 {service.depositPercent > 0 && <span>Down payment: {service.depositPercent}%</span>}
                 <span>Duration: {formatDuration(service.defaultDurationMinutes)}</span>
                 <span>
@@ -466,7 +479,7 @@ export default function ServiceProfilesAdmin() {
                   {service.materials
                     .map((material) => {
                       const item = itemsById.get(material.itemId);
-                      const extra = material.billingMode === "EXTRA_CHARGED" ? " (extra charged)" : "";
+                      const extra = material.billingMode === "EXTRA_CHARGED" ? " (extra charged)" : material.billingMode === "CHARGE_ALL" ? " (charged per use)" : "";
                       return item ? `${item.name} · ${material.defaultAmount} ${item.unit}${extra}` : `Unknown item · ${material.defaultAmount}${extra}`;
                     })
                     .join("  •  ")}

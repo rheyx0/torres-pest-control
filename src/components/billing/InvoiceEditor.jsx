@@ -51,6 +51,12 @@ function InvoiceEditor({
   itemById = () => null,
   initialClientId = "",
   initialQuoteId = "",
+  // A contract's invoice (Sprint 4): the visits it bills, lines to start with
+  // (the whole contract, when billed up front), and plans already paid for.
+  initialVisitIds = null,
+  presetLines = [],
+  contract = null,
+  prepaid = new Set(),
   onSave,
   onClose,
 }) {
@@ -59,28 +65,28 @@ function InvoiceEditor({
     clientId: startQuote?.clientId || initialClientId || "",
     quoteId: startQuote?.id || "",
     issuedOn: todayISO(),
-    paymentTerms: startQuote?.paymentTerms || "DUE_ON_RECEIPT",
+    paymentTerms: startQuote?.paymentTerms || contract?.paymentTerms || "DUE_ON_RECEIPT",
     discountType: startQuote?.discountType || "AMOUNT",
     discountValue: startQuote?.discountValue ?? 0,
     vatMode: startQuote?.vatMode || "ADDED",
     notes: "",
   }));
-  const [visitIds, setVisitIds] = useState(() => (startQuote
-    ? invoiceableVisits(appointments, startQuote.clientId).filter((visit) => visit.quoteId === startQuote.id).map((visit) => visit.id)
-    : []));
+  const [visitIds, setVisitIds] = useState(() => (initialVisitIds || (startQuote
+    ? invoiceableVisits(appointments, startQuote.clientId, prepaid).filter((visit) => visit.quoteId === startQuote.id).map((visit) => visit.id)
+    : [])));
   const [lines, setLines] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const quote = quotes.find((entry) => entry.id === form.quoteId) || null;
   const clientQuotes = quotes.filter((entry) => entry.clientId === form.clientId && entry.status === "APPROVED");
-  const visits = useMemo(() => invoiceableVisits(appointments, form.clientId), [appointments, form.clientId]);
+  const visits = useMemo(() => invoiceableVisits(appointments, form.clientId, prepaid), [appointments, form.clientId, prepaid]);
   const chosenVisits = visits.filter((visit) => visitIds.includes(visit.id));
   const quoteInvoiced = Boolean(quote) && invoices.some((invoice) => invoice.quoteId === quote.id && invoice.status !== "VOID");
 
   // The lines start again from the choices whenever they change.
   useEffect(() => {
-    setLines(draftInvoiceLines({ quote, quoteInvoiced, visits: chosenVisits, extras, servicesFor, itemById }).map(keyed));
+    setLines([...presetLines, ...draftInvoiceLines({ quote, quoteInvoiced, visits: chosenVisits, extras, servicesFor, itemById })].map(keyed));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.clientId, form.quoteId, visitIds.join(",")]);
 
@@ -134,7 +140,7 @@ function InvoiceEditor({
 
   return (
     <Modal
-      title="New invoice"
+      title={contract ? `New invoice · ${contract.reference}` : "New invoice"}
       eyebrow="Once issued it can't be edited — a mistake is voided"
       size="xl"
       onClose={onClose}

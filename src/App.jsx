@@ -35,6 +35,7 @@ import InventoryPage from "./pages/InventoryPage";
 import SchedulingPage from "./pages/SchedulingPage";
 import ServicesPage from "./pages/ServicesPage";
 import BillingPage from "./pages/BillingPage";
+import ReportsPage from "./pages/ReportsPage";
 
 import { SUBSYSTEMS } from "./utils/permissions";
 import { isSupabaseConfigured } from "./services/supabaseClient";
@@ -119,6 +120,10 @@ function App() {
                 <Route
                   path="/scheduling"
                   element={<Guarded subsystem={SUBSYSTEMS.SCHEDULING} action="view"><SchedulingPage /></Guarded>}
+                />
+                <Route
+                  path="/reports"
+                  element={<Guarded subsystem={SUBSYSTEMS.REPORTS} action="view"><ReportsPage /></Guarded>}
                 />
                 <Route
                   path="/billing"

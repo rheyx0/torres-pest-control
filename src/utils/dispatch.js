@@ -18,6 +18,8 @@ import { crewOf, endOf, isAssignedTo, reportOwed, startOf } from "./scheduling";
 import { plansEnding } from "./plans";
 import { describeOut, outOn } from "./absences";
 import { byTime, dayKey, hasPlausiblePrice, weekWindow } from "./dashboardMetrics";
+import { followUpReminders, paymentReminders } from "./sprint4";
+import { formatPeso } from "./formatters";
 
 export const BOARD_START_HOUR = 7;
 export const BOARD_END_HOUR = 18;
@@ -261,7 +263,7 @@ function whenPhrase(value, now) {
  * not act on.
  */
 export function attentionItems(
-  { appointments = [], clients = [], inventory = [], users = [], absences = [] },
+  { appointments = [], clients = [], inventory = [], users = [], absences = [], invoices = null, payments = [] },
   { now = new Date(), canBook = true, canSeeStock = true, expiryDays = 30 } = {}
 ) {
   const clientName = (id) => clients.find((client) => client.id === id)?.name || "Unknown client";
@@ -311,6 +313,36 @@ export function attentionItems(
     });
   }
 
+  // Payment reminders (Sprint 4), for the office: invoices past their due date,
+  // and invoices due within 3 days. `invoices` is null where there is no billing.
+  if (invoices) {
+    const { overdue: late, dueSoon } = paymentReminders(invoices, payments, now);
+    const describe = (list) => listNames(list.map(({ invoice, balance }) => `${clientName(invoice.clientId)} ${formatPeso(balance)}`), 2);
+    if (late.length) {
+      items.push({
+        key: "invoices-overdue",
+        kind: "payment",
+        tone: "danger",
+        title: late.length === 1 ? `Invoice ${late[0].invoice.reference} is overdue` : `${late.length} invoices are overdue`,
+        detail: describe(late),
+        action: { label: "Open", to: `/billing?invoice=${encodeURIComponent(late[0].invoice.id)}` },
+      });
+    }
+    if (dueSoon.length) {
+      const first = dueSoon[0];
+      items.push({
+        key: "invoices-due",
+        kind: "payment",
+        tone: "warning",
+        title: dueSoon.length === 1
+          ? `Invoice ${first.invoice.reference} is due ${first.days === 0 ? "today" : first.days === 1 ? "tomorrow" : `in ${first.days} days`}`
+          : `${dueSoon.length} invoices due within 3 days`,
+        detail: describe(dueSoon),
+        action: { label: "Open", to: `/billing?invoice=${encodeURIComponent(first.invoice.id)}` },
+      });
+    }
+  }
+
   if (canSeeStock) {
     const today = startOfDay(now);
     inventory
@@ -346,6 +378,26 @@ export function attentionItems(
           action: { label: "Log", to: `/inventory?q=${encodeURIComponent(item.name)}` },
         });
       });
+  }
+
+  // Follow-up visits (Sprint 4): a follow-up date set on a report, due within
+  // 7 days or just passed, with nothing booked for the client since.
+  const followUps = followUpReminders(appointments, clients, now);
+  if (followUps.length) {
+    const [first] = followUps;
+    const when = (entry) => (entry.days < 0 ? `was due ${shortDate(new Date(`${entry.dueOn}T00:00:00`))}` : entry.days === 0 ? "due today" : `due ${shortDate(new Date(`${entry.dueOn}T00:00:00`))}`);
+    items.push({
+      key: "followups",
+      kind: "followup",
+      tone: first.days < 0 ? "warning" : "neutral",
+      title: followUps.length === 1 ? `${first.client?.name || "A client"} needs a follow-up visit` : `${followUps.length} follow-up visits to book`,
+      detail: followUps.length === 1
+        ? `Follow-up ${when(first)} · nothing booked yet`
+        : listNames(followUps.map((entry) => `${entry.client?.name || "A client"} (${when(entry)})`), 2),
+      action: canBook
+        ? { label: "Book", to: `/scheduling?new=1&client=${encodeURIComponent(first.visit.clientId)}&date=${first.dueOn}` }
+        : { label: "View", to: `/clients/${encodeURIComponent(first.visit.clientId)}` },
+    });
   }
 
   const reservice = bookingReminders(appointments, clients, now);

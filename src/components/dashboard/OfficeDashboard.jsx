@@ -60,6 +60,7 @@ import StatusPill from "../ui/StatusPill";
 import { Panel, RankedBars, StatTile, TileRow, whenLabel } from "./DashboardParts";
 import { AttentionList, DispatchBoard, KpiCard, RecentList, WeekBarsCard } from "./TodayParts";
 import BillingPanel from "./BillingPanel";
+import { useOptionalBilling } from "../../hooks/useBilling";
 
 /**
  * The detail line under a recently completed visit. "Signed by" only when a
@@ -131,7 +132,13 @@ function OfficeDashboard() {
   const overdue = overdueReports(appointments, now);
   const revenue = weekRevenue(appointments, now);
   const lowStock = lowStockItems(inventory.filter((item) => item.status !== "DISABLED"));
-  const attention = attentionItems({ appointments, clients, inventory, users, absences }, { now, canBook, canSeeStock });
+  // Payment reminders need billing (office accounts, migration 062).
+  const billing = useOptionalBilling();
+  const billingOn = Boolean(billing?.office && billing.invoicesAvailable);
+  const attention = attentionItems(
+    { appointments, clients, inventory, users, absences, invoices: billingOn ? billing.invoices : null, payments: billingOn ? billing.payments : [] },
+    { now, canBook, canSeeStock }
+  );
   const bars = weekBars(appointments, now);
   const { start: weekStart, end: weekEnd } = weekWindow(now);
   const lastDay = new Date(weekEnd);

@@ -10,13 +10,18 @@
 // the same rule the server enforces when it links the visit to the quote.
 
 import { useState } from "react";
-import { Button, Input, Modal, StatusPill } from "../ui";
+import { Copy, Mail, Printer, Trash2 } from "lucide-react";
+import { Button, Input, Modal, MoreMenu, StatusPill } from "../ui";
 import { colors } from "../../styles/theme";
 import { PAYMENT_TERMS, QUOTE_STATUS_LABELS } from "../../utils/constants";
 import { canBookFromQuote, depositStatus, quoteStatus } from "../../utils/billing";
 import { appointmentReference } from "../../utils/scheduling";
 import { formatDate, formatPeso } from "../../utils/formatters";
 import PaymentList from "./PaymentList";
+
+const noteStyle = { marginRight: "auto", alignSelf: "center", color: colors.muted, fontSize: "0.82rem", maxWidth: "340px" };
+// What a locked button is waiting for, in words ("Book visit" used to say it only on hover).
+const sentence = (text) => String(text || "").replace(/^./, (first) => first.toLowerCase()).replace(/\.$/, "");
 
 const DEPOSIT_WORDS = {
   DUE: "Down payment due",
@@ -44,6 +49,10 @@ function QuoteDetail({
   onCheck,
   onReverse,
   onPrint,
+  // Sprint 4: send through Gmail; the inspection a quote was made from.
+  onEmail,
+  onSendReceipt,
+  inspection = null,
   onReceipt,
   // What a service line's price covers ("includes 1 L …"); "" for none.
   includesFor = () => "",
@@ -74,10 +83,23 @@ function QuoteDetail({
   const footer = (
     <>
       {error && <span role="alert" style={{ marginRight: "auto", alignSelf: "center", color: colors.danger, fontSize: "0.85rem", fontWeight: 500 }}>{error}</span>}
-      {onPrint && !rejecting && !confirmDelete && <Button variant="ghost" onClick={onPrint}>Print / PDF</Button>}
+      {!error && status === "APPROVED" && !booking.ok && (
+        <span style={noteStyle}>Book visit is locked: {sentence(booking.reason)}.</span>
+      )}
+      {!rejecting && !confirmDelete && (
+        <MoreMenu
+          label="More"
+          placement="up"
+          items={[
+            onPrint && { label: "Print / PDF", icon: <Printer size={14} />, onClick: onPrint },
+            onEmail && { label: "Send by Gmail", icon: <Mail size={14} />, onClick: onEmail },
+            status === "APPROVED" && { label: "Revise", icon: <Copy size={14} />, onClick: onRevise },
+            status === "DRAFT" && { label: "Delete draft", icon: <Trash2 size={14} />, danger: true, separated: true, onClick: () => setConfirmDelete(true) },
+          ]}
+        />
+      )}
       {status === "DRAFT" && !confirmDelete && (
         <>
-          <Button variant="quiet" onClick={() => setConfirmDelete(true)}>Delete</Button>
           <Button onClick={onEdit}>Edit</Button>
           <Button variant="primary" loading={busy} onClick={() => act(onSend)}>Mark as sent</Button>
         </>
@@ -105,7 +127,6 @@ function QuoteDetail({
       )}
       {status === "APPROVED" && (
         <>
-          <Button variant="quiet" onClick={onRevise}>Revise</Button>
           {deposit.required > 0 && deposit.state !== "PAID" && (
             <Button onClick={onRecordDeposit}>Record down payment</Button>
           )}
@@ -126,6 +147,7 @@ function QuoteDetail({
           <span>Valid until {formatDate(quote.validUntil)}</span>
           {terms && <span>· Payment {terms.toLowerCase()}</span>}
           {quote.areaSqm && <span>· {quote.areaSqm} sqm</span>}
+          {inspection && <span>· From inspection {inspection.reference || ""}</span>}
         </div>
 
         <div style={{ overflowX: "auto" }}>
@@ -173,7 +195,7 @@ function QuoteDetail({
         {(own.length > 0 || status === "APPROVED") && (
           <section aria-label="Payments on this quote">
             <h3 style={{ margin: "0 0 0.3rem", fontSize: "0.95rem", color: colors.ink }}>Payments</h3>
-            <PaymentList payments={own} labelFor={() => "Down payment"} canReverse={canReverse} onCheck={onCheck} onReverse={onReverse} onReceipt={onReceipt} empty="No down payment received yet." />
+            <PaymentList payments={own} labelFor={() => "Down payment"} canReverse={canReverse} onCheck={onCheck} onReverse={onReverse} onReceipt={onReceipt} onSendReceipt={onSendReceipt} empty="No down payment received yet." />
           </section>
         )}
 

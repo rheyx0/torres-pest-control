@@ -8,6 +8,8 @@ import { Link } from "react-router-dom";
 import {
   ArrowRight,
   Box,
+  CalendarClock,
+  Receipt,
   FileText,
   FlaskConical,
   PenLine,
@@ -307,6 +309,8 @@ const KIND_ICONS = {
   reservice: Repeat,
   reorder: Box,
   signature: PenLine,
+  followup: CalendarClock,
+  payment: Receipt,
 };
 
 const TONE_TILES = {

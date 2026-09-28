@@ -2,15 +2,14 @@
 // the Next visit banner and the timeline. Data comes from
 // utils/clientTimeline.js; these only draw it.
 
-import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
+  ArrowLeft,
   AlertTriangle,
   Bug,
   CalendarDays,
   ChevronRight,
   Clock,
-  MoreHorizontal,
   Navigation,
   PencilLine,
   Phone,
@@ -20,6 +19,7 @@ import {
 import { brand, font, neutral, radius, status as semantic, surface, weight } from "../../styles/tokens";
 import { colors, quietButton } from "../../styles/theme";
 import Button from "../ui/Button";
+import MoreMenu from "../ui/MoreMenu";
 import StatusPill from "../ui/StatusPill";
 import { ACTIVITY_LEVELS, DOCUMENT_CATEGORIES } from "../../utils/constants";
 import { formatPeso, humanizeEnum } from "../../utils/formatters";
@@ -36,86 +36,25 @@ const iconText = { display: "inline-flex", alignItems: "center", gap: "6px" };
 // Header
 // ---------------------------------------------------------------------------
 
-export function MoreMenu({ items }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (event) => {
-      if (event.type === "keydown" ? event.key === "Escape" : ref.current && !ref.current.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", close);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", close);
-    };
-  }, [open]);
-
-  if (items.length === 0) return null;
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <Button variant="quiet" size="icon" aria-label="More actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-        <MoreHorizontal size={16} />
-      </Button>
-      {open && (
-        <div
-          role="menu"
-          style={{
-            position: "absolute",
-            right: 0,
-            top: "calc(100% + 6px)",
-            zIndex: 30,
-            minWidth: "200px",
-            background: surface.panel,
-            border: `1px solid ${neutral.loam}`,
-            borderRadius: radius.card,
-            padding: "4px",
-          }}
-        >
-          {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                item.onClick();
-              }}
-              className="ui-interactive"
-              style={{
-                display: "block",
-                width: "100%",
-                textAlign: "left",
-                border: 0,
-                background: "transparent",
-                borderRadius: radius.control,
-                padding: "8px 10px",
-                fontSize: "13px",
-                color: item.danger ? semantic.danger : neutral.ink,
-                borderTop: item.separated ? `1px solid ${colors.line}` : undefined,
-                marginTop: item.separated ? "4px" : 0,
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+// The "…" menu now lives in components/ui (billing windows use it too).
+export { default as MoreMenu } from "../ui/MoreMenu";
 
 export function ClientHeader({ client, plan, clientSince, canEdit, canBook, menuItems, onEdit }) {
   const classification =
     client.classification === "OTHER" && client.classificationOther ? client.classificationOther : humanizeEnum(client.classification);
   const archived = client.status === "ARCHIVED";
   const tel = telUrl(client.phone);
+  const navigate = useNavigate();
+  // Back to wherever the client was opened from (the list, the schedule, a
+  // search); straight to Clients when the profile was opened on its own.
+  const goBack = () => (window.history.state?.idx > 0 ? navigate(-1) : navigate("/clients"));
 
   return (
     <header style={{ marginBottom: "20px" }}>
       <nav aria-label="Breadcrumb" style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", color: neutral.bark }}>
+        <Button size="sm" variant="quiet" icon={<ArrowLeft size={14} />} onClick={goBack} style={{ marginRight: "6px" }}>
+          Back
+        </Button>
         <Link to="/clients" style={{ color: neutral.bark, textDecoration: "none" }}>
           Clients
         </Link>

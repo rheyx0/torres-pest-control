@@ -13,10 +13,10 @@ const inventory = [
 
 describe("navBadges", () => {
   it("counts unassigned pending visits and active low-stock items", () => {
-    expect(navBadges({ appointments, inventory, canSchedule: true, canStock: true })).toEqual({ scheduling: 1, inventory: 1 });
+    expect(navBadges({ appointments, inventory, canSchedule: true, canStock: true })).toEqual({ billing: 0, scheduling: 1, inventory: 1 });
   });
 
   it("shows no counts to someone who cannot act on them", () => {
-    expect(navBadges({ appointments, inventory, canSchedule: false, canStock: false })).toEqual({ scheduling: 0, inventory: 0 });
+    expect(navBadges({ appointments, inventory, canSchedule: false, canStock: false })).toEqual({ billing: 0, scheduling: 0, inventory: 0 });
   });
 });

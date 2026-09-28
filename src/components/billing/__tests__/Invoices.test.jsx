@@ -74,11 +74,13 @@ describe("InvoiceDetail", () => {
   test("only an admin can void, only with a reason, and not while payments stand", async () => {
     const onVoid = jest.fn().mockResolvedValue(true);
     const { unmount } = renderDetail({ invoice: invoice(), payments: [payment()], canVoid: true, onVoid });
-    expect(screen.getByRole("button", { name: "Void" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: /More/ }));
+    expect(screen.getByRole("menuitem", { name: /Void \(reverse its payments first\)/ })).toBeDisabled();
     unmount();
 
     renderDetail({ invoice: invoice(), payments: [payment({ reversedAt: "2026-09-26" })], canVoid: true, onVoid });
-    await userEvent.click(screen.getByRole("button", { name: "Void" }));
+    await userEvent.click(screen.getByRole("button", { name: /More/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Void invoice" }));
     const confirm = screen.getByRole("button", { name: "Void invoice" });
     expect(confirm).toBeDisabled();
     await userEvent.type(screen.getByLabelText("Why it is being voided"), "Wrong client");
@@ -86,9 +88,11 @@ describe("InvoiceDetail", () => {
     expect(onVoid).toHaveBeenCalledWith("Wrong client");
   });
 
-  test("staff don't see Void; a void invoice shows its reason", () => {
-    const { unmount } = renderDetail({ invoice: invoice(), canVoid: false });
-    expect(screen.queryByRole("button", { name: "Void" })).not.toBeInTheDocument();
+  test("staff don't see Void; a void invoice shows its reason", async () => {
+    const { unmount } = renderDetail({ invoice: invoice(), canVoid: false, onPrint: jest.fn() });
+    await userEvent.click(screen.getByRole("button", { name: /More/ }));
+    expect(screen.getByRole("menuitem", { name: "Print / PDF" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Void/ })).not.toBeInTheDocument();
     unmount();
     renderDetail({ invoice: invoice({ status: "VOID", voidedAt: "2026-09-26", voidReason: "Wrong client" }) });
     expect(screen.getByText(/Wrong client/)).toBeInTheDocument();

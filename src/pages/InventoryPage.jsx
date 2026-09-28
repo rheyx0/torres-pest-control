@@ -49,6 +49,7 @@ import { card, colors, primaryButton, secondaryButton } from "../styles/theme";
 import ConfirmDialog from "../components/common/ConfirmDialog";
 import { formatDate, formatPeso } from "../utils/formatters";
 import { isPlausibleItem, isPlausibleMovement } from "../utils/dashboardMetrics";
+import Skeleton from "../components/ui/Skeleton";
 
 const CREATE_FORM_DEFAULTS = {
   name: "",
@@ -967,7 +968,7 @@ function InventoryPage() {
             )}
 
             {!error && loading && (
-              <div style={{ padding: "1.25rem", color: "#96897b" }}>Loading inventory…</div>
+              <Skeleton label="Loading inventory…" lines={6} />
             )}
 
             {!error && !loading && inventory.length === 0 && (
@@ -1331,7 +1332,7 @@ function InventoryPage() {
               )}
 
               {!movementsError && movementsLoading && (
-                <div style={{ padding: "1.25rem", color: "#96897b" }}>Loading history…</div>
+                <Skeleton label="Loading history…" lines={6} />
               )}
 
               {!movementsError && !movementsLoading && filteredAndSortedMovements.length === 0 && (
@@ -2390,7 +2391,7 @@ function CustodyList({ entries, technicianName, appointmentLabel, canManage, loa
           {["Technician", "Item", "Taken", "For visit", "Still out", "Used · returned", ""].map((label) => <span key={label || "action"}>{label}</span>)}
         </div>
         {error && <div style={{ padding: "1.25rem", color: "#9a2d24", background: "#f9ecea" }}>Could not load checkouts — {error}</div>}
-        {!error && loading && entries.length === 0 && <div style={{ padding: "1.25rem", color: "#96897b" }}>Loading…</div>}
+        {!error && loading && entries.length === 0 && <Skeleton label="Loading…" lines={5} />}
         {!error && !loading && entries.length === 0 && (
           <div style={{ padding: "1.75rem", textAlign: "center", color: "#96897b" }}>Nothing is checked out right now.</div>
         )}

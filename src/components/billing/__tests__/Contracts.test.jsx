@@ -65,7 +65,8 @@ describe("ContractDetail", () => {
     renderDetail({ contract: contract({ status: "ACTIVE", signedDocumentId: "d1" }), onCancel, onBook });
     await userEvent.click(screen.getByRole("button", { name: "Book visits" }));
     expect(onBook).toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("button", { name: "Cancel contract" }));
+    await userEvent.click(screen.getByRole("button", { name: /More/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Cancel contract" }));
     const confirm = screen.getByRole("button", { name: "Cancel contract" });
     expect(confirm).toBeDisabled();
     await userEvent.type(screen.getByLabelText("Why the contract is cancelled"), "Client moved out");
@@ -86,7 +87,8 @@ describe("ContractDetail", () => {
   test("Print contract is offered, for the client to sign", async () => {
     const onPrint = jest.fn();
     renderDetail({ contract: contract(), onPrint });
-    await userEvent.click(screen.getByRole("button", { name: "Print contract" }));
+    await userEvent.click(screen.getByRole("button", { name: /More/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Print contract" }));
     expect(onPrint).toHaveBeenCalled();
   });
 

@@ -18,7 +18,8 @@ const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
 export const PRICE_MODES = { FIXED: "FIXED", MARKUP: "MARKUP" };
 export const PRICING_MODES = { FLAT: "FLAT", AREA: "AREA" };
-export const BILLING_MODES = { INCLUDED: "INCLUDED", EXTRA_CHARGED: "EXTRA_CHARGED" };
+// CHARGE_ALL (066): every unit used is billed, none of it covered by the price.
+export const BILLING_MODES = { INCLUDED: "INCLUDED", EXTRA_CHARGED: "EXTRA_CHARGED", CHARGE_ALL: "CHARGE_ALL" };
 
 /** What the client pays for one unit of an item. */
 export function customerPrice(item) {
@@ -50,13 +51,19 @@ export function servicePrice(service, areaSqm = null) {
 }
 
 /**
- * The extra charge for one material on a job: nothing when it is included in
- * the service, otherwise the amount used beyond the included quantity at the
- * item's customer price. `{ extraQuantity, unitPrice, amount }`.
+ * The charge for one material on a job, at the item's customer price:
+ * nothing when it is Included; what was used beyond the included quantity when
+ * it is Charge extra; everything used when it is Charge all (066).
+ * `{ extraQuantity, unitPrice, amount }`.
  */
 export function materialCharge(rule, usedQuantity, item) {
+  const used = Number(usedQuantity) || 0;
+  if (rule?.billingMode === BILLING_MODES.CHARGE_ALL) {
+    const unitPrice = customerPrice(item);
+    return { extraQuantity: round2(used), unitPrice, amount: round2(used * unitPrice) };
+  }
   if (!rule || rule.billingMode !== BILLING_MODES.EXTRA_CHARGED) return { extraQuantity: 0, unitPrice: 0, amount: 0 };
-  const extraQuantity = Math.max(0, round2((Number(usedQuantity) || 0) - (Number(rule.defaultAmount) || 0)));
+  const extraQuantity = Math.max(0, round2(used - (Number(rule.defaultAmount) || 0)));
   const unitPrice = customerPrice(item);
   return { extraQuantity, unitPrice, amount: round2(extraQuantity * unitPrice) };
 }
@@ -85,7 +92,13 @@ export function includedMaterialsText(service, itemById = () => null) {
     .map((material) => ({ material, item: itemById(material.itemId) }))
     .filter(({ item, material }) => item && Number(material.defaultAmount) > 0);
   if (materials.length === 0) return "";
-  const list = materials.map(({ item, material }) => `${Number(material.defaultAmount)} ${item.unit || ""} ${item.name}`.replace(/\s+/g, " ").trim());
-  const extra = materials.some(({ material }) => material.billingMode === BILLING_MODES.EXTRA_CHARGED);
-  return `includes ${list.join(", ")}${extra ? " · extra use charged" : ""}`;
+  // A Charge all material is not included in the price, so it is named apart.
+  const covered = materials.filter(({ material }) => material.billingMode !== BILLING_MODES.CHARGE_ALL);
+  const perUse = materials.filter(({ material }) => material.billingMode === BILLING_MODES.CHARGE_ALL);
+  const name = ({ item, material }) => `${Number(material.defaultAmount)} ${item.unit || ""} ${item.name}`.replace(/\s+/g, " ").trim();
+  const extra = covered.some(({ material }) => material.billingMode === BILLING_MODES.EXTRA_CHARGED);
+  const parts = [];
+  if (covered.length) parts.push(`includes ${covered.map(name).join(", ")}${extra ? " · extra use charged" : ""}`);
+  if (perUse.length) parts.push(`${perUse.map(({ item }) => item.name).join(", ")} charged per use`);
+  return parts.join(" · ");
 }

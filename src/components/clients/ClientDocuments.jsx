@@ -64,15 +64,21 @@ export function CategoryTag({ category }) {
 export function FileThumbnail({ file, onResolveUrl, onPreview }) {
   const [src, setSrc] = useState(file.url || file.previewUrl || null);
   const isImage = isImageFile(file);
+  // Callers may hand a fresh copy of the same file each render (a renamed
+  // contract, say); only a different file should mint a new signed URL.
+  const fileKey = `${file.id || ""}|${file.path || file.storagePath || ""}|${file.url || file.previewUrl || ""}`;
+  const fileRef = useRef(file);
+  fileRef.current = file;
 
   useEffect(() => {
+    const file = fileRef.current;
     let active = true;
     if (file.url || file.previewUrl) {
       setSrc(file.url || file.previewUrl);
       return;
     }
     if (isImage && onResolveUrl) {
-      onResolveUrl(file, { download: false })
+      Promise.resolve(onResolveUrl(file, { download: false }))
         .then((result) => {
           if (active && result?.url) {
             setSrc(result.url);
@@ -83,7 +89,7 @@ export function FileThumbnail({ file, onResolveUrl, onPreview }) {
     return () => {
       active = false;
     };
-  }, [file, isImage, onResolveUrl]);
+  }, [fileKey, isImage, onResolveUrl]);
 
   if (!isImage) {
     return (
@@ -341,20 +347,25 @@ function ClientDocuments({
           background: "#ffffff",
         }}
       >
-        <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0, flex: "1 1 160px", display: "flex", alignItems: "center", gap: "0.55rem" }}>
+          <FileThumbnail file={document} onResolveUrl={onResolveUrl} onPreview={() => handlePreview(document)} />
+          <div style={{ minWidth: 0, flex: 1 }}>
           <div
             style={{
               display: "flex",
               alignItems: "center",
               gap: "0.4rem",
-              flexWrap: "wrap",
+              minWidth: 0,
               fontWeight: 500,
               fontSize: compact ? "0.78rem" : "inherit",
               color: colors.body,
             }}
           >
             {!compact && <CategoryTag category={document.category} />}
-            {document.name}
+            {/* One line; a long name ends in "…" and shows in full on hover. */}
+            <span title={document.name} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {document.name}
+            </span>
           </div>
           <div
             style={{
@@ -364,6 +375,7 @@ function ClientDocuments({
             }}
           >
             {formatDate(document.uploadedAt)} • {formatFileSize(document.size)}
+          </div>
           </div>
         </div>
 
@@ -654,6 +666,9 @@ function ClientDocuments({
           border: `1px solid ${isDragging ? "#7f1d1d" : "#e7dede"}`,
           borderRadius: "3.75px",
           padding: "0.65rem 0.8rem",
+          minWidth: 0,
+          height: "100%",
+          boxSizing: "border-box",
           background: isDragging ? "#fcfaf1" : "#ffffff",
           transition: "border-color 0.2s ease, background-color 0.2s ease",
         }}
@@ -664,11 +679,10 @@ function ClientDocuments({
             justifyContent: "space-between",
             alignItems: "center",
             gap: "0.5rem",
-            flexWrap: "wrap",
             marginBottom: documents.length ? "0.55rem" : "0.3rem",
           }}
         >
-          <h3 style={{ margin: 0, color: colors.body, fontSize: "0.82rem", fontWeight: 500 }}>
+          <h3 style={{ margin: 0, minWidth: 0, color: colors.body, fontSize: "0.82rem", fontWeight: 500 }}>
             {title}{" "}
             <span style={{ color: colors.muted, fontWeight: 500, fontSize: "0.74rem" }}>
               ({documents.length})
@@ -689,6 +703,8 @@ function ClientDocuments({
                 border: "1px solid #f0d7d7",
                 borderRadius: "3.75px",
                 padding: "0.4rem 0.6rem",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
                 fontSize: "0.72rem",
                 fontWeight: 500,
                 cursor: uploading ? "default" : "pointer",

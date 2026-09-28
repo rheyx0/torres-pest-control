@@ -162,7 +162,9 @@ export function visitMaterialLines(visit, services = [], itemById = () => null) 
   services.forEach((service) => (service.materials || []).forEach((material) => {
     const rule = rules.get(material.itemId) || { itemId: material.itemId, billingMode: "INCLUDED", defaultAmount: 0 };
     rule.defaultAmount += Number(material.defaultAmount) || 0;
-    if (material.billingMode === "EXTRA_CHARGED") rule.billingMode = "EXTRA_CHARGED";
+    // Two services listing one item: Charge all wins, then Charge extra.
+    if (material.billingMode === "CHARGE_ALL") rule.billingMode = "CHARGE_ALL";
+    else if (material.billingMode === "EXTRA_CHARGED" && rule.billingMode !== "CHARGE_ALL") rule.billingMode = "EXTRA_CHARGED";
     rules.set(material.itemId, rule);
   }));
   const used = new Map();
@@ -182,7 +184,9 @@ export function visitMaterialLines(visit, services = [], itemById = () => null) 
       return;
     }
     const charge = materialCharge(rule, amount, item);
-    if (charge.amount > 0) {
+    if (rule.billingMode === "CHARGE_ALL") {
+      lines.push({ ...base, description: `${item.name}: ${quantity} ${unit} used, charged per use · ${reference}`.replace(/\s+/g, " "), quantity: charge.extraQuantity, unitPrice: charge.unitPrice });
+    } else if (charge.amount > 0) {
       lines.push({ ...base, description: `${item.name}: ${quantity} ${unit} used, ${rule.defaultAmount} ${unit} included, extra charged · ${reference}`.replace(/\s+/g, " "), quantity: charge.extraQuantity, unitPrice: charge.unitPrice });
     } else {
       lines.push({ ...base, description: `${item.name} (included) · ${reference}`, quantity, unitPrice: 0 });
@@ -292,8 +296,10 @@ export function draftInvoiceLines({ quote = null, quoteInvoiced = false, visits 
 }
 
 /** Visits that can go on an invoice: completed and not on a live one. */
-export const invoiceableVisits = (appointments = [], clientId) =>
-  appointments.filter((visit) => visit.clientId === clientId && visit.status === "Completed" && !visit.invoiceId);
+// A visit of a contract billed up front (Sprint 4) is already paid for, so it
+// is left out: `prepaid` is a Set of plan ids (prepaidPlanIds in sprint4.js).
+export const invoiceableVisits = (appointments = [], clientId, prepaid = new Set()) =>
+  appointments.filter((visit) => visit.clientId === clientId && visit.status === "Completed" && !visit.invoiceId && !(visit.planId && prepaid.has(visit.planId)));
 
 /**
  * The billing figures on the office Today page (Sprint 3):
@@ -307,7 +313,7 @@ export const invoiceableVisits = (appointments = [], clientId) =>
  *                   (the first quote or invoice), so older history isn't flagged
  * Each is { count, amount } (toInvoice: { count }).
  */
-export function billingSummary({ quotes = [], invoices = [], payments = [], appointments = [] } = {}, now = new Date()) {
+export function billingSummary({ quotes = [], invoices = [], payments = [], appointments = [], prepaid = new Set() } = {}, now = new Date()) {
   const tally = () => ({ count: 0, amount: 0 });
   const add = (bucket, amount) => { bucket.count += 1; bucket.amount = round2(bucket.amount + amount); };
   const summary = { outstanding: tally(), overdue: tally(), collected: tally(), pendingChecks: tally(), awaiting: tally(), depositsDue: tally(), toInvoice: { count: 0 } };
@@ -337,7 +343,7 @@ export function billingSummary({ quotes = [], invoices = [], payments = [], appo
   const starts = [...quotes, ...invoices].map((record) => record.createdAt).filter(Boolean).sort();
   if (starts.length) {
     const since = new Date(starts[0]);
-    summary.toInvoice.count = appointments.filter((visit) => visit.status === "Completed" && !visit.invoiceId && new Date(visit.scheduledAt) >= since).length;
+    summary.toInvoice.count = appointments.filter((visit) => visit.status === "Completed" && !visit.invoiceId && !(visit.planId && prepaid.has(visit.planId)) && new Date(visit.scheduledAt) >= since).length;
   }
   return summary;
 }
@@ -430,4 +436,52 @@ export function clientBillingEvents({ quotes = [], invoices = [], payments = [],
     });
   });
   return events.filter((event) => event.at);
+}
+
+// ---------------------------------------------------------------------------
+// The Billing page's summary tiles.
+// ---------------------------------------------------------------------------
+
+/**
+ * What the Billing page opens with: money still to collect on invoices, how
+ * much of it is overdue, what came in this month (a check once cleared), and
+ * down payments still owed on approved quotes.
+ */
+export function billingOverview({ quotes = [], invoices = [], payments = [] } = {}, now = new Date()) {
+  const month = todayKey(now).slice(0, 7);
+  let toCollect = 0;
+  let toCollectCount = 0;
+  let overdue = 0;
+  let overdueCount = 0;
+  invoices.forEach((invoice) => {
+    const balance = invoiceBalance(invoice, payments, now);
+    if (balance.state === "VOID" || balance.state === "PAID") return;
+    toCollect += balance.balance;
+    toCollectCount += 1;
+    if (balance.state === "OVERDUE") {
+      overdue += balance.balance;
+      overdueCount += 1;
+    }
+  });
+  const collected = payments
+    .filter((payment) => paymentCounts(payment) && String(payment.paidOn || "").slice(0, 7) === month)
+    .reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+  let depositsDue = 0;
+  let depositsDueCount = 0;
+  quotes.forEach((quote) => {
+    if (quoteStatus(quote, now) !== "APPROVED") return;
+    const deposit = depositStatus(quote, payments);
+    if (deposit.state === "NONE" || deposit.state === "PAID") return;
+    depositsDue += deposit.remaining;
+    depositsDueCount += 1;
+  });
+  return {
+    toCollect: round2(toCollect),
+    toCollectCount,
+    overdue: round2(overdue),
+    overdueCount,
+    collectedThisMonth: round2(collected),
+    depositsDue: round2(depositsDue),
+    depositsDueCount,
+  };
 }

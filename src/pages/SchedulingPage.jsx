@@ -25,6 +25,7 @@ import useUsers from "../hooks/useUsers";
 import useServices from "../hooks/useServices";
 import { useOptionalBilling } from "../hooks/useBilling";
 import { canBookFromQuote } from "../utils/billing";
+import { paymentCheck } from "../utils/sprint4";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
 import { ACTIVITY_LEVELS, APPOINTMENT_STATUSES, ATTACHMENT_CATEGORIES, DOCUMENT_CATEGORIES, PEST_CONCERN_SUGGESTIONS, REPORT_UPLOAD_CATEGORIES, ROLES, LIMITS, SERVICE_FREQUENCIES } from "../utils/constants";
@@ -60,6 +61,8 @@ import TechnicianPicker from "../components/scheduling/TechnicianPicker";
 import PlanPanel from "../components/scheduling/PlanPanel";
 import VisitExtras from "../components/billing/VisitExtras";
 import VisitBillingLink from "../components/billing/VisitBillingLink";
+import StatusHistory from "../components/scheduling/StatusHistory";
+import InspectionFields from "../components/scheduling/InspectionFields";
 import SchedulingToolbar, { MODES, isCalendarMode } from "../components/scheduling/SchedulingToolbar";
 import {
   fullDayWindow,
@@ -96,7 +99,7 @@ function SchedulingPage() {
   const outWithTechnicians = useMemo(() => openCheckouts(movements), [movements]);
   const { staff, technicians } = useUsers();
   const { activeServices, serviceById, serviceByName } = useServices();
-  const { appointments, absences, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
+  const { logBookingOverride, appointments, absences, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
   const billing = useOptionalBilling();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState(null);
@@ -165,12 +168,16 @@ function SchedulingPage() {
     if (searchParams.get("new") !== "1") return;
     if (!isTechnician) {
       setCreateClientId(searchParams.get("client") || "");
-      setCreateScheduledAt("");
+      // A follow-up reminder's Book carries the follow-up date (9 AM that day,
+      // if it is still ahead).
+      const date = searchParams.get("date") || "";
+      setCreateScheduledAt(/^\d{4}-\d{2}-\d{2}$/.test(date) && new Date(`${date}T09:00`) > new Date() ? `${date}T09:00` : "");
       setCreateOpen(true);
     }
     const next = new URLSearchParams(searchParams);
     next.delete("new");
     next.delete("client");
+    next.delete("date");
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams, isTechnician]);
   // Billing's "Book visit" lands here as ?quote=<id> (Sprint 3): open the form
@@ -555,6 +562,11 @@ function SchedulingPage() {
       activityLevel: form.get("activityLevel") || "",
       openIssues: (form.get("openIssues") || "").trim(),
     };
+    // Inspection results (066), when the form shows them.
+    if (form.get("hasInspection")) {
+      report.inspectionAreaSqm = form.get("inspectionArea") || "";
+      report.recommendedServiceIds = form.getAll("recommendedServiceIds").filter(Boolean);
+    }
     if (!report.findings) {
       showError("Inspection findings are required.");
       return;
@@ -693,6 +705,7 @@ function SchedulingPage() {
     if (refusal) return refusal;
     const result = await createAppointment(fields);
     if (typeof result === "string") return result;
+    logOverride(fields);
     return showBooked(result, await linkToSource(fields.source, [result.id], "Appointment created."));
   };
 
@@ -701,10 +714,18 @@ function SchedulingPage() {
   const handleBook = async (booking) => {
     const result = await bookAppointments(booking);
     if (typeof result === "string") return result;
+    logOverride(booking);
     const count = booking.visits.length;
     return showBooked(result, await linkToSource(booking.source, result?.bookedIds || [], booking.kind === "MULTI_DAY"
       ? `${count}-day job booked.`
       : booking.kind ? `${count} visits booked.` : "Appointment created."));
+  };
+
+  // Booked past the payment check (Sprint 4): the reason goes in the log.
+  const logOverride = (booking) => {
+    if (!booking.paymentOverride) return;
+    const client = clients.find((entry) => entry.id === booking.clientId);
+    logBookingOverride?.(`Booked ${client?.name || "a client"} without an approved quotation: ${booking.paymentOverride}`);
   };
 
   // Booked under a quote or contract (picked in the form, or arriving from the
@@ -728,6 +749,20 @@ function SchedulingPage() {
   // What the booking form offers to book under: the client's approved quotes
   // (only those whose down payment is in can be picked) and active contracts
   // not yet booked. Null without billing, so the form shows no picker.
+  // The payment check before booking (Sprint 4): a treatment needs a paid quote
+  // or an active contract, unless the client or every service is exempt.
+  const paymentCheckFor = useMemo(() => {
+    if (!billing?.office || !billing.available) return null;
+    return (clientId, serviceIds, source) => paymentCheck({
+      client: clients.find((client) => client.id === clientId) || null,
+      services: serviceIds.map((id) => serviceById(id)).filter(Boolean),
+      source: source || null,
+      quotes: billing.quotes,
+      payments: billing.payments,
+      contracts: billing.contracts || [],
+    });
+  }, [billing, clients, serviceById]);
+
   const billingSources = useMemo(() => {
     if (!billing?.office || !billing.available) return null;
     return {
@@ -1137,6 +1172,7 @@ function SchedulingPage() {
           initialVisitCount={createPrefill?.visitCount || null}
           initialUntil={createPrefill?.until || ""}
           billingSources={billingSources}
+          paymentCheckFor={paymentCheckFor}
           initialSource={createPrefill?.quoteId ? `quote:${createPrefill.quoteId}` : createPrefill?.contractId ? `contract:${createPrefill.contractId}` : ""}
           onClose={() => {
             setCreateOpen(false);
@@ -1856,6 +1892,7 @@ function AppointmentPanel({
                 />
               </fieldset>
               <VisitBillingLink appointment={appointment} />
+              <StatusHistory appointment={appointment} />
               <VisitExtras appointment={appointment} />
             </>
           )}
@@ -1950,6 +1987,13 @@ function AppointmentPanel({
                               style={{ ...inputStyle, resize: "vertical", width: "100%" }}
                             />
                           </label>
+
+                          <InspectionFields
+                            key={appointment.id}
+                            appointment={appointment}
+                            visitServices={servicesOf(appointment, serviceById, serviceByName)}
+                            services={services}
+                          />
 
                           <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 500, fontSize: "0.82rem" }}>
                             Recommendations / follow-up notes

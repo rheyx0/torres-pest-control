@@ -5,7 +5,8 @@
 //   Void             admin only, with a reason, once its payments are reversed
 
 import { useState } from "react";
-import { Button, Input, Modal, StatusPill } from "../ui";
+import { Ban, Mail, Printer } from "lucide-react";
+import { Button, Input, Modal, MoreMenu, StatusPill } from "../ui";
 import { colors } from "../../styles/theme";
 import { INVOICE_STATE_LABELS, PAYMENT_TERMS } from "../../utils/constants";
 import { invoiceBalance } from "../../utils/billing";
@@ -15,7 +16,7 @@ import PaymentList from "./PaymentList";
 export const INVOICE_TONES = { VOID: "neutral", PAID: "success", PARTIAL: "warning", OVERDUE: "danger", UNPAID: "warning" };
 
 
-function InvoiceDetail({ invoice, client, quote = null, payments = [], canVoid = false, canReverse = false, onRecordPayment, onVoid, onCheck, onReverse, onOpenQuote, onPrint, onReceipt, onClose }) {
+function InvoiceDetail({ invoice, client, quote = null, payments = [], canVoid = false, canReverse = false, onRecordPayment, onVoid, onCheck, onReverse, onOpenQuote, onPrint, onReceipt, onEmail, onSendReceipt, contract = null, onClose }) {
   const [voiding, setVoiding] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -38,12 +39,19 @@ function InvoiceDetail({ invoice, client, quote = null, payments = [], canVoid =
   const footer = (
     <>
       {error && <span role="alert" style={{ marginRight: "auto", alignSelf: "center", color: colors.danger, fontSize: "0.85rem", fontWeight: 500 }}>{error}</span>}
-      {onPrint && !voiding && <Button variant="ghost" onClick={onPrint}>Print / PDF</Button>}
+      {!voiding && (
+        <MoreMenu
+          label="More"
+          placement="up"
+          items={[
+            onPrint && { label: "Print / PDF", icon: <Printer size={14} />, onClick: onPrint },
+            onEmail && !isVoid && { label: "Send by Gmail", icon: <Mail size={14} />, onClick: onEmail },
+            canVoid && !isVoid && { label: standing ? "Void (reverse its payments first)" : "Void invoice", icon: <Ban size={14} />, danger: true, separated: true, disabled: standing, onClick: () => setVoiding(true) },
+          ]}
+        />
+      )}
       {!isVoid && !voiding && (
         <>
-          {canVoid && (
-            <Button variant="quiet" disabled={standing} title={standing ? "Reverse its payments first." : undefined} onClick={() => setVoiding(true)}>Void</Button>
-          )}
           {balance.balance > 0 && <Button variant="primary" onClick={onRecordPayment}>Record payment</Button>}
         </>
       )}
@@ -117,7 +125,7 @@ function InvoiceDetail({ invoice, client, quote = null, payments = [], canVoid =
 
         <section aria-label="Payments on this invoice">
           <h3 style={{ margin: "0 0 0.3rem", fontSize: "0.95rem", color: colors.ink }}>Payments</h3>
-          <PaymentList payments={own} labelFor={() => "Payment"} canReverse={canReverse} onCheck={onCheck} onReverse={onReverse} onReceipt={onReceipt} empty="No payments yet." />
+          <PaymentList payments={own} labelFor={() => "Payment"} canReverse={canReverse} onCheck={onCheck} onReverse={onReverse} onReceipt={onReceipt} onSendReceipt={onSendReceipt} empty="No payments yet." />
         </section>
       </div>
     </Modal>

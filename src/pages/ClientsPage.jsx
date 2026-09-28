@@ -20,6 +20,7 @@ import { visitDatesByClient } from "../utils/clientTimeline";
 import { humanizeEnum } from "../utils/formatters";
 import { neutral, radius, surface, weight } from "../styles/tokens";
 import { colors, pageShell } from "../styles/theme";
+import Skeleton from "../components/ui/Skeleton";
 
 export const CLIENT_PAGE_SIZE = 50;
 
@@ -124,7 +125,7 @@ function ClientsPage() {
         {error ? (
           <p style={{ margin: 0, padding: "16px 18px", color: colors.danger }}>Could not load clients — {error}</p>
         ) : loading && clients.length === 0 ? (
-          <p style={{ margin: 0, padding: "16px 18px", color: neutral.bark }}>Loading clients…</p>
+          <Skeleton label="Loading clients…" lines={6} />
         ) : (
           <DataTable
             caption="Clients"

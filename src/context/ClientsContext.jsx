@@ -105,16 +105,29 @@ export function ClientsProvider({ children }) {
     [actor, allowed, clients]
   );
 
+  // Admin only (066): a trusted client is booked without a paid quote.
+  const setClientPaymentCheck = useCallback(
+    async (client, skip) => {
+      const { error: flagError } = await clientService.setClientPaymentCheck(client.id, skip);
+      if (flagError) return flagError;
+      setClients((previous) => previous.map((entry) => (entry.id === client.id ? { ...entry, skipPaymentCheck: Boolean(skip) } : entry)));
+      addLog(actor, `${skip ? "Turned off" : "Turned on"} the payment check before booking for ${client.name}.`, LOG_TYPES.CLIENT);
+      return true;
+    },
+    [actor]
+  );
+
   const updateClient = useCallback(
     async (clientId, form) => {
       if (!allowed(SUBSYSTEMS.CLIENTS, "edit")) return "You do not have permission to edit client profiles.";
       const { client, error: updateError } = await clientService.updateClient(clientId, form);
       if (updateError) return updateError;
 
-      // The row comes back without documents; keep the ones already loaded.
+      // The row comes back without documents or the payment-check exemption
+      // (066, read on its own); keep the ones already loaded.
       setClients((previous) =>
         previous.map((entry) =>
-          entry.id === clientId ? { ...client, documents: entry.documents } : entry
+          entry.id === clientId ? { ...client, documents: entry.documents, skipPaymentCheck: entry.skipPaymentCheck } : entry
         )
       );
       addLog(actor, `Updated client profile for ${client.name}.`, LOG_TYPES.CLIENT);
@@ -191,9 +204,10 @@ export function ClientsProvider({ children }) {
       restoreClient,
       deleteClient,
       getClient,
+      setClientPaymentCheck,
       getDocumentUrl: clientService.getDocumentUrl,
     }),
-    [clients, loading, error, refresh, addClient, updateClient, addDocument, uploadDocumentRecord, removeDocument, archiveClient, restoreClient, deleteClient, getClient]
+    [clients, loading, error, refresh, addClient, updateClient, addDocument, uploadDocumentRecord, removeDocument, archiveClient, restoreClient, deleteClient, getClient, setClientPaymentCheck]
   );
 
   return <ClientsContext.Provider value={value}>{children}</ClientsContext.Provider>;

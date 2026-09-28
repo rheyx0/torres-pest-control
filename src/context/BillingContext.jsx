@@ -120,6 +120,10 @@ export function BillingProvider({ children }) {
     },
     linkContractPlan: (contractId, appointmentId) => run(() => billingService.linkContractPlan(contractId, appointmentId)),
     deleteContract: (contract) => run(() => billingService.deleteContract(contract.id), `Deleted draft contract ${contract.reference}.`),
+    // Sprint 4 (066): a quote names the inspection it came from; an invoice
+    // names the contract it bills.
+    setQuoteInspection: (quoteId, appointmentId) => run(() => billingService.setQuoteInspection(quoteId, appointmentId)),
+    linkInvoiceContract: (invoiceId, contractId) => run(() => billingService.linkInvoiceContract(invoiceId, contractId)),
   }), [run, refreshSchedule]);
 
   const value = useMemo(() => ({ ...state, office, refresh, ...actions }), [state, office, refresh, actions]);

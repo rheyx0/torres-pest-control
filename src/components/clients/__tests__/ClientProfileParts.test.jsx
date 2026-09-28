@@ -41,11 +41,12 @@ describe("ClientHeader", () => {
     return handlers;
   };
 
-  it("has a breadcrumb back to Clients instead of a Back button", () => {
+  it("has a Back button and a breadcrumb back to Clients", () => {
     renderHeader();
     const crumb = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(within(crumb).getByRole("link", { name: "Clients" })).toHaveAttribute("href", "/clients");
     expect(within(crumb).getByText("CL-2026-0001")).toBeInTheDocument();
+    expect(within(crumb).getByRole("button", { name: "Back" })).toBeInTheDocument();
   });
 
   it("shows status, classification, pest concern, plan and client-since", () => {

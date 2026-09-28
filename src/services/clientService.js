@@ -110,10 +110,27 @@ export async function fetchClients() {
     byClient.set(row.client_id, list);
   }
 
+  // Who skips the payment check before booking (066), read on its own so the
+  // client list still loads before the migration.
+  const exempt = await fetchPaymentCheckExemptions("clients");
+
   return {
     error: null,
-    clients: (clientsRes.data || []).map((row) => mapClientRow(row, byClient.get(row.id) || [])),
+    clients: (clientsRes.data || []).map((row) => ({ ...mapClientRow(row, byClient.get(row.id) || []), skipPaymentCheck: exempt.has(row.id) })),
   };
+}
+
+/** Ids of rows in `table` marked skip_payment_check. Empty before 066. */
+export async function fetchPaymentCheckExemptions(table) {
+  const { data, error } = await supabase.from(table).select("id").eq("skip_payment_check", true);
+  return new Set(error ? [] : (data || []).map((row) => row.id));
+}
+
+/** Admin only (066): a trusted client books without a paid quote. */
+export async function setClientPaymentCheck(clientId, skip) {
+  const { error } = await supabase.rpc("set_client_payment_check", { p_client_id: clientId, p_skip: Boolean(skip) });
+  if (error) return { error: describeError(error) };
+  return { error: null };
 }
 
 export async function createClient(form) {

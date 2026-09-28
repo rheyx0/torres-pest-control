@@ -196,7 +196,7 @@ function UserList({ users, canEdit, onEdit, onAvatarChange, onToggleStatus, onRe
             <EmptyState message="No accounts match those filters." />
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff" }}>
+          <table className="dt" style={{ width: "100%", borderCollapse: "collapse", background: "#fff" }}>
             <thead style={{ background: "#efe9e0" }}>
               <tr style={{ borderBottom: "1px solid #efe9e0" }}>
                 {[
@@ -342,23 +342,23 @@ function UserList({ users, canEdit, onEdit, onAvatarChange, onToggleStatus, onRe
                         </div>
                       </div>
                     </td>
-                    <td style={{ padding: "0.95rem 1rem", verticalAlign: "middle" }}>
+                    <td data-label="Employee No." style={{ padding: "0.95rem 1rem", verticalAlign: "middle" }}>
                       <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "0.82rem", fontWeight: 500, color: "#50463c", background: "#efe9e0", border: "1px solid #efe9e0", borderRadius: "3.75px", padding: "0.2rem 0.45rem", whiteSpace: "nowrap" }}>{user.reference || "—"}</span>
                     </td>
 
-                    <td style={{ padding: "0.95rem 1rem", verticalAlign: "middle" }}>
+                    <td data-label="Role" style={{ padding: "0.95rem 1rem", verticalAlign: "middle" }}>
                       <StatusPill tone={toneFor(user.role)} dot={false}>{humanizeEnum(user.role)}</StatusPill>
                     </td>
 
-                    <td style={{ padding: "0.95rem 1rem", verticalAlign: "middle" }}>
+                    <td data-label="Status" style={{ padding: "0.95rem 1rem", verticalAlign: "middle" }}>
                       <StatusPill tone={toneFor(user.status)}>{humanizeEnum(user.status)}</StatusPill>
                     </td>
 
-                    <td style={{ padding: "0.95rem 1rem", verticalAlign: "middle", color: "#50463c", fontSize: "0.9rem" }}>
+                    <td data-label="Phone" style={{ padding: "0.95rem 1rem", verticalAlign: "middle", color: "#50463c", fontSize: "0.9rem" }}>
                       {user.phone || "—"}
                     </td>
 
-                                        <td style={{ padding: "0.95rem 1rem", verticalAlign: "middle", color: "#50463c", fontSize: "0.9rem" }}>
+                    <td data-label="Last login" style={{ padding: "0.95rem 1rem", verticalAlign: "middle", color: "#50463c", fontSize: "0.9rem" }}>
                       {formatLastLogin(user.lastLoginAt)}
                     </td>
 

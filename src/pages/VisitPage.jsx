@@ -33,6 +33,7 @@ import { heldBy, openCheckouts } from "../utils/custody";
 import BatchSelect from "../components/inventory/BatchSelect";
 import { isEarlierJobDay, isMultiDay, planLabel } from "../utils/plans";
 import { todayISO, validateAttachment } from "../utils/validators";
+import { isInspectionVisit } from "../utils/sprint4";
 import {
   VISIT_STEPS,
   adjustAmount,
@@ -46,6 +47,7 @@ import {
 } from "../utils/techDay";
 import { brand, font, neutral, radius, status as semantic, surface, weight } from "../styles/tokens";
 import { colors } from "../styles/theme";
+import Skeleton from "../components/ui/Skeleton";
 
 const label = { margin: "0 0 8px", fontSize: "11.5px", letterSpacing: "0.09em", textTransform: "uppercase", color: neutral.saddle };
 const field = {
@@ -140,6 +142,7 @@ function VisitPage() {
   // technician ticks a service.
   const legacyName = visitServices.length === 0 ? appointment?.serviceType || "" : "";
   // A retired service stays tickable on the visit that was booked with it.
+  const inspection = isInspectionVisit(appointment, visitServices);
   const serviceChoices = [...activeServices, ...visitServices.filter((entry) => !activeServices.some((active) => active.id === entry.id))];
   const isTechnician = currentUser?.role === ROLES.TECHNICIAN;
   const mine = appointment && (!isTechnician || isAssignedTo(appointment, currentUser?.id));
@@ -168,6 +171,10 @@ function VisitPage() {
         recommendations: appointment.recommendations || "",
         activityLevel: appointment.activityLevel || "",
         openIssues: appointment.openIssues || "",
+        // Sprint 4: a follow-up date, and on an inspection its results.
+        followUpDate: appointment.followUpDate || "",
+        inspectionArea: appointment.inspectionAreaSqm ?? "",
+        recommendedServiceIds: appointment.recommendedServiceIds || [],
         serviceIds: visitServiceIds,
         materials: alreadyStocked ? [] : materialsFromService(service, inventory),
         customerName: appointment.customerName || "",
@@ -193,7 +200,7 @@ function VisitPage() {
   );
   const addableItems = inventory.filter((item) => item.status !== "DISABLED" && !(draft?.materials || []).some((material) => material.itemId === item.id));
 
-  if (loading && !appointment) return <p style={{ color: neutral.bark }}>Loading visit…</p>;
+  if (loading && !appointment) return <Skeleton label="Loading visit…" lines={6} />;
   if (!appointment) {
     return (
       <p>
@@ -348,11 +355,17 @@ function VisitPage() {
         // No notes box any more; an older report's notes are kept as they were.
         treatmentPerformed: appointment.treatmentPerformed || "",
         recommendations: draft.recommendations.trim(),
-        followUpDate: appointment.followUpDate || "",
+        // A draft saved before Sprint 4 has no follow-up date of its own.
+        followUpDate: draft.followUpDate ?? (appointment.followUpDate || ""),
         // Site monitoring (063). A draft saved before these fields has neither.
         activityLevel: draft.activityLevel || "",
         openIssues: (draft.openIssues || "").trim(),
       };
+      // Inspection results (066), on an inspection visit.
+      if (inspection) {
+        report.inspectionAreaSqm = draft.inspectionArea ?? "";
+        report.recommendedServiceIds = draft.recommendedServiceIds || [];
+      }
       // Sent only when the technician changed the list (migration 051).
       if (tickedIds.length && tickedIds.join() !== visitServiceIds.join()) {
         report.serviceIds = tickedIds;
@@ -567,6 +580,52 @@ function VisitPage() {
                 style={field}
               />
             </label>
+            <label style={{ display: "block", marginTop: "18px" }}>
+              <p style={label}>Follow-up visit needed on</p>
+              <input
+                aria-label="Follow-up date"
+                type="date"
+                min={todayISO()}
+                value={draft.followUpDate || ""}
+                onChange={(event) => update({ followUpDate: event.target.value })}
+                style={field}
+              />
+              <span style={{ display: "block", marginTop: "4px", color: neutral.bark, fontSize: "13px" }}>Leave empty if none. The office is reminded a week before.</span>
+            </label>
+            {inspection && (
+              <div style={{ marginTop: "22px", paddingTop: "16px", borderTop: `1px solid ${colors.line}` }}>
+                <p style={label}>Inspection results</p>
+                <label style={{ display: "block" }}>
+                  <span style={{ display: "block", marginBottom: "6px", color: neutral.saddle, fontSize: "14px" }}>Area inspected (sqm)</span>
+                  <input
+                    aria-label="Area inspected"
+                    type="number"
+                    min="0"
+                    step="any"
+                    inputMode="decimal"
+                    value={draft.inspectionArea ?? ""}
+                    onChange={(event) => update({ inspectionArea: event.target.value })}
+                    placeholder="e.g. 200"
+                    style={field}
+                  />
+                </label>
+                <p style={{ ...label, marginTop: "14px" }}>Recommended treatment</p>
+                <div role="group" aria-label="Recommended treatment" style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                  {serviceChoices.map((choice) => {
+                    const chosen = (draft.recommendedServiceIds || []).includes(choice.id);
+                    return (
+                      <Toggle
+                        key={choice.id}
+                        selected={chosen}
+                        onClick={() => update({ recommendedServiceIds: chosen ? draft.recommendedServiceIds.filter((entry) => entry !== choice.id) : [...(draft.recommendedServiceIds || []), choice.id] })}
+                      >
+                        {choice.name}
+                      </Toggle>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </>
         )}
 

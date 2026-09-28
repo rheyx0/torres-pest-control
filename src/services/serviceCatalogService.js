@@ -3,6 +3,7 @@
 // from those materials; nothing here deducts stock.
 
 import { supabase } from "./supabaseClient";
+import { fetchPaymentCheckExemptions } from "./clientService";
 
 const BASE_COLUMNS = "id, name, description, default_price, default_duration_minutes, sort_order, is_active, created_at, updated_at";
 
@@ -86,7 +87,9 @@ export async function fetchServices() {
     ({ data, error } = await select());
   }
   if (error) return { error: describeError(error), services: [] };
-  return { error: null, services: (data || []).map(mapServiceRow) };
+  // Services booked without payment first (066): Inspection, Follow-up Visit.
+  const exempt = await fetchPaymentCheckExemptions("services");
+  return { error: null, services: (data || []).map((row) => ({ ...mapServiceRow(row), skipPaymentCheck: exempt.has(row.id) })) };
 }
 
 export async function createService(fields) {
@@ -134,9 +137,16 @@ export async function saveServiceMaterials(serviceId, materials) {
       item_id: material.itemId,
       default_amount: Number(material.defaultAmount),
       // Ignored by 047's function; read by 060's.
-      billing_mode: material.billingMode === "EXTRA_CHARGED" ? "EXTRA_CHARGED" : "INCLUDED",
+      billing_mode: ["EXTRA_CHARGED", "CHARGE_ALL"].includes(material.billingMode) ? material.billingMode : "INCLUDED",
     })),
   });
+  if (error) return { error: describeError(error) };
+  return { error: null };
+}
+
+/** Admin only (066): a service booked without a paid quote first. */
+export async function setServicePaymentCheck(serviceId, skip) {
+  const { error } = await supabase.rpc("set_service_payment_check", { p_service_id: serviceId, p_skip: Boolean(skip) });
   if (error) return { error: describeError(error) };
   return { error: null };
 }

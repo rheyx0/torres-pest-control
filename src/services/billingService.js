@@ -55,6 +55,7 @@ export function mapQuoteRow(row) {
     depositAmount: Number(row.deposit_amount) || 0,
     notes: row.notes || "",
     revisionOf: row.revision_of || "",
+    inspectionId: row.inspection_id || "", // 066
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     sentAt: row.sent_at || "",
@@ -104,6 +105,7 @@ export function mapInvoiceRow(row) {
     reference: row.reference,
     clientId: row.client_id,
     quoteId: row.quote_id || "",
+    contractId: row.contract_id || "", // 066
     status: row.status,
     issuedOn: String(row.issued_on).slice(0, 10),
     paymentTerms: row.payment_terms,
@@ -372,3 +374,15 @@ export const cancelContract = (contractId, reason) =>
 export const linkContractPlan = (contractId, appointmentId) =>
   call("link_contract_plan", { p_contract_id: contractId, p_appointment_id: appointmentId }, (row) => row && mapContractRow(row));
 export const deleteContract = (contractId) => call("delete_contract", { p_contract_id: contractId });
+
+// ---------------------------------------------------------------------------
+// Sprint 4 links (066)
+// ---------------------------------------------------------------------------
+
+/** A quote made from an inspection names it. */
+export const setQuoteInspection = (quoteId, appointmentId) =>
+  call("set_quote_inspection", { p_quote_id: quoteId, p_appointment_id: appointmentId }, (row) => row && mapQuoteRow(row));
+
+/** An invoice that bills a contract names it, so it is not billed twice. */
+export const linkInvoiceContract = (invoiceId, contractId) =>
+  call("link_invoice_contract", { p_invoice_id: invoiceId, p_contract_id: contractId }, (row) => row && mapInvoiceRow(row));

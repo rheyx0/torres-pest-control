@@ -17,7 +17,7 @@ export function paymentState(payment) {
   return "Received";
 }
 
-function PaymentRow({ payment, label, canReverse, onCheck, onReverse, onReceipt }) {
+function PaymentRow({ payment, label, canReverse, onCheck, onReverse, onReceipt, onSendReceipt }) {
   const [asking, setAsking] = useState(null); // "BOUNCED" | "REVERSE"
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -53,6 +53,7 @@ function PaymentRow({ payment, label, canReverse, onCheck, onReverse, onReceipt 
             </>
           )}
           {onReceipt && !asking && <Button size="sm" variant="ghost" onClick={() => onReceipt(payment)}>Receipt</Button>}
+          {onSendReceipt && !asking && !payment.reversedAt && <Button size="sm" variant="ghost" onClick={() => onSendReceipt(payment)}>Email</Button>}
           {canReverse && !payment.reversedAt && !asking && (
             <Button size="sm" variant="quiet" onClick={() => setAsking("REVERSE")}>Reverse</Button>
           )}
@@ -86,12 +87,12 @@ function PaymentRow({ payment, label, canReverse, onCheck, onReverse, onReceipt 
   );
 }
 
-function PaymentList({ payments, labelFor, canReverse, onCheck, onReverse, onReceipt, empty = "No payments yet." }) {
+function PaymentList({ payments, labelFor, canReverse, onCheck, onReverse, onReceipt, onSendReceipt, empty = "No payments yet." }) {
   if (payments.length === 0) return <p style={{ margin: 0, color: colors.muted, fontSize: "0.85rem" }}>{empty}</p>;
   return (
     <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
       {payments.map((payment) => (
-        <PaymentRow key={payment.id} payment={payment} label={labelFor?.(payment)} canReverse={canReverse} onCheck={onCheck} onReverse={onReverse} onReceipt={onReceipt} />
+        <PaymentRow key={payment.id} payment={payment} label={labelFor?.(payment)} canReverse={canReverse} onCheck={onCheck} onReverse={onReverse} onReceipt={onReceipt} onSendReceipt={onSendReceipt} />
       ))}
     </ul>
   );

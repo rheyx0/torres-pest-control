@@ -108,6 +108,8 @@ describe("QuoteDetail", () => {
     expect(screen.getByRole("button", { name: "Book visit" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Record down payment" })).toBeInTheDocument();
     expect(screen.getByText("The down payment has not been received yet.")).toBeInTheDocument();
+    // the reason sits beside the locked button, not only in a hover tooltip
+    expect(screen.getByText("Book visit is locked: the down payment has not been received yet.")).toBeInTheDocument();
   });
 
   test("once it is paid, Book visit opens", async () => {
@@ -146,7 +148,8 @@ describe("QuoteDetail", () => {
   test("a draft asks before it is deleted", async () => {
     const onDelete = jest.fn().mockResolvedValue(true);
     renderDetail({ quote: quote({ status: "DRAFT" }), onDelete });
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await userEvent.click(screen.getByRole("button", { name: /More/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete draft" }));
     expect(onDelete).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "Delete draft" }));
     expect(onDelete).toHaveBeenCalled();

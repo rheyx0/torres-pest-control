@@ -32,10 +32,15 @@ function figureSize(value) {
   return "1rem";
 }
 
-export function StatTile({ label, value, note, tone = "plain", title }) {
+export function StatTile({ label, value, note, tone = "plain", title, onClick }) {
   const shade = TONE[tone] || TONE.plain;
+  // A tile with onClick is a button (it opens what it counts).
+  const Tag = onClick ? "button" : "div";
   return (
-    <div style={{
+    <Tag
+      {...(onClick ? { type: "button", onClick, className: "ui-interactive" } : {})}
+      style={{
+      ...(onClick ? { font: "inherit", textAlign: "left", cursor: "pointer", width: "100%" } : {}),
       background: shade.surface,
       border: `1px solid ${shade.border}`,
       borderRadius: "7.5px",
@@ -59,7 +64,7 @@ export function StatTile({ label, value, note, tone = "plain", title }) {
         }}
       >{value}</span>
       {note && <span style={{ fontSize: "0.74rem", color: colors.muted, minWidth: 0, overflowWrap: "anywhere" }}>{note}</span>}
-    </div>
+    </Tag>
   );
 }
 

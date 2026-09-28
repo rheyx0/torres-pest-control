@@ -14,12 +14,18 @@ import ClientDocuments, { CATEGORY_TAGS } from "./ClientDocuments";
 import ImagePreviewModal, { isImageFile } from "../common/ImagePreviewModal";
 import SignaturePreview from "../common/SignaturePreview";
 import ServiceReportPrinter from "../scheduling/ServiceReportPrinter";
+import EmptyState from "../common/EmptyState";
 import DataTable from "../ui/DataTable";
 import StatusPill from "../ui/StatusPill";
 import { ActivityTrend, ClientFacts, ClientHeader, ClientTimeline, NextVisitBanner, Tabs } from "./ClientProfileParts";
 import { activityTrend, clientVisits, currentPlan, lifetimeValue, nextVisit, timelineEvents } from "../../utils/clientTimeline";
 import { clientBalance, clientBillingEvents } from "../../utils/billing";
 import { useOptionalBilling } from "../../hooks/useBilling";
+import useAuth from "../../hooks/useAuth";
+import useClients from "../../hooks/useClients";
+import BillingPrinter from "../billing/BillingPrinter";
+import { presetRange } from "../../utils/reports";
+import { dayKey } from "../../utils/dashboardMetrics";
 import { signatureState } from "../../utils/dashboardMetrics";
 import { useScheduling } from "../../context/SchedulingContext";
 import useUsers from "../../hooks/useUsers";
@@ -359,6 +365,34 @@ function ClientDetails({
   const plan = currentPlan(visits);
   // Billing (Sprint 3): office only, and only once billing is set up.
   const billing = useOptionalBilling();
+  // Sprint 4: the client's payment check, and the monitoring report.
+  const { role } = useAuth();
+  const { setClientPaymentCheck } = useClients();
+  const [checkBusy, setCheckBusy] = useState(false);
+  const [checkError, setCheckError] = useState("");
+  const [monitoringPeriod, setMonitoringPeriod] = useState("LAST_6");
+  const [monitoringPrint, setMonitoringPrint] = useState(null);
+  const toggleClientCheck = async (skip) => {
+    setCheckBusy(true);
+    setCheckError("");
+    const result = await setClientPaymentCheck(client, skip);
+    setCheckBusy(false);
+    if (result !== true) setCheckError(result);
+  };
+  const printMonitoring = () => {
+    const now = new Date();
+    const months = { LAST_3: 3, LAST_6: 6, LAST_12: 12 }[monitoringPeriod];
+    const range = months ? { from: dayKey(new Date(now.getFullYear(), now.getMonth() - months, now.getDate())), to: dayKey(now) } : presetRange("THIS_YEAR", now);
+    if (monitoringPeriod === "ALL") range.from = "2000-01-01";
+    const inPeriod = [...visits]
+      .filter((visit) => visit.status !== "Cancelled" && (visit.reportSubmitted || visit.activityLevel) && dayKey(visit.scheduledAt) >= range.from && dayKey(visit.scheduledAt) <= range.to)
+      .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+    setMonitoringPrint({
+      kind: "MONITORING",
+      client,
+      monitoring: { reference: `Monitoring ${range.to}`, from: monitoringPeriod === "ALL" && inPeriod.length ? dayKey(inPeriod[0].scheduledAt) : range.from, to: range.to, visits: inPeriod, trend: activityTrend(inPeriod) },
+    });
+  };
   const hasBilling = Boolean(billing?.office && billing.available);
   const billingRecords = useMemo(() => (hasBilling ? {
     quotes: billing.quotesForClient(client.id),
@@ -478,6 +512,16 @@ function ClientDetails({
     visitColumns[4],
   ];
 
+  const bookHere = () => navigate(`/scheduling?new=1&client=${encodeURIComponent(client.id)}`);
+  const emptyTab = (message, action = null) => (
+    <div style={{ padding: "16px 18px 18px" }}>
+      <EmptyState message={message}>
+        {action && <button type="button" style={secondaryButton} onClick={action.onClick}>{action.label}</button>}
+      </EmptyState>
+    </div>
+  );
+  const bookAction = canBook ? { label: "Book visit", onClick: bookHere } : null;
+
   return (
     <div style={pageShell}>
       <ClientHeader
@@ -496,14 +540,16 @@ function ClientDetails({
         <section style={{ ...neutralCard, minWidth: 0 }}>
           <Tabs tabs={tabs} value={tab} onChange={setTab} />
 
-          {tab === "timeline" && (
+          {tab === "timeline" && events.length === 0 && emptyTab(`Nothing has happened with ${client.name} yet. Their visits, reports and billing will show here.`, bookAction)}
+          {tab === "timeline" && events.length > 0 && (
             <>
               <NextVisitBanner appointment={upcoming} crewNames={upcoming ? crewOf(upcoming).map(nameOf).filter(Boolean) : []} />
               <ClientTimeline events={events} nameOf={nameOf} onOpenReport={openReport} />
             </>
           )}
 
-          {tab === "visits" && (
+          {tab === "visits" && visits.length === 0 && emptyTab("No visits booked yet.", bookAction)}
+          {tab === "visits" && visits.length > 0 && (
             <div style={{ padding: "12px 18px 16px" }}>
               <DataTable
                 caption="Visits"
@@ -515,14 +561,32 @@ function ClientDetails({
             </div>
           )}
 
-          {tab === "reports" && (
+          {tab === "reports" && reports.length === 0 && emptyTab(
+            "No service reports yet. A report is filed when a technician finishes a visit.",
+            visits.length ? { label: "See visits", onClick: () => setTab("visits") } : bookAction
+          )}
+          {tab === "reports" && reports.length > 0 && (
             <div style={{ padding: "12px 18px 16px" }}>
               <DataTable caption="Service reports" columns={reportColumns} rows={reports} onRowClick={openReport} empty="No service reports filed yet." />
             </div>
           )}
 
-          {tab === "monitoring" && (
+          {tab === "monitoring" && trend.points.length === 0 && emptyTab(
+            "No pest activity recorded yet. The technician records the activity level and open issues with each service report.",
+            visits.length ? { label: "See visits", onClick: () => setTab("visits") } : bookAction
+          )}
+          {tab === "monitoring" && trend.points.length > 0 && (
             <div style={{ padding: "14px 18px 18px", display: "grid", gap: "16px" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                <select aria-label="Report period" value={monitoringPeriod} onChange={(event) => setMonitoringPeriod(event.target.value)} style={{ ...secondaryButton, padding: "6px 10px" }}>
+                  <option value="LAST_3">Last 3 months</option>
+                  <option value="LAST_6">Last 6 months</option>
+                  <option value="LAST_12">Last 12 months</option>
+                  <option value="ALL">All visits</option>
+                </select>
+                <button type="button" style={secondaryButton} onClick={printMonitoring}>Print monitoring report</button>
+              </div>
+              <BillingPrinter request={monitoringPrint} onDone={() => setMonitoringPrint(null)} />
               <section aria-label="Pest activity trend">
                 <h3 style={{ margin: "0 0 10px", fontSize: "14px", color: colors.ink }}>Pest activity</h3>
                 <ActivityTrend trend={trend} />
@@ -545,6 +609,21 @@ function ClientDetails({
 
           {tab === "billing" && balance && (
             <div style={{ padding: "14px 18px 18px", display: "grid", gap: "14px" }}>
+              <section aria-label="Payment check before booking" style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", padding: "10px 12px", border: `1px solid ${colors.line}`, borderRadius: "7.5px" }}>
+                <span style={{ flex: "1 1 260px", fontSize: "13.5px", color: colors.body }}>
+                  <strong style={{ fontWeight: 500, color: colors.ink }}>Payment check before booking: </strong>
+                  {client.skipPaymentCheck ? "Off. This client can be booked without a paid quotation." : "On. A treatment needs a paid quotation or an active contract."}
+                </span>
+                {role === "ADMIN" ? (
+                  <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13.5px", color: colors.ink, cursor: "pointer" }}>
+                    <input type="checkbox" checked={Boolean(client.skipPaymentCheck)} disabled={checkBusy} onChange={(event) => toggleClientCheck(event.target.checked)} />
+                    Skip the payment check for this client
+                  </label>
+                ) : (
+                  <span style={{ fontSize: "12.5px", color: colors.muted }}>Only an admin can change this.</span>
+                )}
+                {checkError && <span role="alert" style={{ flexBasis: "100%", color: colors.danger, fontSize: "12.5px" }}>{checkError}</span>}
+              </section>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "10px" }}>
                 {[
                   { label: "Outstanding", value: balance.outstanding, tone: balance.outstanding > 0 ? colors.ink : colors.muted },
@@ -562,7 +641,13 @@ function ClientDetails({
                 <button type="button" style={secondaryButton} onClick={() => navigate(`/billing?new=1&client=${encodeURIComponent(client.id)}`)}>New quote</button>
                 <button type="button" style={secondaryButton} onClick={() => navigate("/billing")}>Open billing</button>
               </div>
-              <ClientTimeline events={[...billingEvents].sort((a, b) => new Date(b.at) - new Date(a.at))} nameOf={nameOf} onOpenReport={openReport} />
+              {billingEvents.length === 0 ? (
+                <EmptyState message="No quotes, invoices or payments yet.">
+                  <button type="button" style={secondaryButton} onClick={() => navigate(`/billing?new=1&client=${encodeURIComponent(client.id)}`)}>New quote</button>
+                </EmptyState>
+              ) : (
+                <ClientTimeline events={[...billingEvents].sort((a, b) => new Date(b.at) - new Date(a.at))} nameOf={nameOf} onOpenReport={openReport} />
+              )}
             </div>
           )}
 
@@ -571,20 +656,28 @@ function ClientDetails({
               <p style={{ margin: "0 0 12px", color: colors.muted, fontSize: "12.5px" }}>
                 Paperwork that belongs to the client, not to one visit. Photos and signed forms for a service go in that appointment's Report tab.
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "0.7rem", alignItems: "start" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "0.7rem", alignItems: "stretch" }}>
                 {DOCUMENT_CATEGORIES.map((category) => (
                   <ClientDocuments
                     key={category.value}
                     compact
                     title={category.label}
                     uploadLabel={category.uploadLabel}
-                    documents={(client.documents || []).filter((document) => (document.category || "OTHER") === category.value)}
-                    canUpload={canUploadDocuments}
+                    documents={(client.documents || [])
+                      .filter((document) => (document.category || "OTHER") === category.value)
+                      .map((document) => {
+                        // A signed contract (Sprint 4) is shown under its contract number.
+                        const contract = category.value === "CONTRACT" ? (billing?.contracts || []).find((entry) => entry.signedDocumentId === document.id) : null;
+                        if (!contract) return document;
+                        const extension = String(document.name || "").match(/\.[a-z0-9]{1,5}$/i)?.[0] || "";
+                        return { ...document, name: `Signed contract ${contract.reference}${extension}` };
+                      })}
+                    canUpload={canUploadDocuments && category.value !== "CONTRACT"}
                     canRemove={canRemoveDocuments}
                     onUpload={(file) => onUploadDocument(file, category.value)}
                     onRemove={onRemoveDocument}
                     onResolveUrl={onResolveDocumentUrl}
-                    emptyMessage="None uploaded yet."
+                    emptyMessage={category.value === "CONTRACT" ? "None yet. A signed copy uploaded on a contract (Billing → Contracts) appears here." : "None uploaded yet."}
                   />
                 ))}
               </div>

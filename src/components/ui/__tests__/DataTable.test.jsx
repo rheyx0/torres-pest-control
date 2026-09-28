@@ -55,3 +55,19 @@ describe("DataTable", () => {
     expect(sortRows(withBlank, columns, { key: "name", direction: "asc" }).at(-1).id).toBe(4);
   });
 });
+
+describe("DataTable loading and phone layout", () => {
+  it("shows placeholder rows while loading, then the rows", () => {
+    const { rerender } = render(<DataTable columns={columns} rows={[]} loading empty="Loading clients…" />);
+    expect(screen.getByText("Loading clients…")).toBeInTheDocument();
+    expect(document.querySelectorAll("tr.dt-loading")).toHaveLength(5);
+    rerender(<DataTable columns={columns} rows={rows} loading={false} />);
+    expect(document.querySelectorAll("tr.dt-loading")).toHaveLength(0);
+  });
+
+  it("labels each cell with its column, for the phone card layout", () => {
+    render(<DataTable columns={columns} rows={rows} />);
+    const cells = screen.getByText("Tan Family").closest("tr").querySelectorAll("td");
+    expect([...cells].map((cell) => cell.getAttribute("data-label"))).toEqual(["Name", "Visits", "Note"]);
+  });
+});

@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import ClientDetails from "../components/clients/ClientDetails";
 import ConfirmDialog from "../components/common/ConfirmDialog";
 import PageHeader from "../components/common/PageHeader";
+import Skeleton, { SkeletonBar } from "../components/ui/Skeleton";
 import useAuth from "../hooks/useAuth";
 import useClients from "../hooks/useClients";
 import { useToast } from "../context/ToastContext";
@@ -27,7 +28,11 @@ function ClientDetailPage() {
   if (!client && loading) {
     return (
       <div style={pageShell}>
-        <div style={{ ...card, color: colors.muted }}>Loading client…</div>
+        <SkeletonBar width="220px" height="28px" style={{ marginBottom: "18px" }} />
+        <div className="client-columns">
+          <div style={{ ...card, padding: 0 }}><Skeleton label="Loading client…" lines={6} /></div>
+          <div style={{ ...card, padding: 0 }}><Skeleton label="" lines={8} /></div>
+        </div>
       </div>
     );
   }

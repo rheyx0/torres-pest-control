@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import * as appointmentService from "../services/appointmentService";
 import { useAuthContext } from "./AuthContext";
+import { addLog, LOG_TYPES } from "../services/logService";
 
 const SchedulingContext = createContext(null);
 
@@ -15,7 +16,7 @@ const REPORT_OWNED = [
 ];
 
 export function SchedulingProvider({ children }) {
-  const { session, sessionVerified } = useAuthContext();
+  const { session, sessionVerified, currentUser } = useAuthContext();
   const [appointments, setAppointments] = useState([]);
   // Technicians who are out (migration 057): nobody can be booked on those days.
   const [absences, setAbsences] = useState([]);
@@ -139,6 +140,9 @@ export function SchedulingProvider({ children }) {
       // form and the printed report kept the old values until a reload.
       ...(reportFields.activityLevel !== undefined ? { activityLevel: reportFields.activityLevel || "" } : {}),
       ...(reportFields.openIssues !== undefined ? { openIssues: reportFields.openIssues || "" } : {}),
+      // Inspection results (066), saved with the report.
+      ...(reportFields.inspectionAreaSqm !== undefined ? { inspectionAreaSqm: reportFields.inspectionAreaSqm === "" ? null : Number(reportFields.inspectionAreaSqm) } : {}),
+      ...(reportFields.recommendedServiceIds !== undefined ? { recommendedServiceIds: reportFields.recommendedServiceIds } : {}),
     } : entry));
     return result.report;
   }, []);
@@ -177,9 +181,15 @@ export function SchedulingProvider({ children }) {
       : appointment));
   }, []);
 
+  // A booking made without the payment check (Sprint 4) goes in the activity
+  // log with its reason, so the admin can see who skipped it and why.
+  const logBookingOverride = useCallback((message) => {
+    addLog(currentUser?.name, message, LOG_TYPES.CLIENT);
+  }, [currentUser?.name]);
+
   const value = useMemo(
-    () => ({ appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl, uploadSignature: appointmentService.uploadSignature, getSignatureUrl: appointmentService.getSignatureUrl }),
-    [appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment]
+    () => ({ appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl, uploadSignature: appointmentService.uploadSignature, getSignatureUrl: appointmentService.getSignatureUrl, fetchStatusHistory: appointmentService.fetchStatusHistory, logBookingOverride }),
+    [appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, logBookingOverride]
   );
   return <SchedulingContext.Provider value={value}>{children}</SchedulingContext.Provider>;
 }

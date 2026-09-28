@@ -306,3 +306,28 @@ describe("attentionItems", () => {
     expect(out.detail).toMatch(/^Juan \(\(Sick\) until /);
   });
 });
+
+// Sprint 4: payment and follow-up reminders in Needs attention.
+describe("attentionItems reminders", () => {
+  const now = new Date("2026-09-28T10:00:00");
+  const clients = [{ id: "c1", name: "Juan Dela Cruz" }];
+
+  it("lists overdue invoices and those due within 3 days", () => {
+    const invoices = [
+      { id: "i1", reference: "TPC-INV-00001", clientId: "c1", dueOn: "2026-09-20", amountDue: 5000, status: "ISSUED" },
+      { id: "i2", reference: "TPC-INV-00002", clientId: "c1", dueOn: "2026-09-29", amountDue: 3000, status: "ISSUED" },
+    ];
+    const items = attentionItems({ clients, invoices, payments: [] }, { now });
+    expect(items.find((item) => item.key === "invoices-overdue").title).toBe("Invoice TPC-INV-00001 is overdue");
+    expect(items.find((item) => item.key === "invoices-due").title).toBe("Invoice TPC-INV-00002 is due tomorrow");
+    // without billing (technicians, or before 062) there are no money rows
+    expect(attentionItems({ clients }, { now }).some((item) => item.kind === "payment")).toBe(false);
+  });
+
+  it("lists a follow-up due within 7 days, with a Book link on its date", () => {
+    const appointments = [{ id: "v1", clientId: "c1", status: "Completed", reportSubmitted: true, scheduledAt: "2026-09-10T09:00:00", followUpDate: "2026-10-02" }];
+    const item = attentionItems({ appointments, clients }, { now }).find((entry) => entry.key === "followups");
+    expect(item.title).toBe("Juan Dela Cruz needs a follow-up visit");
+    expect(item.action).toEqual({ label: "Book", to: "/scheduling?new=1&client=c1&date=2026-10-02" });
+  });
+});

@@ -34,12 +34,18 @@ export function ServicesProvider({ children }) {
     refresh();
   }, [session, sessionVerified, refresh]);
 
+  // A re-read row does not carry the payment-check exemption (066, read on its
+  // own), so a replacement keeps the one it had unless it names its own.
   const replaceOne = (service) =>
-    setServices((current) => [...current.filter((entry) => entry.id !== service.id), service].sort(byOrder));
+    setServices((current) => {
+      const previous = current.find((entry) => entry.id === service.id);
+      const merged = { ...service, skipPaymentCheck: service.skipPaymentCheck ?? Boolean(previous?.skipPaymentCheck) };
+      return [...current.filter((entry) => entry.id !== service.id), merged].sort(byOrder);
+    });
 
   // Saves the row, then its materials list. The materials are written by
   // their own RPC, so the row is re-read afterwards to pick them up.
-  const saveService = useCallback(async (id, { materials, ...fields }) => {
+  const saveService = useCallback(async (id, { materials, skipPaymentCheck, ...fields }) => {
     const saved = id
       ? await serviceCatalogService.updateService(id, fields)
       : await serviceCatalogService.createService(fields);
@@ -52,16 +58,28 @@ export function ServicesProvider({ children }) {
         return `The service was saved, but its materials were not: ${materialsResult.error}`;
       }
     }
+    // The payment-check exemption (066) is its own admin RPC.
+    const previous = services.find((entry) => entry.id === saved.service.id);
+    let exempt = Boolean(previous?.skipPaymentCheck);
+    if (skipPaymentCheck !== undefined && Boolean(skipPaymentCheck) !== exempt) {
+      const flag = await serviceCatalogService.setServicePaymentCheck(saved.service.id, skipPaymentCheck);
+      if (flag.error) {
+        replaceOne({ ...saved.service, skipPaymentCheck: exempt });
+        return `The service was saved, but "Can be booked without payment" was not: ${flag.error}`;
+      }
+      exempt = Boolean(skipPaymentCheck);
+    }
     // billingMode (060) is kept too: dropping it made every material read as
     // Included until a reload, so "Charge extra" never reached the invoice.
     replaceOne({
       ...saved.service,
+      skipPaymentCheck: exempt,
       materials: materials
-        ? materials.map((m) => ({ itemId: m.itemId, defaultAmount: Number(m.defaultAmount), billingMode: m.billingMode === "EXTRA_CHARGED" ? "EXTRA_CHARGED" : "INCLUDED" }))
+        ? materials.map((m) => ({ itemId: m.itemId, defaultAmount: Number(m.defaultAmount), billingMode: ["EXTRA_CHARGED", "CHARGE_ALL"].includes(m.billingMode) ? m.billingMode : "INCLUDED" }))
         : saved.service.materials,
     });
     return true;
-  }, []);
+  }, [services]);
 
   const setServiceActive = useCallback(async (id, isActive) => {
     const result = await serviceCatalogService.setServiceActive(id, isActive);

@@ -7,6 +7,7 @@ export { default as DataTable } from "./DataTable";
 export { default as Field } from "./Field";
 export { default as Input } from "./Input";
 export { default as Modal } from "./Modal";
+export { default as MoreMenu } from "./MoreMenu";
 export { default as Panel } from "./Panel";
 export { default as SegmentedControl } from "./SegmentedControl";
 export { default as Select } from "./Select";

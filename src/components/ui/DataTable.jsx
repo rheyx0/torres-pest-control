@@ -4,6 +4,10 @@
 // `columns` entries: { key, label, align?, sortable?, sortValue?(row), render?(row), width? }.
 // Sorting is local and stable; the sort state lives here so a page only
 // declares what can be sorted, not how.
+//
+// `loading` shows placeholder rows until the first rows arrive. On a phone
+// (under 640px, globals.css .dt) each row becomes a card: every cell on its
+// own line, labelled with its column's name from data-label.
 
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -36,7 +40,7 @@ const cell = {
   verticalAlign: "middle",
 };
 
-function DataTable({ columns, rows, rowKey = "id", initialSort = null, onRowClick, empty = "Nothing to show.", caption }) {
+function DataTable({ columns, rows, rowKey = "id", initialSort = null, onRowClick, empty = "Nothing to show.", caption, loading = false }) {
   const [sort, setSort] = useState(initialSort);
   const sorted = useMemo(() => sortRows(rows, columns, sort), [rows, columns, sort]);
 
@@ -48,7 +52,7 @@ function DataTable({ columns, rows, rowKey = "id", initialSort = null, onRowClic
 
   return (
     <div className="scroll-x">
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13.5px" }}>
+      <table className="dt" style={{ width: "100%", borderCollapse: "collapse", fontSize: "13.5px" }}>
         {caption && <caption style={{ position: "absolute", left: "-9999px" }}>{caption}</caption>}
         <thead>
           <tr>
@@ -100,8 +104,19 @@ function DataTable({ columns, rows, rowKey = "id", initialSort = null, onRowClic
           </tr>
         </thead>
         <tbody>
-          {sorted.length === 0 ? (
-            <tr>
+          {sorted.length === 0 && loading ? (
+            [0, 1, 2, 3, 4].map((index) => (
+              <tr key={`loading-${index}`} className="dt-loading" style={{ background: surface.panel }}>
+                {columns.map((column, columnIndex) => (
+                  <td key={column.key} style={{ ...cell, textAlign: column.align || "left" }}>
+                    {index === 0 && columnIndex === 0 && <span className="visually-hidden">{typeof empty === "string" && /^Loading/.test(empty) ? empty : "Loading…"}</span>}
+                    <span aria-hidden="true" className="skeleton" style={{ display: "inline-block", width: `${[70, 55, 80, 60, 45][(index + columnIndex) % 5]}%`, height: "11px" }} />
+                  </td>
+                ))}
+              </tr>
+            ))
+          ) : sorted.length === 0 ? (
+            <tr className="dt-empty">
               <td colSpan={columns.length} style={{ ...cell, color: neutral.bark, textAlign: "center", padding: "24px" }}>
                 {empty}
               </td>
@@ -116,6 +131,7 @@ function DataTable({ columns, rows, rowKey = "id", initialSort = null, onRowClic
                 {columns.map((column) => (
                   <td
                     key={column.key}
+                    data-label={typeof column.label === "string" ? column.label : undefined}
                     style={{
                       ...cell,
                       borderBottom: index === sorted.length - 1 ? 0 : cell.borderBottom,
