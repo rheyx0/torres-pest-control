@@ -328,6 +328,6 @@ describe("attentionItems reminders", () => {
     const appointments = [{ id: "v1", clientId: "c1", status: "Completed", reportSubmitted: true, scheduledAt: "2026-09-10T09:00:00", followUpDate: "2026-10-02" }];
     const item = attentionItems({ appointments, clients }, { now }).find((entry) => entry.key === "followups");
     expect(item.title).toBe("Juan Dela Cruz needs a follow-up visit");
-    expect(item.action).toEqual({ label: "Book", to: "/scheduling?new=1&client=c1&date=2026-10-02" });
+    expect(item.action).toEqual({ label: "Book", to: "/scheduling?new=1&client=c1&date=2026-10-02&followup=v1" });
   });
 });

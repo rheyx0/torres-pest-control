@@ -219,8 +219,15 @@ export function draftInvoiceLines({ quote = null, quoteInvoiced = false, visits 
       unitPrice: line.unitPrice,
     }));
   }
-  if (!quote) {
-    visits.forEach((visit) => {
+  // Without a quote every visit is a line; with one, the quote's lines stand
+  // for the job, and only a follow-up (068) is charged on top of them: one
+  // linked to its visit, or one booked as the Follow-up Visit service without
+  // the link. Any other visit is covered by the quote, so it is not charged
+  // twice.
+  const isFollowUp = (visit) => Boolean(visit.followUpOf) || /follow[\s-]?up/i.test(visit.serviceType || "");
+  const visitLines = quote ? visits.filter(isFollowUp) : visits;
+  if (visitLines.length) {
+    visitLines.forEach((visit) => {
       const reference = appointmentReference(visit);
       if (Number(visit.price) > 0) {
         lines.push({

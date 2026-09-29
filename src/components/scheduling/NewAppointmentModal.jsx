@@ -114,6 +114,8 @@ function NewAppointmentModal({
   initialPestConcern = "",
   // Booking from an approved quote (Sprint 3): the quoted price, kept as typed.
   initialPrice = "",
+  // A follow-up (068): { id, reference } of the visit it checks on.
+  initialFollowUpOf = null,
   // Booking a contract's visits (063): its length, as a number of visits or an end date.
   initialVisitCount = null,
   initialUntil = "",
@@ -253,6 +255,8 @@ function NewAppointmentModal({
       setPrice(String(picked.price));
       setPriceTouched(true);
     }
+    // A quotation is a one-time job; repeating visits go under a contract.
+    if (type === "quote") setFrequency("One-time");
     if (type === "contract") {
       if (picked.frequency) setFrequency(picked.frequency);
       if (picked.visitCount) {
@@ -363,11 +367,17 @@ function NewAppointmentModal({
     }
     const [sourceType, sourceId] = source ? source.split(":") : ["", ""];
     if (!check.ok && !override) {
-      setFormError(`${check.reason} Record the down payment first, or use "Still make appointment without an approved quotation".`);
+      setFormError(check.ready
+        ? `Book this visit under ${check.ready.reference}, or use "Still make appointment without an approved quotation".`
+        : `${check.reason} Record the down payment first, or use "Still make appointment without an approved quotation".`);
       return;
     }
     if (!check.ok && override && !overrideReason.trim()) {
       setFormError("Write why this appointment is made without an approved quotation.");
+      return;
+    }
+    if (sourceType === "quote" && kind === PLAN_KINDS.RECURRING) {
+      setFormError("A quotation is for a one-time job. For repeating visits, make a contract.");
       return;
     }
     if (sourceType === "contract" && kind !== PLAN_KINDS.RECURRING) {
@@ -398,6 +408,8 @@ function NewAppointmentModal({
       source: sourceId ? { type: sourceType, id: sourceId } : null,
       // Booked past the payment check: the reason goes in the activity log.
       ...(!check.ok ? { paymentOverride: overrideReason.trim() } : {}),
+      // A follow-up: linked to the visit it checks on once booked.
+      ...(initialFollowUpOf ? { followUpOf: initialFollowUpOf.id } : {}),
     };
     // A plan, or one visit carrying several services, is booked in one go
     // (book_appointments, 052). A plain single visit keeps the older path,
@@ -697,7 +709,7 @@ function NewAppointmentModal({
             {/* Both belong to the visit, not to the client: the same client can
                 hold a quarterly contract and a one-off fumigation, and the
                 price has to stay whatever was agreed on the day. */}
-            <Field label="Frequency" hint={multiDay ? "A multi-day job is booked once." : undefined}>
+            <Field label="Frequency" hint={multiDay ? "A multi-day job is booked once." : source.startsWith("quote:") ? "A quotation is a one-time job. For repeating visits, make a contract." : undefined}>
               <Select name="serviceFrequency" value={multiDay ? "One-time" : frequency} disabled={multiDay} onChange={(event) => setFrequency(event.target.value)}>
                 <option value="">Not set</option>
                 {SERVICE_FREQUENCIES.map((option) => (
@@ -775,8 +787,15 @@ function NewAppointmentModal({
           </Section>
         )}
 
-        {/* Skipping billing is allowed (an inspection, a follow-up), but it
-            should be a choice, not an accident. */}
+        {initialFollowUpOf && (
+          <p role="status" style={{ gridColumn: "1 / -1", margin: 0, padding: "9px 12px", background: surface.sunken, borderRadius: radius.control, color: neutral.ink, ...text.small }}>
+            <strong style={{ fontWeight: weight.medium }}>Follow-up of {initialFollowUpOf.reference}.</strong>{" "}
+            Priced at the follow-up price of that visit's services, and booked under its quotation.
+          </p>
+        )}
+
+        {/* Skipping billing is allowed (an inspection), but it should be a
+            choice, not an accident. */}
         {!check.ok && (
           <div
             role="group"
@@ -785,10 +804,15 @@ function NewAppointmentModal({
           >
             <span style={{ display: "flex", alignItems: "center", gap: "7px" }}>
               <AlertTriangle size={14} aria-hidden="true" />
-              <span><strong style={{ fontWeight: weight.medium }}>Payment needed before booking.</strong> {check.reason}</span>
+              <span><strong style={{ fontWeight: weight.medium }}>{check.ready ? "Link the paid quotation or contract." : "Payment needed before booking."}</strong> {check.reason}</span>
             </span>
             {!override ? (
-              <span>
+              <span style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                {check.ready && (
+                  <Button size="sm" variant="primary" onClick={() => chooseSource(`${check.ready.type}:${check.ready.id}`)}>
+                    Book under {check.ready.reference}
+                  </Button>
+                )}
                 <Button size="sm" onClick={() => setOverride(true)}>Still make appointment without an approved quotation</Button>
               </span>
             ) : (

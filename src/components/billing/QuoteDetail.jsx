@@ -144,7 +144,8 @@ function QuoteDetail({
         <div style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap", color: colors.body, fontSize: "0.88rem" }}>
           <StatusPill status={QUOTE_STATUS_LABELS[status]} />
           {deposit.required > 0 && <StatusPill status={DEPOSIT_WORDS[deposit.state]} />}
-          <span>Valid until {formatDate(quote.validUntil)}</span>
+          <span>One-time service</span>
+          <span>· Valid until {formatDate(quote.validUntil)}</span>
           {terms && <span>· Payment {terms.toLowerCase()}</span>}
           {quote.areaSqm && <span>· {quote.areaSqm} sqm</span>}
           {inspection && <span>· From inspection {inspection.reference || ""}</span>}

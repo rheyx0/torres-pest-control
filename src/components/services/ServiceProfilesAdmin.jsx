@@ -79,6 +79,11 @@ export function validateServiceForm(form, services = [], editingId = null) {
     if (priceError) errors.defaultPrice = priceError;
   }
 
+  if (form.followUpPrice !== "" && form.followUpPrice !== null && form.followUpPrice !== undefined) {
+    const followUpError = validateMoney(form.followUpPrice, { label: "Follow-up price" });
+    if (followUpError) errors.followUpPrice = followUpError;
+  }
+
   if (form.depositPercent !== "" && form.depositPercent !== null && form.depositPercent !== undefined) {
     const percent = Number(form.depositPercent);
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) errors.depositPercent = "Enter a down payment from 0 to 100%.";
@@ -114,6 +119,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
     areaRate: initial?.areaRate ?? "",
     minimumCharge: initial?.minimumCharge ?? "",
     depositPercent: initial?.depositPercent ?? 0,
+    followUpPrice: initial?.followUpPrice ?? "",
     // 066: booked without a paid quote first (inspections, follow-ups).
     skipPaymentCheck: Boolean(initial?.skipPaymentCheck),
     materials: (initial?.materials || []).length
@@ -179,6 +185,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
       areaRate: area && form.areaRate !== "" ? Number(form.areaRate) : null,
       minimumCharge: area && form.minimumCharge !== "" ? Number(form.minimumCharge) : null,
       depositPercent: form.depositPercent === "" ? 0 : Number(form.depositPercent),
+      followUpPrice: form.followUpPrice === "" ? null : Number(form.followUpPrice),
       skipPaymentCheck: form.skipPaymentCheck,
       materials: form.materials
         .filter((row) => row.itemId)
@@ -291,11 +298,23 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
               invalid={Boolean(errors.depositPercent)}
             />
           </Field>
+          <Field label="Follow-up price (₱)" hint="What a follow-up visit after this service costs. Empty: the Follow-up Visit service's price." error={errors.followUpPrice} style={{ alignContent: "start" }}>
+            <Input
+              aria-label="Follow-up price"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.followUpPrice}
+              onChange={(event) => set("followUpPrice", event.target.value)}
+              placeholder="0.00"
+              invalid={Boolean(errors.followUpPrice)}
+            />
+          </Field>
           <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", gridColumn: "1 / -1", fontSize: "0.88rem", color: colors.body, cursor: "pointer" }}>
             <input type="checkbox" checked={form.skipPaymentCheck} onChange={(event) => set("skipPaymentCheck", event.target.checked)} style={{ marginTop: "3px" }} />
             <span>
               <strong style={{ fontWeight: 500, color: colors.ink }}>Can be booked without payment</strong>
-              <span style={{ display: "block", color: colors.muted, fontSize: "0.8rem" }}>For inspections and follow-ups: booking skips the check for a paid quote or contract.</span>
+              <span style={{ display: "block", color: colors.muted, fontSize: "0.8rem" }}>For inspections: booking skips the check for a paid quote or contract. A follow-up is linked to its job's quotation instead.</span>
             </span>
           </label>
           <Field label="Default duration" hint="Hours and minutes, up to 13 h." error={errors.defaultDurationMinutes} style={{ alignContent: "start" }}>
@@ -468,6 +487,7 @@ export default function ServiceProfilesAdmin() {
                 <span>Price: {describeServicePricing(service, formatPeso)}</span>
                 {service.skipPaymentCheck && <span>· No payment needed to book</span>}
                 {service.depositPercent > 0 && <span>Down payment: {service.depositPercent}%</span>}
+                {service.followUpPrice !== null && service.followUpPrice !== undefined && <span>Follow-up: {formatPeso(service.followUpPrice)}</span>}
                 <span>Duration: {formatDuration(service.defaultDurationMinutes)}</span>
                 <span>
                   <PackageCheck size={12} style={{ verticalAlign: "-2px", marginRight: "0.25rem" }} />

@@ -14,7 +14,7 @@ import {
   clientClassificationOptions,
 } from "../../utils/constants";
 import { humanizeEnum } from "../../utils/formatters";
-import { validateClient } from "../../utils/validators";
+import { clientWithEmail, emailTakenMessage, validateClient } from "../../utils/validators";
 import { buttonWhen, inputStyle, invalidInputStyle } from "../../styles/theme";
 
 const EMPTY_FORM = {
@@ -53,7 +53,12 @@ const COMPANY_CLASSIFICATIONS = new Set([
   "BOAT_SHIP_VESSEL",
 ]);
 
-function ClientForm({ initialValues, onSubmit, submitLabel = "Save Client", footer }) {
+/**
+ * @param clients  every client (archived too), to refuse an email another
+ *                 client already has (migration 067); the one being edited is
+ *                 initialValues.id and is skipped.
+ */
+function ClientForm({ initialValues, onSubmit, submitLabel = "Save Client", footer, clients = [] }) {
   const [form, setForm] = useState(initialValues ? { ...EMPTY_FORM, ...initialValues } : EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -76,6 +81,8 @@ function ClientForm({ initialValues, onSubmit, submitLabel = "Save Client", foot
     event.preventDefault();
 
     const nextErrors = validateClient(form);
+    const taken = !nextErrors.email && clientWithEmail(form.email, clients, initialValues?.id || null);
+    if (taken) nextErrors.email = emailTakenMessage(taken);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 

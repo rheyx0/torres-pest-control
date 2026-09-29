@@ -367,7 +367,7 @@ function ClientDetails({
   const billing = useOptionalBilling();
   // Sprint 4: the client's payment check, and the monitoring report.
   const { role } = useAuth();
-  const { setClientPaymentCheck } = useClients();
+  const { setClientPaymentCheck, clients: allClients } = useClients();
   const [checkBusy, setCheckBusy] = useState(false);
   const [checkError, setCheckError] = useState("");
   const [monitoringPeriod, setMonitoringPeriod] = useState("LAST_6");
@@ -1033,7 +1033,7 @@ function ClientDetails({
               </button>
             </div>
 
-            <ClientForm initialValues={client} onSubmit={async (values) => { const result = await onSave(values); if (result !== false) setIsEditModalOpen(false); }} submitLabel="Save Changes" />
+            <ClientForm initialValues={client} clients={allClients} onSubmit={async (values) => { const result = await onSave(values); if (result !== false) setIsEditModalOpen(false); }} submitLabel="Save Changes" />
           </div>
         </div>
       )}

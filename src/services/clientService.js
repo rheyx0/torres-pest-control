@@ -25,6 +25,10 @@ const DOCUMENT_COLUMNS = "id, client_id, name, mime_type, size_bytes, storage_pa
 
 function describeError(error) {
   if (!error) return "Unknown error";
+  // Migration 067's index, hit when two saves race past the trigger.
+  if (error.code === "23505" && /clients_email_unique_idx/.test(error.message || "")) {
+    return "That email is already used by another client. Each client needs their own email.";
+  }
   return [
     error.message || "Unknown error",
     error.details ? ` — ${error.details}` : "",

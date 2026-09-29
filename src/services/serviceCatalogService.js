@@ -87,9 +87,15 @@ export async function fetchServices() {
     ({ data, error } = await select());
   }
   if (error) return { error: describeError(error), services: [] };
-  // Services booked without payment first (066): Inspection, Follow-up Visit.
+  // Services booked without payment first (066), and the price of a
+  // follow-up after each (068): read on their own, so either missing column
+  // only drops that field.
   const exempt = await fetchPaymentCheckExemptions("services");
-  return { error: null, services: (data || []).map((row) => ({ ...mapServiceRow(row), skipPaymentCheck: exempt.has(row.id) })) };
+  const followUp = await fetchFollowUpPrices();
+  return {
+    error: null,
+    services: (data || []).map((row) => ({ ...mapServiceRow(row), skipPaymentCheck: exempt.has(row.id), followUpPrice: followUp.has(row.id) ? followUp.get(row.id) : null })),
+  };
 }
 
 export async function createService(fields) {
@@ -145,6 +151,22 @@ export async function saveServiceMaterials(serviceId, materials) {
 }
 
 /** Admin only (066): a service booked without a paid quote first. */
+/** id -> follow-up price, for the services that have one (068). Empty before 068. */
+async function fetchFollowUpPrices() {
+  const { data, error } = await supabase.from("services").select("id, follow_up_price").not("follow_up_price", "is", null);
+  return new Map(error ? [] : (data || []).map((row) => [row.id, Number(row.follow_up_price)]));
+}
+
+/** What a follow-up after this service costs; null for "the Follow-up Visit service's price" (068). */
+export async function setServiceFollowUpPrice(serviceId, price) {
+  const value = price === "" || price === null || price === undefined ? null : Number(price);
+  const { error } = await supabase.from("services").update({ follow_up_price: value }).eq("id", serviceId);
+  if (error) {
+    return { error: /follow_up_price/.test(`${error.message} ${error.details || ""}`) ? "The follow-up price needs migration 068." : describeError(error) };
+  }
+  return { error: null };
+}
+
 export async function setServicePaymentCheck(serviceId, skip) {
   const { error } = await supabase.rpc("set_service_payment_check", { p_service_id: serviceId, p_skip: Boolean(skip) });
   if (error) return { error: describeError(error) };

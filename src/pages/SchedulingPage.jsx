@@ -25,7 +25,7 @@ import useUsers from "../hooks/useUsers";
 import useServices from "../hooks/useServices";
 import { useOptionalBilling } from "../hooks/useBilling";
 import { canBookFromQuote } from "../utils/billing";
-import { paymentCheck } from "../utils/sprint4";
+import { findFollowUpService, followUpPriceFor, paymentCheck } from "../utils/sprint4";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
 import { ACTIVITY_LEVELS, APPOINTMENT_STATUSES, ATTACHMENT_CATEGORIES, DOCUMENT_CATEGORIES, PEST_CONCERN_SUGGESTIONS, REPORT_UPLOAD_CATEGORIES, ROLES, LIMITS, SERVICE_FREQUENCIES } from "../utils/constants";
@@ -62,6 +62,7 @@ import PlanPanel from "../components/scheduling/PlanPanel";
 import VisitExtras from "../components/billing/VisitExtras";
 import VisitBillingLink from "../components/billing/VisitBillingLink";
 import StatusHistory from "../components/scheduling/StatusHistory";
+import FollowUpLink from "../components/scheduling/FollowUpLink";
 import InspectionFields from "../components/scheduling/InspectionFields";
 import SchedulingToolbar, { MODES, isCalendarMode } from "../components/scheduling/SchedulingToolbar";
 import {
@@ -99,7 +100,7 @@ function SchedulingPage() {
   const outWithTechnicians = useMemo(() => openCheckouts(movements), [movements]);
   const { staff, technicians } = useUsers();
   const { activeServices, serviceById, serviceByName } = useServices();
-  const { logBookingOverride, appointments, absences, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
+  const { logBookingOverride, linkFollowUp, appointments, absences, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
   const billing = useOptionalBilling();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState(null);
@@ -162,12 +163,33 @@ function SchedulingPage() {
     if (searchParams.get("tab") === "Report") setTab("Report");
   }, [appointments, searchParams, isTechnician, currentUser?.id]);
   // The top bar's "New visit" (and a client's "Book visit") land here with
+  // A follow-up of `original` (068): the Follow-up Visit service, charged at
+  // the follow-up price of the services the client had, booked under the same
+  // quotation as that job, and linked to it once booked.
+  const followUpPrefill = (original) => {
+    const followUpService = findFollowUpService(activeServices);
+    const price = followUpPriceFor(original, servicesOf(original, serviceById, serviceByName), followUpService);
+    return {
+      followUpOf: { id: original.id, reference: appointmentReference(original) },
+      serviceIds: followUpService ? [followUpService.id] : [],
+      price: price ?? "",
+      frequency: "One-time",
+      pestConcern: original.pestConcern || "",
+      quoteId: original.quoteId || undefined,
+    };
+  };
+
   // ?new=1, optionally &client=<id>. Open the form once, then drop the
   // params so a refresh or Back doesn't reopen it.
   useEffect(() => {
     if (searchParams.get("new") !== "1") return;
+    // A follow-up (068) waits for the schedule, to find the visit it follows.
+    const followUpId = searchParams.get("followup") || "";
+    if (followUpId && loading && appointments.length === 0) return;
     if (!isTechnician) {
       setCreateClientId(searchParams.get("client") || "");
+      const original = followUpId ? appointments.find((entry) => entry.id === followUpId) : null;
+      setCreatePrefill(original ? followUpPrefill(original) : null);
       // A follow-up reminder's Book carries the follow-up date (9 AM that day,
       // if it is still ahead).
       const date = searchParams.get("date") || "";
@@ -178,8 +200,10 @@ function SchedulingPage() {
     next.delete("new");
     next.delete("client");
     next.delete("date");
+    next.delete("followup");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, isTechnician]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, setSearchParams, isTechnician, loading]);
   // Billing's "Book visit" lands here as ?quote=<id> (Sprint 3): open the form
   // with the quote's client, services and price. The visits are linked to the
   // quote once booked. Waits for billing to load; drops the param after.
@@ -194,6 +218,7 @@ function SchedulingPage() {
       setCreatePrefill({
         quoteId: quote.id,
         quoteReference: quote.reference,
+        frequency: "One-time",
         serviceIds: quote.lines.filter((line) => line.kind === "SERVICE" && line.serviceId).map((line) => line.serviceId),
         price: quote.total,
       });
@@ -663,6 +688,7 @@ function SchedulingPage() {
         ? toDateTimeLocal(new Date(`${selected.followUpDate}T09:00:00`))
         : ""
     );
+    setCreatePrefill(followUpPrefill(selected));
     setCreateOpen(true);
   };
 
@@ -706,6 +732,7 @@ function SchedulingPage() {
     const result = await createAppointment(fields);
     if (typeof result === "string") return result;
     logOverride(fields);
+    await linkToOriginal(fields.followUpOf, [result.id]);
     return showBooked(result, await linkToSource(fields.source, [result.id], "Appointment created."));
   };
 
@@ -715,10 +742,24 @@ function SchedulingPage() {
     const result = await bookAppointments(booking);
     if (typeof result === "string") return result;
     logOverride(booking);
+    await linkToOriginal(booking.followUpOf, result?.bookedIds || []);
     const count = booking.visits.length;
     return showBooked(result, await linkToSource(booking.source, result?.bookedIds || [], booking.kind === "MULTI_DAY"
       ? `${count}-day job booked.`
       : booking.kind ? `${count} visits booked.` : "Appointment created."));
+  };
+
+  // A follow-up (068) names the visit it checks on. The visit stands either
+  // way; a failed link is reported.
+  const linkToOriginal = async (originalId, ids) => {
+    if (!originalId || ids.length === 0) return;
+    for (const id of ids) {
+      const linked = await linkFollowUp(id, originalId);
+      if (linked !== true) {
+        showError(`Booked, but not marked as a follow-up: ${linked}`);
+        return;
+      }
+    }
   };
 
   // Booked past the payment check (Sprint 4): the reason goes in the log.
@@ -760,8 +801,9 @@ function SchedulingPage() {
       quotes: billing.quotes,
       payments: billing.payments,
       contracts: billing.contracts || [],
+      appointments,
     });
-  }, [billing, clients, serviceById]);
+  }, [billing, clients, serviceById, appointments]);
 
   const billingSources = useMemo(() => {
     if (!billing?.office || !billing.available) return null;
@@ -1169,6 +1211,7 @@ function SchedulingPage() {
           initialFrequency={createPrefill?.frequency || ""}
           initialPestConcern={createPrefill?.pestConcern || ""}
           initialPrice={createPrefill?.price ?? ""}
+          initialFollowUpOf={createPrefill?.followUpOf || null}
           initialVisitCount={createPrefill?.visitCount || null}
           initialUntil={createPrefill?.until || ""}
           billingSources={billingSources}
@@ -1892,6 +1935,7 @@ function AppointmentPanel({
                 />
               </fieldset>
               <VisitBillingLink appointment={appointment} />
+              <FollowUpLink appointment={appointment} />
               <StatusHistory appointment={appointment} />
               <VisitExtras appointment={appointment} />
             </>

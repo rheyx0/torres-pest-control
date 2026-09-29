@@ -18,6 +18,7 @@ import { useScheduling } from "../context/SchedulingContext";
 import { SUBSYSTEMS } from "../utils/permissions";
 import { visitDatesByClient } from "../utils/clientTimeline";
 import { humanizeEnum } from "../utils/formatters";
+import { sharedClientEmails } from "../utils/validators";
 import { neutral, radius, surface, weight } from "../styles/tokens";
 import { colors, pageShell } from "../styles/theme";
 import Skeleton from "../components/ui/Skeleton";
@@ -45,6 +46,7 @@ function ClientsPage() {
 
   const visibleClients = filter({ searchTerm, classification, status });
   const dates = useMemo(() => visitDatesByClient(appointments), [appointments]);
+  const sharedEmails = useMemo(() => sharedClientEmails(clients), [clients]);
   const rows = visibleClients.map((client) => ({ ...client, lastVisit: dates.get(client.id)?.last || null, nextVisit: dates.get(client.id)?.next || null }));
   const shown = rows.slice(0, limit);
 
@@ -108,6 +110,27 @@ function ClientsPage() {
           )
         }
       />
+
+      {sharedEmails.length > 0 && (
+        <div role="alert" style={{ marginBottom: "14px", padding: "10px 14px", border: `1px solid ${colors.line}`, borderLeft: `3px solid ${colors.danger}`, borderRadius: radius.card, background: surface.panel, fontSize: "13.5px", color: colors.body }}>
+          <strong style={{ fontWeight: weight.medium, color: colors.ink }}>
+            {sharedEmails.length === 1 ? "One email is" : `${sharedEmails.length} emails are`} shared by more than one client.
+          </strong>{" "}
+          Quotes and invoices are emailed, so give each client their own:
+          <ul style={{ margin: "6px 0 0", paddingLeft: "18px" }}>
+            {sharedEmails.map((entry) => (
+              <li key={entry.email}>
+                {entry.email}: {entry.clients.map((owner, index) => (
+                  <span key={owner.id}>
+                    {index > 0 && ", "}
+                    <Link to={`/clients/${owner.id}`} style={{ color: colors.brandInk }}>{owner.name}{owner.reference ? ` (${owner.reference})` : ""}</Link>
+                  </span>
+                ))}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <section style={{ background: surface.panel, border: `1px solid ${colors.line}`, borderRadius: radius.card, overflow: "hidden" }}>
         <ClientSearch

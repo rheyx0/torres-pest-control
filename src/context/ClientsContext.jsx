@@ -12,6 +12,7 @@ import * as clientService from "../services/clientService";
 import { addLog, LOG_TYPES } from "../services/logService";
 import { useAuthContext } from "./AuthContext";
 import { can, SUBSYSTEMS } from "../utils/permissions";
+import { clientWithEmail, emailTakenMessage } from "../utils/validators";
 
 const ClientsContext = createContext(null);
 
@@ -53,6 +54,8 @@ export function ClientsProvider({ children }) {
   const addClient = useCallback(
     async (form) => {
       if (!allowed(SUBSYSTEMS.CLIENTS, "create")) return "You do not have permission to create client profiles.";
+      const taken = clientWithEmail(form.email, clients);
+      if (taken) return emailTakenMessage(taken);
       const { client, error: createError } = await clientService.createClient(form);
       if (createError) return createError;
 
@@ -60,7 +63,7 @@ export function ClientsProvider({ children }) {
       addLog(actor, `Created client profile for ${client.name}.`, LOG_TYPES.CLIENT);
       return client;
     },
-    [actor, allowed]
+    [actor, allowed, clients]
   );
 
   const archiveClient = useCallback(
@@ -120,6 +123,8 @@ export function ClientsProvider({ children }) {
   const updateClient = useCallback(
     async (clientId, form) => {
       if (!allowed(SUBSYSTEMS.CLIENTS, "edit")) return "You do not have permission to edit client profiles.";
+      const taken = clientWithEmail(form.email, clients, clientId);
+      if (taken) return emailTakenMessage(taken);
       const { client, error: updateError } = await clientService.updateClient(clientId, form);
       if (updateError) return updateError;
 
@@ -133,7 +138,7 @@ export function ClientsProvider({ children }) {
       addLog(actor, `Updated client profile for ${client.name}.`, LOG_TYPES.CLIENT);
       return true;
     },
-    [actor, allowed]
+    [actor, allowed, clients]
   );
 
   // Resolves to the new document, or the error message. A signed contract

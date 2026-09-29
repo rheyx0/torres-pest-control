@@ -97,6 +97,7 @@ function QuoteBody({ quote, client, payments, includesFor }) {
           <Row label="Date" value={formatDate(quote.sentAt || quote.createdAt)} />
           <Row label="Valid until" value={formatDate(quote.validUntil)} />
           <Row label="Payment terms" value={termsLabel(quote.paymentTerms)} />
+          <Row label="Service" value="One-time service" />
           {quote.areaSqm && <Row label="Area" value={`${quote.areaSqm} sqm`} />}
         </tbody>
       </table>

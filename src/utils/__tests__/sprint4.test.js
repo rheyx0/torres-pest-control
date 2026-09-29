@@ -27,18 +27,35 @@ describe("paymentCheck", () => {
     expect(paymentCheck({ client: juan, services: [termite], source: { kind: "QUOTE", id: "q1" } }, now).via).toBe("source");
   });
 
-  it("passes with an approved quote whose down payment is paid, not before", () => {
-    const quote = { id: "q1", clientId: "c1", status: "APPROVED", depositAmount: 1000 };
-    expect(paymentCheck({ client: juan, services: [termite], quotes: [quote] }, now).ok).toBe(false);
+  it("asks to book under an approved quote whose down payment is paid, not before", () => {
+    const quote = { id: "q1", reference: "TPC-Q-00001", clientId: "c1", status: "APPROVED", depositAmount: 1000 };
+    expect(paymentCheck({ client: juan, services: [termite], quotes: [quote] }, now).ready).toBeUndefined();
     const payments = [{ quoteId: "q1", kind: "DEPOSIT", method: "CASH", amount: 1000 }];
-    expect(paymentCheck({ client: juan, services: [termite], quotes: [quote], payments }, now)).toMatchObject({ ok: true, via: "quote" });
-    const bounced = [{ quoteId: "q1", kind: "DEPOSIT", method: "CHECK", checkStatus: "PENDING", amount: 1000 }];
-    expect(paymentCheck({ client: juan, services: [termite], quotes: [quote], payments: bounced }, now).ok).toBe(false);
+    const ready = paymentCheck({ client: juan, services: [termite], quotes: [quote], payments }, now);
+    // not passed silently: the visit must be linked to the quote that pays for it
+    expect(ready).toMatchObject({ ok: false, ready: { type: "quote", id: "q1", reference: "TPC-Q-00001" } });
+    const pending = [{ quoteId: "q1", kind: "DEPOSIT", method: "CHECK", checkStatus: "PENDING", amount: 1000 }];
+    expect(paymentCheck({ client: juan, services: [termite], quotes: [quote], payments: pending }, now).ready).toBeUndefined();
   });
 
-  it("passes with an active contract", () => {
-    expect(paymentCheck({ client: juan, services: [termite], contracts: [{ id: "k1", clientId: "c1", status: "ACTIVE" }] }, now).via).toBe("contract");
-    expect(paymentCheck({ client: juan, services: [termite], contracts: [{ id: "k1", clientId: "c1", status: "DRAFT" }] }, now).ok).toBe(false);
+  it("does not count a quote a visit was already booked from", () => {
+    const quote = { id: "q1", reference: "TPC-Q-00001", clientId: "c1", status: "APPROVED", depositAmount: 1000 };
+    const payments = [{ quoteId: "q1", kind: "DEPOSIT", method: "CASH", amount: 1000 }];
+    const booked = [{ id: "v1", clientId: "c1", quoteId: "q1", status: "Completed" }];
+    const result = paymentCheck({ client: juan, services: [termite], quotes: [quote], payments, appointments: booked }, now);
+    expect(result.ok).toBe(false);
+    expect(result.ready).toBeUndefined();
+    expect(result.reason).toMatch(/no approved quotation/);
+    // a cancelled visit frees the quote again
+    const cancelled = [{ ...booked[0], status: "Cancelled" }];
+    expect(paymentCheck({ client: juan, services: [termite], quotes: [quote], payments, appointments: cancelled }, now).ready?.id).toBe("q1");
+  });
+
+  it("asks to book an active contract's visits, until they are booked", () => {
+    const contract = { id: "k1", reference: "TPC-K-00001", clientId: "c1", status: "ACTIVE" };
+    expect(paymentCheck({ client: juan, services: [termite], contracts: [contract] }, now).ready).toMatchObject({ type: "contract", id: "k1" });
+    expect(paymentCheck({ client: juan, services: [termite], contracts: [{ ...contract, planId: "p1" }] }, now).ready).toBeUndefined();
+    expect(paymentCheck({ client: juan, services: [termite], contracts: [{ ...contract, status: "DRAFT" }] }, now).ready).toBeUndefined();
   });
 });
 

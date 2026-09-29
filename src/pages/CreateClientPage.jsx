@@ -9,7 +9,7 @@ import { card, colors, pageShell } from "../styles/theme";
 
 function CreateClientPage() {
   const navigate = useNavigate();
-  const { addClient } = useClients();
+  const { addClient, clients } = useClients();
   const { showSuccess, showError } = useToast();
 
   const handleSubmit = async (form) => {
@@ -30,6 +30,7 @@ function CreateClientPage() {
       <PageHeader eyebrow="Client Management" title="Create Client Profile" />
       <div style={card}>
         <ClientForm
+          clients={clients}
           onSubmit={handleSubmit}
           submitLabel="Save Client"
           footer={

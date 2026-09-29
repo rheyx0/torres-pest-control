@@ -55,8 +55,12 @@ function ClientDetailPage() {
 
   const handleSave = async (form) => {
     const result = await updateClient(client.id, form);
-    if (result === true) showSuccess("Client profile updated.");
-    else showError(result);
+    if (result === true) {
+      showSuccess("Client profile updated.");
+      return true;
+    }
+    showError(result);
+    return false;
   };
 
   const handleUpload = (file, category) => addDocument(client.id, file, category);

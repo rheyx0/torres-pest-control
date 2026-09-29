@@ -395,7 +395,7 @@ export function attentionItems(
         ? `Follow-up ${when(first)} · nothing booked yet`
         : listNames(followUps.map((entry) => `${entry.client?.name || "A client"} (${when(entry)})`), 2),
       action: canBook
-        ? { label: "Book", to: `/scheduling?new=1&client=${encodeURIComponent(first.visit.clientId)}&date=${first.dueOn}` }
+        ? { label: "Book", to: `/scheduling?new=1&client=${encodeURIComponent(first.visit.clientId)}&date=${first.dueOn}&followup=${encodeURIComponent(first.visit.id)}` }
         : { label: "View", to: `/clients/${encodeURIComponent(first.visit.clientId)}` },
     });
   }

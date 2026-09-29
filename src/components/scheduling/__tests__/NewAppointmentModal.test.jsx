@@ -709,6 +709,45 @@ describe("NewAppointmentModal payment check", () => {
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ paymentOverride: "Emergency, pays on the day" }));
   });
 
+  it("offers to book under the client's paid quotation, and books linked to it", async () => {
+    const ready = (clientId, serviceIds, source) => (source
+      ? { ok: true, reason: "" }
+      : { ok: false, ready: { type: "quote", id: "q1", reference: "TPC-Q-00001" }, reason: "Rhey Garcia has approved quotation TPC-Q-00001 with its down payment paid. Book this visit under it." });
+    const billingSources = { quotes: [{ id: "q1", clientId: "c1", label: "TPC-Q-00001 · ₱4,480.00", bookable: true, serviceIds: ["s1"], price: 4480 }], contracts: [] };
+    const { onCreate } = renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1", services, billingSources, paymentCheckFor: ready });
+
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    expect(onCreate).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Book under TPC-Q-00001" }));
+    expect(screen.queryByRole("group", { name: "Payment check" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ source: { type: "quote", id: "q1" } }));
+  });
+
+  // Once -> quotation; repeating -> contract.
+  it("books a quotation as one-time, and refuses a repeating plan under it", async () => {
+    const billingSources = { quotes: [{ id: "q1", clientId: "c1", label: "TPC-Q-00001 · ₱4,480.00", bookable: true, serviceIds: ["s1"], price: 4480 }], contracts: [] };
+    const { onCreate } = renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1", services, billingSources });
+
+    await userEvent.selectOptions(screen.getByLabelText("Quote or contract"), "quote:q1");
+    const frequency = document.querySelector('select[name="serviceFrequency"]');
+    expect(frequency).toHaveValue("One-time");
+    expect(screen.getByText("A quotation is a one-time job. For repeating visits, make a contract.")).toBeInTheDocument();
+
+    await userEvent.selectOptions(frequency, "Monthly");
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment|Book/ }));
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getAllByText(/For repeating visits, make a contract/).length).toBeGreaterThan(1);
+  });
+
+  it("books a follow-up linked to the visit it checks on", async () => {
+    const { onCreate } = renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1", initialPrice: 800, initialFollowUpOf: { id: "v1", reference: "TPC-V-00022" } });
+    expect(screen.getByText("Follow-up of TPC-V-00022.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ followUpOf: "v1", price: "800" }));
+  });
+
   it("shows nothing when the check passes", () => {
     renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1", paymentCheckFor: () => ({ ok: true, reason: "" }) });
     expect(screen.queryByRole("group", { name: "Payment check" })).not.toBeInTheDocument();

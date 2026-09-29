@@ -181,6 +181,15 @@ export function SchedulingProvider({ children }) {
       : appointment));
   }, []);
 
+  // A follow-up visit names the visit it checks on (068). Resolves to true, or
+  // the error message.
+  const linkFollowUp = useCallback(async (appointmentId, originalId) => {
+    const { error: linkError } = await appointmentService.linkFollowUp(appointmentId, originalId);
+    if (linkError) return linkError;
+    setAppointments((current) => current.map((entry) => (entry.id === appointmentId ? { ...entry, followUpOf: originalId || "" } : entry)));
+    return true;
+  }, []);
+
   // A booking made without the payment check (Sprint 4) goes in the activity
   // log with its reason, so the admin can see who skipped it and why.
   const logBookingOverride = useCallback((message) => {
@@ -188,8 +197,8 @@ export function SchedulingProvider({ children }) {
   }, [currentUser?.name]);
 
   const value = useMemo(
-    () => ({ appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl, uploadSignature: appointmentService.uploadSignature, getSignatureUrl: appointmentService.getSignatureUrl, fetchStatusHistory: appointmentService.fetchStatusHistory, logBookingOverride }),
-    [appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, logBookingOverride]
+    () => ({ appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl, uploadSignature: appointmentService.uploadSignature, getSignatureUrl: appointmentService.getSignatureUrl, fetchStatusHistory: appointmentService.fetchStatusHistory, logBookingOverride, linkFollowUp }),
+    [appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, logBookingOverride, linkFollowUp]
   );
   return <SchedulingContext.Provider value={value}>{children}</SchedulingContext.Provider>;
 }

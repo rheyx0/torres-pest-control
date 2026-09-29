@@ -19,23 +19,46 @@ const daysFrom = (fromKey, toKey) => Math.round((new Date(`${toKey}T00:00:00`) -
 
 /**
  * Whether a treatment may be booked for `client` without a payment step.
- * It may when the booking is made under a quote or contract, every service on
- * it is marked "Can be booked without payment" (an inspection, a follow-up),
- * the client is marked to skip the check, the client has an approved quote
- * whose down payment is in, or an active contract. Otherwise the office books
- * it only with "Still make appointment" and a reason.
- *   { ok, via: source | service | client | quote | contract, reason }
+ * It may when the booking is made under a quote or contract (the form's
+ * "Quote or contract" picker), every service on it is marked "Can be booked
+ * without payment" (an inspection, a follow-up), or the client is marked to
+ * skip the check. Otherwise it is refused, and the office either links it to
+ * the quote or contract that pays for it, or books it with "Still make
+ * appointment" and a reason.
+ *
+ * Only an unused one pays for a new booking: an approved quote whose down
+ * payment is in and that no live visit was booked from yet, or an active
+ * contract whose visits are not booked yet. An old quote already used for a
+ * visit does not cover the next one. When one is ready it comes back as
+ * `ready`, so the form can offer to book under it.
+ *   { ok, via: source | service | client | none, reason, ready? { type, id, reference } }
  */
-export function paymentCheck({ client, services = [], source = null, quotes = [], payments = [], contracts = [] }, now = new Date()) {
+export function paymentCheck({ client, services = [], source = null, quotes = [], payments = [], contracts = [], appointments = [] }, now = new Date()) {
   if (!client) return { ok: true, via: "none", reason: "" };
   if (source) return { ok: true, via: "source", reason: "" };
   if (services.length > 0 && services.every((service) => service?.skipPaymentCheck)) return { ok: true, via: "service", reason: "" };
   if (client.skipPaymentCheck) return { ok: true, via: "client", reason: "" };
-  const quote = quotes.find((entry) => entry.clientId === client.id && canBookFromQuote(entry, payments, now).ok);
-  if (quote) return { ok: true, via: "quote", quote, reason: "" };
-  const contract = contracts.find((entry) => entry.clientId === client.id && entry.status === "ACTIVE");
-  if (contract) return { ok: true, via: "contract", contract, reason: "" };
-  return { ok: false, via: "", reason: `${client.name} has no approved quotation with its down payment paid, and no active contract.` };
+
+  const used = new Set(appointments.filter((visit) => visit.quoteId && visit.status !== "Cancelled").map((visit) => visit.quoteId));
+  const quote = quotes.find((entry) => entry.clientId === client.id && !used.has(entry.id) && canBookFromQuote(entry, payments, now).ok);
+  if (quote) {
+    return {
+      ok: false,
+      via: "",
+      ready: { type: "quote", id: quote.id, reference: quote.reference },
+      reason: `${client.name} has approved quotation ${quote.reference} with its down payment paid. Book this visit under it.`,
+    };
+  }
+  const contract = contracts.find((entry) => entry.clientId === client.id && entry.status === "ACTIVE" && !entry.planId);
+  if (contract) {
+    return {
+      ok: false,
+      via: "",
+      ready: { type: "contract", id: contract.id, reference: contract.reference },
+      reason: `${client.name} has active contract ${contract.reference}. Book its visits under it.`,
+    };
+  }
+  return { ok: false, via: "", reason: `${client.name} has no approved quotation with its down payment paid that is not booked yet, and no active contract to book.` };
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +183,39 @@ export function contractInvoicesDue({ contracts = [], appointments = [], invoice
     });
   return items;
 }
+
+// ---------------------------------------------------------------------------
+// Follow-up visits (migration 068).
+// ---------------------------------------------------------------------------
+
+/**
+ * What a follow-up of `original` costs: the follow-up price of each service
+ * the client had on that visit, added up; a service with none set counts at
+ * the Follow-up Visit service's own price. Null when nothing is priced, so
+ * the booking form leaves the price for the office to fill in.
+ */
+export function followUpPriceFor(original, originalServices = [], followUpService = null) {
+  const fallback = followUpService?.defaultPrice;
+  const hasFallback = fallback !== null && fallback !== undefined && fallback !== "";
+  if (!original) return null;
+  if (originalServices.length === 0) return hasFallback ? Number(fallback) : null;
+  let total = 0;
+  let priced = false;
+  originalServices.forEach((service) => {
+    if (service?.followUpPrice !== null && service?.followUpPrice !== undefined) {
+      total += Number(service.followUpPrice);
+      priced = true;
+    } else if (hasFallback) {
+      total += Number(fallback);
+      priced = true;
+    }
+  });
+  return priced ? Math.round(total * 100) / 100 : null;
+}
+
+/** The catalog's Follow-up Visit service, by name; null when there is none. */
+export const findFollowUpService = (services = []) =>
+  services.find((service) => service.isActive !== false && /follow[\s-]?up/i.test(service.name || "")) || null;
 
 // ---------------------------------------------------------------------------
 // Inspection to quote.

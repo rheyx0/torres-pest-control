@@ -39,13 +39,17 @@ export function ServicesProvider({ children }) {
   const replaceOne = (service) =>
     setServices((current) => {
       const previous = current.find((entry) => entry.id === service.id);
-      const merged = { ...service, skipPaymentCheck: service.skipPaymentCheck ?? Boolean(previous?.skipPaymentCheck) };
+      const merged = {
+        ...service,
+        skipPaymentCheck: service.skipPaymentCheck ?? Boolean(previous?.skipPaymentCheck),
+        followUpPrice: service.followUpPrice !== undefined ? service.followUpPrice : previous?.followUpPrice ?? null,
+      };
       return [...current.filter((entry) => entry.id !== service.id), merged].sort(byOrder);
     });
 
   // Saves the row, then its materials list. The materials are written by
   // their own RPC, so the row is re-read afterwards to pick them up.
-  const saveService = useCallback(async (id, { materials, skipPaymentCheck, ...fields }) => {
+  const saveService = useCallback(async (id, { materials, skipPaymentCheck, followUpPrice, ...fields }) => {
     const saved = id
       ? await serviceCatalogService.updateService(id, fields)
       : await serviceCatalogService.createService(fields);
@@ -69,11 +73,24 @@ export function ServicesProvider({ children }) {
       }
       exempt = Boolean(skipPaymentCheck);
     }
+    // The follow-up price (068) is saved on its own, so a database without
+    // the column still saves everything else.
+    const normal = (value) => (value === "" || value === null || value === undefined ? null : Number(value));
+    let followUp = previous?.followUpPrice ?? null;
+    if (followUpPrice !== undefined && normal(followUpPrice) !== followUp) {
+      const priced = await serviceCatalogService.setServiceFollowUpPrice(saved.service.id, followUpPrice);
+      if (priced.error) {
+        replaceOne({ ...saved.service, skipPaymentCheck: exempt, followUpPrice: followUp });
+        return `The service was saved, but its follow-up price was not: ${priced.error}`;
+      }
+      followUp = normal(followUpPrice);
+    }
     // billingMode (060) is kept too: dropping it made every material read as
     // Included until a reload, so "Charge extra" never reached the invoice.
     replaceOne({
       ...saved.service,
       skipPaymentCheck: exempt,
+      followUpPrice: followUp,
       materials: materials
         ? materials.map((m) => ({ itemId: m.itemId, defaultAmount: Number(m.defaultAmount), billingMode: ["EXTRA_CHARGED", "CHARGE_ALL"].includes(m.billingMode) ? m.billingMode : "INCLUDED" }))
         : saved.service.materials,

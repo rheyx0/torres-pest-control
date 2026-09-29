@@ -7,7 +7,7 @@ const ATTACHMENT_BUCKET = "report-attachments";
 const ATTACHMENT_COLUMNS = "id, appointment_id, name, mime_type, size_bytes, storage_path, category, uploaded_at";
 const SIGNED_URL_TTL_SECONDS = 60;
 
-const APPOINTMENT_COLUMNS = "id, reference, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, plan_id, plan_position, day_done_at, quote_id, invoice_id, activity_level, open_issues, inspection_area_sqm, recommended_service_ids, created_at, updated_at";
+const APPOINTMENT_COLUMNS = "id, reference, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, plan_id, plan_position, day_done_at, quote_id, invoice_id, activity_level, open_issues, inspection_area_sqm, recommended_service_ids, follow_up_of, created_at, updated_at";
 const REPORT_COLUMNS = "appointment_id, findings, treatment_performed, recommendations, follow_up_date, submitted_by, submitted_at, customer_name, signature_path, signed_at, completion_note, technician_signature_path, technician_signed_at";
 
 function describeError(error) {
@@ -58,6 +58,8 @@ export function mapAppointmentRow(row, report = null) {
     // Inspection results (066): the area measured and the services recommended.
     inspectionAreaSqm: row.inspection_area_sqm === null || row.inspection_area_sqm === undefined ? null : Number(row.inspection_area_sqm),
     recommendedServiceIds: row.recommended_service_ids || [],
+    // The visit this follow-up checks on (068).
+    followUpOf: row.follow_up_of || "",
     planPosition: row.plan_position ?? null,
     planKind: row.planKind || "",
     planFrequency: row.planFrequency || "",
@@ -93,7 +95,7 @@ export function mapAppointmentRow(row, report = null) {
 // naming a column that doesn't exist. Rather than blank the whole schedule
 // when the app is deployed ahead of a migration, retry without whichever
 // column it named.
-const OPTIONAL_COLUMNS = ["reference", "started_at", "plan_id", "plan_position", "day_done_at", "quote_id", "invoice_id", "activity_level", "open_issues", "inspection_area_sqm", "recommended_service_ids"];
+const OPTIONAL_COLUMNS = ["reference", "started_at", "plan_id", "plan_position", "day_done_at", "quote_id", "invoice_id", "activity_level", "open_issues", "inspection_area_sqm", "recommended_service_ids", "follow_up_of"];
 
 async function selectAppointments() {
   let columns = APPOINTMENT_COLUMNS;
@@ -575,6 +577,13 @@ export function mapStatusHistoryRow(row) {
 }
 
 /** A visit's status changes, oldest first. Before 066 there are none. */
+/** Ties a follow-up visit to the visit it checks on (068, office only). */
+export async function linkFollowUp(appointmentId, originalId) {
+  const { error } = await supabase.rpc("link_follow_up", { p_appointment_id: appointmentId, p_original_id: originalId || null });
+  if (error) return { error: describeError(error) };
+  return { error: null };
+}
+
 export async function fetchStatusHistory(appointmentId) {
   const { data, error } = await supabase
     .from("appointment_status_history")

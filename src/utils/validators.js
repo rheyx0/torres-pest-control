@@ -158,6 +158,40 @@ export function validateClient(form) {
 }
 
 /**
+ * One email per client (migration 067): quotes, invoices and receipts are
+ * sent there, so two clients sharing an address would get each other's
+ * paperwork. Compared trimmed and ignoring case; a blank email is no email.
+ */
+export const normalEmail = (email) => String(email || "").trim().toLowerCase();
+
+/** The other client (archived ones too) already using this email, or null. */
+export function clientWithEmail(email, clients = [], ignoreId = null) {
+  const needle = normalEmail(email);
+  if (!needle) return null;
+  return clients.find((client) => client.id !== ignoreId && normalEmail(client.email) === needle) || null;
+}
+
+/** The message shown when an email is taken. */
+export function emailTakenMessage(other) {
+  const who = [other.name, other.reference ? `(${other.reference})` : ""].filter(Boolean).join(" ");
+  return `Already used by ${who}${other.status === "ARCHIVED" ? ", an archived client" : ""}. Each client needs their own email.`;
+}
+
+/** Emails more than one client shares (from before 067): [{ email, clients }]. */
+export function sharedClientEmails(clients = []) {
+  const byEmail = new Map();
+  clients.forEach((client) => {
+    const email = normalEmail(client.email);
+    if (!email) return;
+    if (!byEmail.has(email)) byEmail.set(email, []);
+    byEmail.get(email).push(client);
+  });
+  return [...byEmail.entries()]
+    .filter(([, owners]) => owners.length > 1)
+    .map(([email, owners]) => ({ email, clients: owners }));
+}
+
+/**
  * Sprint AC: "System validates file type/size before upload."
  * Returns an error string, or null when the file is acceptable.
  */
