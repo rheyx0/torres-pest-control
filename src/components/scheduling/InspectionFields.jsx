@@ -34,6 +34,25 @@ function InspectionFields({ appointment, visitServices = [], services = [] }) {
     <fieldset style={{ margin: 0, padding: "0.8rem 0.9rem", border: `1px solid ${colors.line}`, borderRadius: "0.75rem", display: "grid", gap: "0.7rem" }}>
       <legend style={{ padding: "0 0.3rem", fontSize: "0.85rem", fontWeight: 500, color: colors.ink }}>Inspection results</legend>
       <input type="hidden" name="hasInspection" value="1" />
+      {/* At the top, where it is seen without scrolling past the services. */}
+      {canQuote && (
+        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+          <Button
+            size="sm"
+            variant={saved ? "primary" : "secondary"}
+            icon={<FileText size={14} />}
+            disabled={!saved}
+            onClick={() => navigate(`/billing?new=1&client=${encodeURIComponent(appointment.clientId)}&inspection=${encodeURIComponent(appointment.id)}`)}
+          >
+            Create quote from inspection
+          </Button>
+          {!saved && (
+            <span style={{ color: colors.muted, fontSize: "0.8rem" }}>
+              Fill in the area or tick a recommended treatment below, then Save report.
+            </span>
+          )}
+        </div>
+      )}
       <label style={{ display: "grid", gap: "0.35rem", color: colors.body, fontWeight: 500, fontSize: "0.82rem" }}>
         Area inspected (sqm)
         <input
@@ -56,24 +75,6 @@ function InspectionFields({ appointment, visitServices = [], services = [] }) {
           </label>
         ))}
       </div>
-      {canQuote && (
-        <div>
-          <Button
-            size="sm"
-            icon={<FileText size={14} />}
-            disabled={!saved}
-            title={saved ? undefined : "Save the report with the area or a recommended service first."}
-            onClick={() => navigate(`/billing?new=1&client=${encodeURIComponent(appointment.clientId)}&inspection=${encodeURIComponent(appointment.id)}`)}
-          >
-            Create quote from inspection
-          </Button>
-          {!saved && (
-            <span style={{ marginLeft: "0.6rem", color: colors.muted, fontSize: "0.8rem" }}>
-              Save the report with the area or a recommended service first.
-            </span>
-          )}
-        </div>
-      )}
     </fieldset>
   );
 }
