@@ -44,17 +44,18 @@ describe("Stock In delivery-note header", () => {
   it("orders children per field, so the stacked layout reads correctly", () => {
     const grid = renderModal();
     const bands = [...grid.children].map((el) => el.className.split(" ")[0]);
+    // The help text is a tooltip in the control band now, not a band of its own.
     expect(bands).toEqual([
-      "dn-label", "dn-control", "dn-hint",
-      "dn-label", "dn-control", "dn-hint",
-      "dn-label", "dn-control", "dn-hint",
+      "dn-label", "dn-control",
+      "dn-label", "dn-control",
+      "dn-label", "dn-control",
     ]);
   });
 
   it("gives each column its own placement class", () => {
     const grid = renderModal();
     ["dn-col-1", "dn-col-2", "dn-col-3"].forEach((column) => {
-      expect(grid.querySelectorAll(`.${column}`)).toHaveLength(3);
+      expect(grid.querySelectorAll(`.${column}`)).toHaveLength(2);
     });
   });
 
@@ -65,8 +66,8 @@ describe("Stock In delivery-note header", () => {
     // test below.
     expect(labels.map((l) => l.textContent.trim())).toEqual([
       "Date\u00a0*",
-      "PO / Supplier Invoice Reference\u00a0*",
-      "Intake Branch / Station\u00a0*",
+      "PO / Invoice no.\u00a0*",
+      "Received at\u00a0*",
     ]);
     // Splitting a wrapping <label> into a sibling loses the implicit
     // association unless htmlFor is carried across.
@@ -84,9 +85,9 @@ describe("Stock In delivery-note header", () => {
     expect(grid.querySelectorAll(".dn-label span[aria-hidden]")).toHaveLength(3);
   });
 
-  it("still renders the hint text the fields had before", () => {
+  it("keeps the help text, as tooltips", () => {
     renderModal();
-    expect(screen.getByText("Enter the Purchase Order (PO) or invoice number")).toBeInTheDocument();
-    expect(screen.getByText("Station or warehouse where items were received")).toBeInTheDocument();
+    expect(screen.getByText("The Purchase Order (PO) number, or the supplier's invoice number.")).toBeInTheDocument();
+    expect(screen.getByText("The branch, station or warehouse where the items arrived.")).toBeInTheDocument();
   });
 });

@@ -8,6 +8,7 @@ import ResetPasswordDialog from "../components/users/ResetPasswordDialog";
 import useAuth from "../hooks/useAuth";
 import useUsers from "../hooks/useUsers";
 import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { SUBSYSTEMS } from "../utils/permissions";
 import { pageShell, primaryButton } from "../styles/theme";
 
@@ -16,6 +17,8 @@ function UsersPage() {
   const { users, updateAccount, updateAvatar, toggleAccountStatus, resetAccountPassword } = useUsers();
   const { showSuccess, showError } = useToast();
   const [resetTarget, setResetTarget] = useState(null);
+  const confirm = useConfirm();
+  const nameOf = (userId) => users.find((user) => user.id === userId)?.name || "this account";
 
   const visibleUsers = users.filter((user) => {
     if (currentUser?.role === "ADMIN") {
@@ -28,6 +31,14 @@ function UsersPage() {
   const canCreate = can(SUBSYSTEMS.USERS, "create");
 
   const handleEdit = async (userId, fields) => {
+    const before = users.find((user) => user.id === userId);
+    const roleChanged = before && fields.role && fields.role !== before.role;
+    if (!(await confirm({
+      title: `Save changes to ${nameOf(userId)}?`,
+      details: roleChanged ? [["Role", `${before.role} → ${fields.role}`]] : undefined,
+      message: roleChanged ? "Changing the role changes what this person can see and do." : undefined,
+      confirmLabel: "Save changes",
+    }))) return "";
     const result = await updateAccount(userId, fields);
     if (result === true) {
       showSuccess("Account updated.");
@@ -38,6 +49,10 @@ function UsersPage() {
   };
 
   const handleToggleStatus = async (userId) => {
+    const active = users.find((user) => user.id === userId)?.status === "ACTIVE";
+    if (!(await confirm(active
+      ? { title: `Deactivate ${nameOf(userId)}?`, message: "They are signed out at once and can't sign in until reactivated. Their records stay.", confirmLabel: "Deactivate", tone: "danger" }
+      : { title: `Reactivate ${nameOf(userId)}?`, message: "They can sign in again.", confirmLabel: "Reactivate" }))) return;
     const result = await toggleAccountStatus(userId);
     if (result === true) showSuccess("Account status updated.");
     else showError(result);
@@ -51,6 +66,7 @@ function UsersPage() {
   };
 
   const handleResetPassword = async (userId, newPassword) => {
+    if (!(await confirm({ title: `Reset ${nameOf(userId)}'s password?`, message: "Their old password stops working. Share the new one with them directly.", confirmLabel: "Reset password", tone: "danger" }))) return "";
     const result = await resetAccountPassword(userId, newPassword);
     if (result === true) {
       showSuccess("Password reset. Share the new password with them directly.");

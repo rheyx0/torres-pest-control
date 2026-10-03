@@ -96,8 +96,8 @@ function BatchList({ item, batches, today, canManage, onWriteOff, onUpdate, onSp
                     {batch.expirationDate ? formatDate(batch.expirationDate) : "—"}{expired ? " · EXPIRED" : ""}
                   </td>
                   <td style={cell}>{formatDate(batch.receivedDate)}</td>
-                  <td style={{ ...cell, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#211b15" }}>
-                    {batch.quantity} / {batch.quantityReceived} {item.unit}
+                  <td style={{ ...cell, textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#211b15" }} title={`${batch.quantityReceived} ${item.unit} received`}>
+                    {batch.quantity} {item.unit}
                   </td>
                   {canManage && (
                     <td style={{ ...cell, whiteSpace: "nowrap", textAlign: "right" }}>

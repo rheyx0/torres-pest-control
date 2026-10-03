@@ -32,6 +32,7 @@ import useServices from "../hooks/useServices";
 import useInventory from "../hooks/useInventory";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { colors, pageShell } from "../styles/theme";
 import { CONTRACT_STATUS_LABELS, INVOICE_STATE_LABELS, QUOTE_STATUS_LABELS } from "../utils/constants";
 import { billingOverview, depositStatus, invoiceBalance, quoteStatus } from "../utils/billing";
@@ -65,6 +66,10 @@ function BillingPage() {
   const { inventory } = useInventory();
   const { appointments } = useScheduling();
   const { showSuccess, showError } = useToast();
+  // "Are you sure?" before anything that issues, approves or records money.
+  // A "no" returns "" so the window that asked stays open with no error.
+  const confirm = useConfirm();
+  const NOT_CONFIRMED = "";
 
   const [tab, setTab] = useState(searchParams.get("invoice") ? "invoices" : searchParams.get("contract") ? "contracts" : "quotes");
   const [filter, setFilter] = useState("All");
@@ -219,6 +224,13 @@ function BillingPage() {
   };
 
   const issueInvoice = async (form, lines) => {
+    const total = lines.reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitPrice) || 0), 0);
+    if (!(await confirm({
+      title: "Issue this invoice?",
+      message: "Once issued, an invoice can't be edited. A mistake can only be voided by an admin.",
+      details: [["Client", clientName(form.clientId)], ["Lines", String(lines.length)], ["Subtotal", formatPeso(total)]],
+      confirmLabel: "Issue invoice",
+    }))) return NOT_CONFIRMED;
     const result = await billing.createInvoice(form, lines);
     if (typeof result === "string") return result;
     // A contract's invoice names the contract, so it is not billed twice.
@@ -297,7 +309,12 @@ function BillingPage() {
   const prepaid = prepaidPlanIds(billing.contracts || [], invoices);
   const contractReady = invoicesAvailable ? contractInvoicesDue({ contracts: billing.contracts || [], appointments, invoices }) : [];
 
-  const checkStatus = (payment, status, note) => billing.setCheckStatus(payment, status, null, note);
+  const checkStatus = async (payment, status, note) => {
+    if (!(await confirm(status === "CLEARED"
+      ? { title: "Mark this check as cleared?", message: `${formatPeso(payment.amount)} will count as paid.`, confirmLabel: "Cleared" }
+      : { title: "Mark this check as bounced?", message: `${formatPeso(payment.amount)} stops counting and the balance comes back.`, confirmLabel: "Bounced", tone: "danger" }))) return NOT_CONFIRMED;
+    return billing.setCheckStatus(payment, status, null, note);
+  };
   const reverse = (payment, reason) => billing.reversePayment(payment, reason);
 
   if (!available) {
@@ -419,8 +436,16 @@ function BillingPage() {
           invoices={billing.invoicesForQuote(openQuoteRecord.id)}
           canReverse={canReverse}
           onEdit={() => setEditing({ quote: openQuoteRecord })}
-          onSend={() => withToast(`${openQuoteRecord.reference} marked as sent.`)(() => billing.sendQuote(openQuoteRecord))}
-          onDecide={(approved, note) => withToast(`${openQuoteRecord.reference} ${approved ? "approved" : "rejected"}.`)(() => billing.decideQuote(openQuoteRecord, approved, note))}
+          onSend={async () => {
+            if (!(await confirm({ title: `Mark ${openQuoteRecord.reference} as sent?`, message: "Do this once the client has received the quotation. It can no longer be edited without going back to draft.", confirmLabel: "Mark as sent" }))) return NOT_CONFIRMED;
+            return withToast(`${openQuoteRecord.reference} marked as sent.`)(() => billing.sendQuote(openQuoteRecord));
+          }}
+          onDecide={async (approved, note) => {
+            if (!(await confirm(approved
+              ? { title: `Approve ${openQuoteRecord.reference}?`, message: "The client accepted the quotation. Its down payment can then be recorded and visits booked under it.", details: [["Total", formatPeso(openQuoteRecord.total)]], confirmLabel: "Approve" }
+              : { title: `Reject ${openQuoteRecord.reference}?`, message: `Reason: ${note}`, confirmLabel: "Reject", tone: "danger" }))) return NOT_CONFIRMED;
+            return withToast(`${openQuoteRecord.reference} ${approved ? "approved" : "rejected"}.`)(() => billing.decideQuote(openQuoteRecord, approved, note));
+          }}
           onRevise={() => revise(openQuoteRecord)}
           onDelete={async () => {
             const result = await billing.deleteQuote(openQuoteRecord);
@@ -511,8 +536,14 @@ function BillingPage() {
             onEmail={() => sendDocument("CONTRACT", contract, { kind: "CONTRACT", contract, client })}
             onUploadSigned={(file) => uploadSigned(contract, file)}
             onViewSigned={() => signedDocument && viewDocument(signedDocument)}
-            onActivate={() => toast(`${contract.reference} is active.`)(() => billing.setContractStatus(contract, "ACTIVE"))}
-            onEnd={() => toast(`${contract.reference} ended.`)(() => billing.setContractStatus(contract, "ENDED"))}
+            onActivate={async () => {
+              if (!(await confirm({ title: `Activate ${contract.reference}?`, message: "The contract's terms are locked once it is active, and its visits can be booked.", confirmLabel: "Activate" }))) return NOT_CONFIRMED;
+              return toast(`${contract.reference} is active.`)(() => billing.setContractStatus(contract, "ACTIVE"));
+            }}
+            onEnd={async () => {
+              if (!(await confirm({ title: `End ${contract.reference}?`, message: "Mark the contract as finished. Visits already booked are not changed.", confirmLabel: "Mark ended", tone: "danger" }))) return NOT_CONFIRMED;
+              return toast(`${contract.reference} ended.`)(() => billing.setContractStatus(contract, "ENDED"));
+            }}
             onCancel={(reason) => toast(`${contract.reference} cancelled.`)(() => billing.cancelContract(contract, reason))}
             onDelete={async () => {
               const result = await billing.deleteContract(contract);
@@ -568,6 +599,7 @@ function BillingPage() {
             suggested={Math.max(0, deposit.remaining - deposit.pending)}
             max={Math.max(0, Number(quote.total) - deposit.paid - deposit.pending)}
             onSave={async (values) => {
+              if (!(await confirm({ title: "Record this down payment?", details: [["Quotation", quote.reference], ["Client", clientName(quote.clientId)], ["Amount", formatPeso(values.amount)], ["Method", values.method]], message: "A receipt is made. A payment can't be deleted, only reversed by an admin.", confirmLabel: "Record payment" }))) return NOT_CONFIRMED;
               const result = await billing.recordPayment({ ...values, kind: "DEPOSIT", quoteId: quote.id }, `down payment on ${quote.reference}`);
               if (typeof result === "string") return result;
               showSuccess(`Down payment ${result?.reference || ""} recorded${currentUser?.name ? ` by ${currentUser.name}` : ""}.`);
@@ -590,6 +622,7 @@ function BillingPage() {
             suggested={open}
             max={open}
             onSave={async (values) => {
+              if (!(await confirm({ title: "Record this payment?", details: [["Invoice", invoice.reference], ["Client", clientName(invoice.clientId)], ["Amount", formatPeso(values.amount)], ["Method", values.method]], message: "A receipt is made. A payment can't be deleted, only reversed by an admin.", confirmLabel: "Record payment" }))) return NOT_CONFIRMED;
               const result = await billing.recordPayment({ ...values, kind: "PAYMENT", invoiceId: invoice.id }, `payment on ${invoice.reference}`);
               if (typeof result === "string") return result;
               showSuccess(`Payment ${result?.reference || ""} recorded.`);

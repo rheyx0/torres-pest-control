@@ -51,7 +51,9 @@ const MATRIX = {
     clients: ["view", "create", "edit"],
     clientDocuments: ["view", "create", "delete"],
     inventory: READ_ONLY,
-    scheduling: ["view", "edit"],
+    // Staff book appointments (the office's daily work); the server's
+    // create_appointment already admits any signed-in office account.
+    scheduling: ["view", "create", "edit"],
     logs: NONE,
     settings: NONE,
     billing: ["view", "create", "edit"],

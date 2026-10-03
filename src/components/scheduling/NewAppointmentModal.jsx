@@ -43,6 +43,7 @@ import {
   splitIntoDays,
 } from "../../utils/plans";
 import Button from "../ui/Button";
+import { formatPeso } from "../../utils/formatters";
 import Field from "../ui/Field";
 import Input from "../ui/Input";
 import Modal from "../ui/Modal";
@@ -135,6 +136,8 @@ function NewAppointmentModal({
   onBook,
 }) {
   const [saving, setSaving] = useState(false);
+  // The booking waiting for Confirm: { send, summary: [[label, value]] }.
+  const [pending, setPending] = useState(null);
   const [formError, setFormError] = useState("");
 
   const [clientId, setClientId] = useState(initialClientId);
@@ -173,6 +176,7 @@ function NewAppointmentModal({
   const [overrideReason, setOverrideReason] = useState("");
   const sourceQuotes = (billingSources?.quotes || []).filter((quote) => quote.clientId === clientId);
   const sourceContracts = (billingSources?.contracts || []).filter((contract) => contract.clientId === clientId);
+  const sourceLabel = [...sourceQuotes.map((quote) => [`quote:${quote.id}`, quote.label]), ...sourceContracts.map((contract) => [`contract:${contract.id}`, contract.label])].find(([value]) => value === source)?.[1] || "";
 
   const durationMinutes =
     durationChoice === CUSTOM
@@ -390,7 +394,6 @@ function NewAppointmentModal({
       return;
     }
 
-    setSaving(true);
     setFormError("");
 
     const values = new FormData(event.currentTarget);
@@ -414,20 +417,44 @@ function NewAppointmentModal({
     // A plan, or one visit carrying several services, is booked in one go
     // (book_appointments, 052). A plain single visit keeps the older path,
     // which also works on a database without 052.
-    const result = kind || serviceIds.length > 1
-      ? await onBook({
+    const startAt = values.get("scheduledAt");
+    const send = () => (kind || serviceIds.length > 1
+      ? onBook({
         ...booking,
         kind,
         skipSundays,
         visits: kind ? planVisits.map(({ scheduledAt: at, durationMinutes: minutes }) => ({ scheduledAt: at, durationMinutes: minutes })) : [{ scheduledAt, durationMinutes }],
       })
-      : await onCreate({
+      : onCreate({
         ...booking,
-        scheduledAt: values.get("scheduledAt"),
+        scheduledAt: startAt,
         serviceId: serviceIds[0] || "",
         serviceType: selectedServices[0]?.name || "",
-      });
+      }));
 
+    // Nothing is booked until the office confirms what it is about to book.
+    const crew = technicianIds.map((id) => activeAccounts.find((account) => account.id === id)?.name).filter(Boolean);
+    const when = new Date(kind ? planVisits[0]?.scheduledAt || startAt : startAt);
+    setPending({
+      send,
+      summary: [
+        ["Client", selectedClient?.name || "—"],
+        ["When", `${when.toLocaleString([], { weekday: "short", month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}${kind === PLAN_KINDS.RECURRING ? ` · ${planVisits.length} visits, ${frequency}` : kind === PLAN_KINDS.MULTI_DAY ? ` · ${planVisits.length}-day job` : ""}`],
+        ["Services", selectedServices.map((service) => service.name).join(", ") || "None picked"],
+        ["Technicians", crew.join(", ") || "Unassigned"],
+        ["Price", price === "" || price === null || price === undefined ? "Not set" : formatPeso(price)],
+        ...(sourceId ? [["Billed under", sourceLabel || "The linked quotation or contract"]] : []),
+        ...(!check.ok ? [["Without payment", overrideReason.trim()]] : []),
+      ],
+    });
+  };
+
+  const confirmBooking = async () => {
+    const job = pending;
+    setPending(null);
+    if (!job) return;
+    setSaving(true);
+    const result = await job.send();
     // The context mutators report failure by returning the message.
     if (typeof result === "string") setFormError(result);
     setSaving(false);
@@ -894,6 +921,30 @@ function NewAppointmentModal({
           </p>
         )}
       </form>
+      {pending && (
+        <Modal
+          open
+          title="Confirm booking"
+          eyebrow="Check before booking"
+          size="sm"
+          onClose={() => setPending(null)}
+          footer={(
+            <>
+              <Button onClick={() => setPending(null)}>Go back</Button>
+              <Button variant="primary" onClick={confirmBooking}>Confirm booking</Button>
+            </>
+          )}
+        >
+          <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "max-content 1fr", gap: "8px 16px", ...text.small }}>
+            {pending.summary.map(([label, value]) => (
+              <div key={label} style={{ display: "contents" }}>
+                <dt style={{ color: neutral.bark }}>{label}</dt>
+                <dd style={{ margin: 0, color: neutral.ink }}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </Modal>
+      )}
     </Modal>
   );
 }

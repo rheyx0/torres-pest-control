@@ -16,8 +16,8 @@ function renderModal(initialItemId, onSubmit = jest.fn(async () => {})) {
 }
 
 function fillHeader() {
-  fireEvent.change(screen.getByLabelText(/PO \/ Supplier/), { target: { value: "PO-9" } });
-  fireEvent.change(screen.getByLabelText(/Intake Branch/), { target: { value: "Main" } });
+  fireEvent.change(screen.getByLabelText(/PO \/ Invoice/), { target: { value: "PO-9" } });
+  fireEvent.change(screen.getByLabelText(/Received at/), { target: { value: "Main" } });
   fireEvent.change(screen.getByLabelText("Stock In quantity"), { target: { value: "4" } });
 }
 

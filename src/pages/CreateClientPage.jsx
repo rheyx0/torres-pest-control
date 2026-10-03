@@ -5,14 +5,17 @@ import PageHeader from "../components/common/PageHeader";
 import ClientForm from "../components/clients/ClientForm";
 import useClients from "../hooks/useClients";
 import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { card, colors, pageShell } from "../styles/theme";
 
 function CreateClientPage() {
   const navigate = useNavigate();
   const { addClient, clients } = useClients();
   const { showSuccess, showError } = useToast();
+  const confirm = useConfirm();
 
   const handleSubmit = async (form) => {
+    if (!(await confirm({ title: "Create this client?", details: [["Name", form.name], ["Phone", form.phone || "—"], ["Email", form.email || "—"]], confirmLabel: "Create client" }))) return;
     // addClient resolves to the created client, or an error string.
     const result = await addClient(form);
 

@@ -14,7 +14,7 @@
 
 import { useMemo, useState } from "react";
 import { describeServicePricing } from "../../utils/pricing";
-import { Eye, EyeOff, PackageCheck, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Eye, EyeOff, Info, PackageCheck, Pencil, Plus, Trash2, X } from "lucide-react";
 import ConfirmDialog from "../common/ConfirmDialog";
 import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
 import { useToast } from "../../context/ToastContext";
@@ -25,6 +25,8 @@ import { validateDuration, validateMoney, validateQuantity } from "../../utils/v
 import { formatPeso } from "../../utils/formatters";
 import { card, colors } from "../../styles/theme";
 import Skeleton from "../ui/Skeleton";
+import InfoTip from "../ui/InfoTip";
+import { useConfirm } from "../../context/ConfirmContext";
 
 const peso = (value) => formatPeso(value);
 
@@ -310,13 +312,13 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
               invalid={Boolean(errors.followUpPrice)}
             />
           </Field>
-          <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", gridColumn: "1 / -1", fontSize: "0.88rem", color: colors.body, cursor: "pointer" }}>
-            <input type="checkbox" checked={form.skipPaymentCheck} onChange={(event) => set("skipPaymentCheck", event.target.checked)} style={{ marginTop: "3px" }} />
-            <span>
+          <div style={{ display: "flex", gap: "0.2rem", alignItems: "center", gridColumn: "1 / -1" }}>
+            <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.88rem", color: colors.body, cursor: "pointer" }}>
+              <input type="checkbox" checked={form.skipPaymentCheck} onChange={(event) => set("skipPaymentCheck", event.target.checked)} />
               <strong style={{ fontWeight: 500, color: colors.ink }}>Can be booked without payment</strong>
-              <span style={{ display: "block", color: colors.muted, fontSize: "0.8rem" }}>For inspections: booking skips the check for a paid quote or contract. A follow-up is linked to its job's quotation instead.</span>
-            </span>
-          </label>
+            </label>
+            <InfoTip text="For inspections: booking skips the check for a paid quote or contract. A follow-up is linked to its job's quotation instead." />
+          </div>
           <Field label="Default duration" hint="Hours and minutes, up to 13 h." error={errors.defaultDurationMinutes} style={{ alignContent: "start" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
               <Input aria-label="Default duration hours" type="number" min="0" max="13" step="1" value={durationHours} onChange={(event) => setDurationPart("hours", event.target.value)} placeholder="Hours" invalid={Boolean(errors.defaultDurationMinutes)} />
@@ -329,9 +331,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
             <div>
               <strong style={{ color: colors.ink, fontSize: "0.85rem" }}>Default materials</strong>
-              <div style={{ color: colors.muted, fontSize: "0.74rem", marginTop: "0.15rem" }}>
-                The quantity is what the service includes; it prefills the Stock-Out tab. "Charge extra" bills anything used above it, and "Charge all" bills everything used, at the item's customer price.
-              </div>
+              <InfoTip text={'The quantity is what the service includes; it prefills the Stock-Out tab. "Charge extra" bills anything used above it, and "Charge all" bills everything used, at the item\'s customer price.'} />
             </div>
             <Button size="sm" onClick={() => setForm((current) => ({ ...current, materials: [...current.materials, newRow()] }))}>
               <Plus size={14} /> Add material
@@ -396,6 +396,76 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
   );
 }
 
+const BILLING_WORDS = { INCLUDED: "Included in the price", EXTRA_CHARGED: "Extra use charged", CHARGE_ALL: "Charged per use" };
+
+/** Everything about one service, read only, with Edit beside Close. */
+function ServiceView({ service, itemsById, onEdit, onClose }) {
+  const row = (label, value) => (
+    <>
+      <dt style={{ color: colors.muted }}>{label}</dt>
+      <dd style={{ margin: 0, color: colors.ink }}>{value}</dd>
+    </>
+  );
+  const followUp = service.followUpPrice !== null && service.followUpPrice !== undefined
+    ? formatPeso(service.followUpPrice)
+    : "The Follow-up Visit service's price";
+  return (
+    <Modal
+      open
+      title={service.name}
+      eyebrow="Service profile"
+      size="md"
+      onClose={onClose}
+      footer={(
+        <>
+          <Button onClick={onClose}>Close</Button>
+          <Button variant="primary" icon={<Pencil size={14} />} onClick={onEdit}>Edit</Button>
+        </>
+      )}
+    >
+      <div style={{ display: "grid", gap: "1rem" }}>
+        {service.description && <p style={{ margin: 0, color: colors.body }}>{service.description}</p>}
+        <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.45rem 1.25rem", fontSize: "0.9rem" }}>
+          {row("Status", service.isActive ? "Active" : "Retired (hidden from the booking form)")}
+          {row("Price", describeServicePricing(service, formatPeso))}
+          {row("Down payment", service.depositPercent > 0 ? `${service.depositPercent}% of the quotation` : "None")}
+          {row("Follow-up price", followUp)}
+          {row("Duration", formatDuration(service.defaultDurationMinutes))}
+          {row("Booking", service.skipPaymentCheck ? "Can be booked without payment" : "Needs a paid quotation or an active contract")}
+        </dl>
+        <section>
+          <h3 style={{ margin: "0 0 0.4rem", fontSize: "0.95rem", color: colors.ink }}>Default materials</h3>
+          {service.materials.length === 0 ? (
+            <p style={{ margin: 0, color: colors.muted, fontSize: "0.88rem" }}>None.</p>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem" }}>
+              <thead>
+                <tr style={{ color: colors.muted, textAlign: "left" }}>
+                  <th style={{ padding: "0.3rem 0", fontWeight: 500 }}>Item</th>
+                  <th style={{ padding: "0.3rem 0", fontWeight: 500, textAlign: "right" }}>Included amount</th>
+                  <th style={{ padding: "0.3rem 0 0.3rem 1rem", fontWeight: 500 }}>Billing</th>
+                </tr>
+              </thead>
+              <tbody>
+                {service.materials.map((material) => {
+                  const item = itemsById.get(material.itemId);
+                  return (
+                    <tr key={material.itemId} style={{ borderTop: `1px solid ${colors.line}` }}>
+                      <td style={{ padding: "0.35rem 0" }}>{item?.name || "Unknown item"}</td>
+                      <td style={{ padding: "0.35rem 0", textAlign: "right" }}>{material.defaultAmount} {item?.unit || ""}</td>
+                      <td style={{ padding: "0.35rem 0 0.35rem 1rem" }}>{BILLING_WORDS[material.billingMode] || BILLING_WORDS.INCLUDED}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </section>
+      </div>
+    </Modal>
+  );
+}
+
 export default function ServiceProfilesAdmin() {
   const { showSuccess, showError } = useToast();
   const { services, loading, error, saveService, setServiceActive, deleteService } = useServices();
@@ -403,10 +473,13 @@ export default function ServiceProfilesAdmin() {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null); // null closed, {} new, service to edit
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [viewing, setViewing] = useState(null);
+  const confirm = useConfirm();
 
   const itemsById = useMemo(() => new Map(inventory.map((item) => [item.id, item])), [inventory]);
 
   const handleSave = async (fields) => {
+    if (!(await confirm({ title: editing?.id ? `Save changes to ${fields.name || editing.name}?` : `Add the service ${fields.name}?`, confirmLabel: editing?.id ? "Save changes" : "Add service" }))) return;
     setBusy(true);
     const result = await saveService(editing?.id || null, fields);
     setBusy(false);
@@ -419,6 +492,9 @@ export default function ServiceProfilesAdmin() {
   };
 
   const handleToggle = async (service) => {
+    if (!(await confirm(service.isActive
+      ? { title: `Retire ${service.name}?`, message: "It no longer appears on the booking form. Past visits keep it, and it can be restored.", confirmLabel: "Retire", tone: "danger" }
+      : { title: `Restore ${service.name}?`, confirmLabel: "Restore" }))) return;
     setBusy(true);
     const result = await setServiceActive(service.id, !service.isActive);
     setBusy(false);
@@ -478,7 +554,14 @@ export default function ServiceProfilesAdmin() {
           >
             <div style={{ minWidth: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                <strong style={{ color: service.isActive ? colors.ink : colors.muted, fontSize: "0.94rem", overflowWrap: "anywhere" }}>{service.name}</strong>
+                <button
+                  type="button"
+                  onClick={() => setViewing(service)}
+                  title="View details"
+                  style={{ border: 0, background: "none", padding: 0, cursor: "pointer", textAlign: "left", font: "inherit", fontWeight: 600, color: service.isActive ? colors.ink : colors.muted, fontSize: "0.94rem", overflowWrap: "anywhere" }}
+                >
+                  {service.name}
+                </button>
                 {!service.isActive && (
                   <span style={{ fontSize: "0.68rem", fontWeight: 500, color: colors.muted, background: colors.sunken, borderRadius: "999px", padding: "0.15rem 0.5rem" }}>Retired</span>
                 )}
@@ -508,6 +591,9 @@ export default function ServiceProfilesAdmin() {
               {service.description && <div style={{ color: colors.muted, fontSize: "0.76rem", marginTop: "0.3rem" }}>{service.description}</div>}
             </div>
             <div style={{ display: "flex", gap: "0.15rem" }}>
+              <Button size="icon" variant="ghost" aria-label={`View ${service.name}`} title="View" onClick={() => setViewing(service)}>
+                <Info size={15} />
+              </Button>
               <Button size="icon" variant="ghost" aria-label={`Edit ${service.name}`} title="Edit" onClick={() => setEditing(service)}>
                 <Pencil size={15} />
               </Button>
@@ -528,6 +614,18 @@ export default function ServiceProfilesAdmin() {
           </article>
         ))}
       </div>
+
+      {viewing && (
+        <ServiceView
+          service={services.find((entry) => entry.id === viewing.id) || viewing}
+          itemsById={itemsById}
+          onEdit={() => {
+            setEditing(viewing);
+            setViewing(null);
+          }}
+          onClose={() => setViewing(null)}
+        />
+      )}
 
       {editing && (
         <ServiceModal

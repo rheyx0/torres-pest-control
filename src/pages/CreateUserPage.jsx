@@ -9,15 +9,18 @@ import PageHeader from "../components/common/PageHeader";
 import UserForm from "../components/users/UserForm";
 import useUsers from "../hooks/useUsers";
 import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { pageShell } from "../styles/theme";
 
 function CreateUserPage() {
   const navigate = useNavigate();
   const { users, createAccount } = useUsers();
   const { showSuccess } = useToast();
+  const confirm = useConfirm();
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (role, fields) => {
+    if (!(await confirm({ title: "Create this account?", details: [["Name", fields.name], ["Role", role], ["Email", fields.email]], confirmLabel: "Create account" }))) return;
     setSubmitting(true);
     const result = await createAccount(role, fields);
     setSubmitting(false);

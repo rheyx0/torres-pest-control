@@ -43,6 +43,7 @@ import { canStart, dayPlan, isDone, leadsCrew, workLeftLabel } from "../../utils
 import { openCheckouts } from "../../utils/custody";
 import { absenceDates, currentAndUpcoming, outOn } from "../../utils/absences";
 import { formatDuration } from "../../utils/calendarDates";
+import { useConfirm } from "../../context/ConfirmContext";
 
 const clock = (value) => new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 const firstName = (user) => (user?.name || user?.username || "").split(" ")[0];
@@ -392,6 +393,7 @@ function TechnicianDashboard() {
   const { movements = [] } = useInventory();
   const { users } = useUsers();
   const { showError } = useToast();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const now = useNow(60000);
   const [starting, setStarting] = useState(false);
@@ -449,6 +451,7 @@ function TechnicianDashboard() {
       navigate(`/visit/${upNext.id}`);
       return;
     }
+    if (!(await confirm({ title: "Start this visit?", message: "Do this when you are on site. The office sees the visit as In progress.", confirmLabel: "Start visit" }))) return;
     setStarting(true);
     const result = await startVisit(upNext.id);
     setStarting(false);

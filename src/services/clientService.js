@@ -140,8 +140,13 @@ export async function setClientPaymentCheck(clientId, skip) {
 export async function createClient(form) {
   const duplicate = await findPotentialDuplicateClients(form);
   if (duplicate.error) return { error: duplicate.error };
-  if (duplicate.clients.length > 0) {
-    return { error: `A similar client already exists: ${duplicate.clients.map((client) => client.name).join(", ")}.` };
+  // Only an email already in use stops a new client (each client needs their
+  // own, migration 067). A shared phone number (a household, a company's
+  // branches) or a shared name is allowed; the form only points it out.
+  const email = form.email?.trim().toLowerCase();
+  const byEmail = email ? duplicate.clients.find((client) => (client.email || "").trim().toLowerCase() === email) : null;
+  if (byEmail) {
+    return { error: `The email ${form.email.trim()} is already used by ${byEmail.name}${byEmail.reference ? ` (${byEmail.reference})` : ""}. Each client needs their own email.` };
   }
 
   const { data, error } = await supabase

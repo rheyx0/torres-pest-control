@@ -19,6 +19,31 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const isBlank = (value) => !value || !String(value).trim();
 
+// Names: letters (ñ and accented letters too) and spaces, plus the period,
+// hyphen and apostrophe real names use ("Ma. Dela Cruz-Reyes", "O'Neil").
+// A client may be a business, so its name may also have digits and "&"
+// ("J&J 24 Hours Bakery"). No other symbols.
+const PERSON_NAME_PATTERN = /^\p{L}[\p{L}\p{M} .'-]*$/u;
+const CLIENT_NAME_PATTERN = /^[\p{L}\d][\p{L}\p{M}\d .'&-]*$/u;
+
+/** An error message, or null when the person's name is acceptable. */
+export function validatePersonName(value, { label = "Name", required = true } = {}) {
+  if (isBlank(value)) return required ? `${label} is required.` : null;
+  if (!PERSON_NAME_PATTERN.test(String(value).trim())) {
+    return `${label} can only have letters, spaces, periods, hyphens and apostrophes.`;
+  }
+  return null;
+}
+
+/** An error message, or null when the client's name is acceptable. */
+export function validateClientName(value) {
+  if (isBlank(value)) return "Client name is required.";
+  if (!CLIENT_NAME_PATTERN.test(String(value).trim())) {
+    return "Client name can only have letters, numbers, spaces, periods, hyphens, apostrophes and \"&\".";
+  }
+  return null;
+}
+
 export function validateEmailFormat(email) {
   if (isBlank(email)) return "Email is required.";
   if (!EMAIL_PATTERN.test(email.trim())) return "Enter a valid email address.";
@@ -79,8 +104,9 @@ export function validatePhilippinePhone(phone, { required = false } = {}) {
 export function validateAccount(form, { accounts = [], ignoreId = null, requirePassword = true } = {}) {
   const errors = {};
 
-  if (isBlank(form.name)) errors.name = "Full name is required.";
-  
+  const nameError = validatePersonName(form.name, { label: "Full name" });
+  if (nameError) errors.name = nameError;
+
   if (isBlank(form.username)) {
     errors.username = "Username is required.";
   } else if (isUsernameTaken(form.username, accounts, ignoreId)) {
@@ -135,7 +161,8 @@ export function validatePasswordChange({ currentPassword, newPassword, confirmPa
 export function validateClient(form) {
   const errors = {};
 
-  if (isBlank(form.name)) errors.name = "Client name is required.";
+  const nameError = validateClientName(form.name);
+  if (nameError) errors.name = nameError;
   if (isBlank(form.address)) errors.address = "Address is required.";
 
   if (isBlank(form.phone) && isBlank(form.email)) {

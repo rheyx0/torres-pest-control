@@ -16,7 +16,7 @@ import { Download, MoreHorizontal, Search, X } from "lucide-react";
 import Field from "../common/Field";
 import EmptyState from "../common/EmptyState";
 import { ACCOUNT_STATUS, SPRINT_ROLES } from "../../utils/constants";
-import { validateEmailFormat, isEmailTaken, isUsernameTaken, validatePhilippinePhone } from "../../utils/validators";
+import { validateEmailFormat, isEmailTaken, isUsernameTaken, validatePersonName, validatePhilippinePhone } from "../../utils/validators";
 import { colors, inputStyle, invalidInputStyle } from "../../styles/theme";
 import StatusPill, { toneFor } from "../ui/StatusPill";
 import { formatLastLogin, humanizeEnum } from "../../utils/formatters";
@@ -91,7 +91,8 @@ function UserList({ users, canEdit, onEdit, onAvatarChange, onToggleStatus, onRe
     if (!selectedUser) return;
 
     const nextErrors = {};
-    if (!form.name.trim()) nextErrors.name = "Full name is required.";
+    const nameError = validatePersonName(form.name, { label: "Full name" });
+    if (nameError) nextErrors.name = nameError;
 
     if (!form.username.trim()) {
       nextErrors.username = "Username is required.";

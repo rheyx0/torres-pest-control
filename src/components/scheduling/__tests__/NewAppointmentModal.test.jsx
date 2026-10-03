@@ -41,6 +41,13 @@ const existing = [
 /** The client search box. Role "combobox" is ambiguous here — selects share it. */
 const clientSearch = () => screen.getByPlaceholderText(/Search by name, phone, email, or address/);
 
+/** Submits the form, then confirms the booking if the confirm step opens. */
+async function submitBooking(name = /Create appointment/) {
+  await userEvent.click(screen.getByRole("button", { name }));
+  const confirm = screen.queryByRole("button", { name: "Confirm booking" });
+  if (confirm) await userEvent.click(confirm);
+}
+
 function renderModal({ onCreate = jest.fn(async () => ({ id: "new" })), ...props } = {}) {
   const onClose = jest.fn();
   render(
@@ -110,7 +117,7 @@ describe("NewAppointmentModal", () => {
       await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
       await userEvent.type(clientSearch(), "xyz");
 
-      await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+      await submitBooking();
 
       expect(onCreate).not.toHaveBeenCalled();
       expect(screen.getByRole("alert")).toHaveTextContent(/Select a client from the list/);
@@ -192,7 +199,7 @@ describe("NewAppointmentModal", () => {
       await userEvent.click(clientSearch());
       await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
       await userEvent.click(screen.getByRole("button", { name: "1h 30m" }));
-      await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+      await submitBooking();
 
       expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ durationMinutes: 90 }));
     });
@@ -252,7 +259,7 @@ describe("NewAppointmentModal", () => {
       await userEvent.click(clientSearch());
       await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
       await userEvent.click(screen.getByRole("checkbox", { name: /Karl Hameed/ }));
-      await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+      await submitBooking();
 
       expect(onCreate).toHaveBeenCalled();
     });
@@ -266,7 +273,7 @@ describe("NewAppointmentModal", () => {
       await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
       await userEvent.selectOptions(screen.getByLabelText("Pest concern"), "Termites");
       await userEvent.type(screen.getByLabelText("Notes"), "Back garden access");
-      await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+      await submitBooking();
 
       expect(onCreate).toHaveBeenCalledWith({
         clientId: "c1",
@@ -294,7 +301,7 @@ describe("NewAppointmentModal", () => {
       await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
       await userEvent.click(screen.getByRole("checkbox", { name: "Bruce Banner" }));
       await userEvent.click(screen.getByRole("checkbox", { name: /Karl Hameed/ }));
-      await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+      await submitBooking();
 
       expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ technicianIds: ["t2", "t1"] }));
     });
@@ -306,7 +313,7 @@ describe("NewAppointmentModal", () => {
       await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
       await userEvent.selectOptions(screen.getByLabelText("Frequency"), "One-time");
       await userEvent.type(screen.getByLabelText(/Price/), "2500");
-      await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+      await submitBooking();
 
       expect(onCreate).toHaveBeenCalledWith(
         expect.objectContaining({ serviceFrequency: "One-time", price: "2500" })
@@ -321,7 +328,7 @@ describe("NewAppointmentModal", () => {
 
       await userEvent.click(clientSearch());
       await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
-      await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+      await submitBooking();
 
       expect(await screen.findByRole("alert")).toHaveTextContent("That technician is already booked.");
     });
@@ -332,7 +339,7 @@ describe("NewAppointmentModal", () => {
 
         await userEvent.click(clientSearch());
         await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
-        await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+        await submitBooking();
 
         expect(onCreate).not.toHaveBeenCalled();
         expect(screen.getByRole("alert")).toHaveTextContent(/cannot be booked in the past/);
@@ -350,7 +357,7 @@ describe("NewAppointmentModal", () => {
         await userEvent.click(clientSearch());
         await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
         await userEvent.type(screen.getByLabelText(/Price/), "10000000");
-        await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+        await submitBooking();
 
         expect(onCreate).not.toHaveBeenCalled();
         expect(screen.getByRole("alert")).toHaveTextContent(/cannot be more than ₱999,999.99/);
@@ -363,7 +370,7 @@ describe("NewAppointmentModal", () => {
         await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
         await userEvent.click(screen.getByRole("button", { name: "Custom" }));
         await userEvent.clear(screen.getByLabelText("Hours"));
-        await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+        await submitBooking();
 
         expect(onCreate).not.toHaveBeenCalled();
         expect(screen.getByRole("alert")).toHaveTextContent(/at least 15 minutes/);
@@ -391,7 +398,7 @@ describe("NewAppointmentModal", () => {
         expect(screen.getByRole("button", { name: "2h" })).toHaveAttribute("aria-pressed", "true");
         expect(screen.getByText(/Prefills 1 material on the Stock-Out tab/)).toBeInTheDocument();
 
-        await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+        await submitBooking();
         expect(onCreate).toHaveBeenCalledWith(
           expect.objectContaining({ serviceId: "s1", serviceType: "Termite Control", price: "4500", durationMinutes: 120 })
         );
@@ -430,7 +437,7 @@ describe("NewAppointmentModal", () => {
         expect(screen.getByLabelText("Minutes")).toHaveValue(30);
         expect(screen.getByLabelText(/Price/)).toHaveValue(4500);
 
-        await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+        await submitBooking();
         expect(onCreate).not.toHaveBeenCalled();
         expect(onBook).toHaveBeenCalledWith(expect.objectContaining({
           kind: null,
@@ -477,7 +484,7 @@ describe("plans", () => {
     expect(rows()).toHaveLength(6);
     expect(rows()[1]).toHaveTextContent(/Feb 17, 2031/); // Feb 16 is a Sunday: moved to Monday
 
-    await userEvent.click(screen.getByRole("button", { name: "Book 6 visits" }));
+    await submitBooking("Book 6 visits");
     expect(onBook).toHaveBeenCalledWith(expect.objectContaining({
       kind: "RECURRING",
       serviceFrequency: "Monthly",
@@ -518,7 +525,7 @@ describe("plans", () => {
     await userEvent.click(screen.getByRole("button", { name: /Move all to/ }));
     expect(screen.getByText("All 3 dates are free.")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Book 3 visits" }));
+    await submitBooking("Book 3 visits");
     expect(onBook).toHaveBeenCalled();
     expect(onBook.mock.calls[0][0].visits.every((visit) => !visit.scheduledAt.endsWith("T09:00"))).toBe(true);
   });
@@ -538,7 +545,7 @@ describe("plans", () => {
     expect(screen.getByLabelText(/^Frequency/)).toBeDisabled();
     expect(screen.getByLabelText(/Price for the whole job/)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Book 2-day job" }));
+    await submitBooking("Book 2-day job");
     expect(onBook).toHaveBeenCalledWith(expect.objectContaining({
       kind: "MULTI_DAY",
       visits: [
@@ -554,7 +561,7 @@ describe("plans", () => {
     await userEvent.click(screen.getByRole("button", { name: "Custom" }));
     await userEvent.clear(screen.getByLabelText("Hours"));
     await userEvent.type(screen.getByLabelText("Hours"), "20");
-    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    await submitBooking();
 
     expect(onCreate).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/Split it into a multi-day job/);
@@ -646,7 +653,7 @@ describe("booking under a quote or contract (Sprint 3)", () => {
 
     await userEvent.selectOptions(picker, "quote:q1");
     expect(screen.queryByText(/No quote or contract linked/)).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    await submitBooking();
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ source: { type: "quote", id: "q1" } }));
   });
 
@@ -671,7 +678,7 @@ describe("booking under a quote or contract (Sprint 3)", () => {
     const { onCreate } = renderModal({ billingSources, initialClientId: "c1", initialScheduledAt: `${TODAY}T14:00` });
     await userEvent.selectOptions(screen.getByLabelText("Quote or contract"), "contract:k1");
     await userEvent.selectOptions(screen.getByLabelText("Frequency"), "");
-    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    await submitBooking();
     expect(onCreate).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/recurring plan/);
   });
@@ -690,7 +697,7 @@ describe("NewAppointmentModal payment check", () => {
     const { onCreate } = renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1", paymentCheckFor: refuse });
 
     expect(screen.getByRole("group", { name: "Payment check" })).toHaveTextContent(/no approved quotation/);
-    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    await submitBooking();
 
     expect(onCreate).not.toHaveBeenCalled();
     expect(screen.getByText(/Still make appointment without an approved quotation".$/)).toBeInTheDocument();
@@ -700,12 +707,12 @@ describe("NewAppointmentModal payment check", () => {
     const { onCreate } = renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1", paymentCheckFor: refuse });
 
     await userEvent.click(screen.getByRole("button", { name: /Still make appointment without an approved quotation/ }));
-    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    await submitBooking();
     expect(onCreate).not.toHaveBeenCalled();
     expect(screen.getByText(/Write why this appointment/)).toBeInTheDocument();
 
     await userEvent.type(screen.getByLabelText("Why it is booked without an approved quotation"), "Emergency, pays on the day");
-    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    await submitBooking();
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ paymentOverride: "Emergency, pays on the day" }));
   });
 
@@ -716,12 +723,12 @@ describe("NewAppointmentModal payment check", () => {
     const billingSources = { quotes: [{ id: "q1", clientId: "c1", label: "TPC-Q-00001 · ₱4,480.00", bookable: true, serviceIds: ["s1"], price: 4480 }], contracts: [] };
     const { onCreate } = renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1", services, billingSources, paymentCheckFor: ready });
 
-    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    await submitBooking();
     expect(onCreate).not.toHaveBeenCalled();
 
     await userEvent.click(screen.getByRole("button", { name: "Book under TPC-Q-00001" }));
     expect(screen.queryByRole("group", { name: "Payment check" })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    await submitBooking();
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ source: { type: "quote", id: "q1" } }));
   });
 
@@ -736,7 +743,7 @@ describe("NewAppointmentModal payment check", () => {
     expect(screen.getByText("A quotation is a one-time job. For repeating visits, make a contract.")).toBeInTheDocument();
 
     await userEvent.selectOptions(frequency, "Monthly");
-    await userEvent.click(screen.getByRole("button", { name: /Create appointment|Book/ }));
+    await submitBooking(/Create appointment|Book/);
     expect(onCreate).not.toHaveBeenCalled();
     expect(screen.getAllByText(/For repeating visits, make a contract/).length).toBeGreaterThan(1);
   });
@@ -744,7 +751,7 @@ describe("NewAppointmentModal payment check", () => {
   it("books a follow-up linked to the visit it checks on", async () => {
     const { onCreate } = renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1", initialPrice: 800, initialFollowUpOf: { id: "v1", reference: "TPC-V-00022" } });
     expect(screen.getByText("Follow-up of TPC-V-00022.")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    await submitBooking();
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ followUpOf: "v1", price: "800" }));
   });
 
@@ -753,4 +760,18 @@ describe("NewAppointmentModal payment check", () => {
     expect(screen.queryByRole("group", { name: "Payment check" })).not.toBeInTheDocument();
   });
 });
+});
+
+describe("NewAppointmentModal confirm step", () => {
+  it("asks to confirm before booking, and Go back books nothing", async () => {
+    const { onCreate } = renderModal({ initialScheduledAt: `${TODAY}T14:00`, initialClientId: "c1" });
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    const dialog = screen.getByRole("dialog", { name: "Confirm booking" });
+    expect(dialog).toHaveTextContent("Rhey Garcia");
+    expect(dialog).toHaveTextContent("Unassigned");
+    await userEvent.click(screen.getByRole("button", { name: "Go back" }));
+    expect(onCreate).not.toHaveBeenCalled();
+    await submitBooking();
+    expect(onCreate).toHaveBeenCalledTimes(1);
+  });
 });

@@ -429,7 +429,7 @@ describe("the Stock-Out tab", () => {
     await userEvent.clear(quantity);
     await userEvent.type(quantity, "5");
 
-    expect(screen.getByText("Only 3 pc available.")).toBeInTheDocument();
+    expect(screen.getByText("Only 3 pc available")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Record stock out/ }));
     expect(mockStockOutMany).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/Only 3 pc of Bait station is available/);
@@ -456,7 +456,7 @@ describe("the Stock-Out tab", () => {
       expect(screen.queryByText(/available\.$/)).not.toBeInTheDocument();
 
       await userEvent.type(quantity, "0");
-      expect(screen.getByText("Only 5 pc (3 pc on the shelf, 2 pc with the crew) available.")).toBeInTheDocument();
+      expect(screen.getByText("Only 5 pc available")).toBeInTheDocument();
     });
   });
 });

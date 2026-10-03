@@ -1,7 +1,7 @@
 import { Camera } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import Field from "../common/Field";
-import { validateEmailFormat, validatePhilippinePhone } from "../../utils/validators";
+import { validateEmailFormat, validatePersonName, validatePhilippinePhone } from "../../utils/validators";
 import { buttonWhen, colors, inputStyle, invalidInputStyle } from "../../styles/theme";
 
 function ProfileForm({ user, onSubmit, onAvatarChange, activeTab, onTabChange }) {
@@ -31,7 +31,8 @@ function ProfileForm({ user, onSubmit, onAvatarChange, activeTab, onTabChange })
   const handleSubmit = async (event) => {
     event.preventDefault();
     const nextErrors = {};
-    if (!form.name.trim()) nextErrors.name = "Full name is required.";
+    const nameError = validatePersonName(form.name, { label: "Full name" });
+    if (nameError) nextErrors.name = nameError;
     if (!form.username.trim()) nextErrors.username = "Username is required.";
 
     const emailError = validateEmailFormat(form.email);

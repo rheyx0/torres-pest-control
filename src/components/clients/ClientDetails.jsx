@@ -23,6 +23,7 @@ import { clientBalance, clientBillingEvents } from "../../utils/billing";
 import { useOptionalBilling } from "../../hooks/useBilling";
 import useAuth from "../../hooks/useAuth";
 import useClients from "../../hooks/useClients";
+import { useConfirm } from "../../context/ConfirmContext";
 import BillingPrinter from "../billing/BillingPrinter";
 import { presetRange } from "../../utils/reports";
 import { dayKey } from "../../utils/dashboardMetrics";
@@ -368,11 +369,15 @@ function ClientDetails({
   // Sprint 4: the client's payment check, and the monitoring report.
   const { role } = useAuth();
   const { setClientPaymentCheck, clients: allClients } = useClients();
+  const confirm = useConfirm();
   const [checkBusy, setCheckBusy] = useState(false);
   const [checkError, setCheckError] = useState("");
   const [monitoringPeriod, setMonitoringPeriod] = useState("LAST_6");
   const [monitoringPrint, setMonitoringPrint] = useState(null);
   const toggleClientCheck = async (skip) => {
+    if (!(await confirm(skip
+      ? { title: `Skip the payment check for ${client.name}?`, message: "Treatments for this client can be booked without a paid quotation or contract.", confirmLabel: "Skip the check", tone: "danger" }
+      : { title: `Turn the payment check back on for ${client.name}?`, confirmLabel: "Turn on" }))) return;
     setCheckBusy(true);
     setCheckError("");
     const result = await setClientPaymentCheck(client, skip);

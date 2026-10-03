@@ -15,7 +15,7 @@ import { Link } from "react-router-dom";
 import Field from "../common/Field";
 import UserRoleSelector from "./UserRoleSelector";
 import { ROLES } from "../../utils/constants";
-import { validateAccount } from "../../utils/validators";
+import { validateAccount, validatePersonName } from "../../utils/validators";
 import { buttonWhen, card, colors, inputStyle, invalidInputStyle } from "../../styles/theme";
 
 const EMPTY_FORM = { firstName: "", lastName: "", username: "", phone: "", email: "", password: "", role: ROLES.STAFF };
@@ -43,8 +43,10 @@ function UserForm({ accounts = [], onSubmit, submitting = false }) {
     const validationPayload = { ...form, name: fullName };
     const nextErrors = validateAccount(validationPayload, { accounts });
     
-    if (!form.firstName?.trim()) nextErrors.firstName = "First name is required.";
-    if (!form.lastName?.trim()) nextErrors.lastName = "Last name is required.";
+    const firstNameError = validatePersonName(form.firstName, { label: "First name" });
+    if (firstNameError) nextErrors.firstName = firstNameError;
+    const lastNameError = validatePersonName(form.lastName, { label: "Last name" });
+    if (lastNameError) nextErrors.lastName = lastNameError;
     delete nextErrors.name;
 
     setErrors(nextErrors);

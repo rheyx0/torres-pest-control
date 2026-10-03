@@ -7,6 +7,7 @@ import { BrowserRouter as Router, Navigate, Route, Routes } from "react-router-d
 
 import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
+import { ConfirmProvider } from "./context/ConfirmContext";
 import { ClientsProvider } from "./context/ClientsContext";
 import { InventoryProvider } from "./context/InventoryContext";
 import { ServicesProvider } from "./context/ServicesContext";
@@ -78,6 +79,7 @@ function App() {
     <Router>
       <AuthProvider>
         <ToastProvider>
+        <ConfirmProvider>
           <ClientsProvider>
             <InventoryProvider>
               <ServicesProvider>
@@ -149,6 +151,7 @@ function App() {
               </ServicesProvider>
             </InventoryProvider>
           </ClientsProvider>
+        </ConfirmProvider>
         </ToastProvider>
       </AuthProvider>
     </Router>

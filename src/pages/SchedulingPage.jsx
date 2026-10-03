@@ -28,6 +28,7 @@ import { canBookFromQuote } from "../utils/billing";
 import { findFollowUpService, followUpPriceFor, paymentCheck } from "../utils/sprint4";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { ACTIVITY_LEVELS, APPOINTMENT_STATUSES, ATTACHMENT_CATEGORIES, DOCUMENT_CATEGORIES, PEST_CONCERN_SUGGESTIONS, REPORT_UPLOAD_CATEGORIES, ROLES, LIMITS, SERVICE_FREQUENCIES } from "../utils/constants";
 import useNow from "../hooks/useNow";
 import { CALENDAR_END_HOUR, DAY_END_HOUR, DAY_START_HOUR, SCHEDULE_END_HOUR, allowedNextStatuses, appointmentReference, combineServices, servicesOf, bookableTechnicians, busyTechnicianIds, canTransition, crewOf, dayLoad, describeSlotConflict, findTechnicianConflicts, isAssignedTo, endOf, layoutDayAppointments, moveSteps, startOf, technicianHours } from "../utils/scheduling";
@@ -72,7 +73,7 @@ import {
   visibleHourWindow,
 } from "../utils/calendarGeometry";
 import PageHeader from "../components/common/PageHeader";
-import { todayISO, validateAppointmentStart, validateAttachment, validateDuration, validateMoney, validateMovementDate, validateQuantity } from "../utils/validators";
+import { todayISO, validateAppointmentStart, validateAttachment, validateDuration, validateMoney, validateMovementDate, validatePersonName, validateQuantity } from "../utils/validators";
 import { card, colors, inputStyle, pageShell, primaryButton, secondaryButton } from "../styles/theme";
 import Button from "../components/ui/Button";
 import DataTable from "../components/ui/DataTable";
@@ -94,6 +95,7 @@ const STOCK_CATEGORIES = ["CHEMICAL", "MATERIAL", "EQUIPMENT"];
 function SchedulingPage() {
   const { can, currentUser } = useAuth();
   const { showError, showSuccess } = useToast();
+  const confirm = useConfirm();
   const { clients, addDocument, removeDocument, getDocumentUrl } = useClients();
   const { inventory, movements, batches, stockOutMany } = useInventory();
   // Stock technicians have checked out and not used or returned (migration 054).
@@ -459,6 +461,15 @@ function SchedulingPage() {
       refuseMove(dropRefusal);
       return;
     }
+    const client = clients.find((entry) => entry.id === current.clientId);
+    if (!(await confirm({
+      title: "Move this appointment?",
+      details: [["Visit", `${appointmentReference(current)} · ${client?.name || "Client"}`], ["From", formatDateTime(current.scheduledAt)], ["To", formatDateTime(nextScheduledAt)]],
+      confirmLabel: "Move",
+    }))) {
+      setDraggedId(null);
+      return;
+    }
     const failure = await relocate(current, nextScheduledAt);
     setDraggedId(null);
     if (failure) {
@@ -536,13 +547,29 @@ function SchedulingPage() {
     // The database checks the existing status before accepting a time change,
     // so legacy after-hours appointments need the same two-step transition as
     // drag-and-drop: mark Reschedule first, then save the new time.
+    if (timingChanged && selected.status !== "Reschedule" && nextStatus !== "Reschedule") {
+      const refusal = "Set the status to Reschedule before changing the date, time, or duration.";
+      showError(refusal);
+      setMessage(refusal);
+      return;
+    }
+
+    // Confirm before saving; a cancellation or completion says so plainly.
+    const statusChanged = nextStatus !== selected.status;
+    const ending = statusChanged && (nextStatus === "Cancelled" || nextStatus === "Completed");
+    if (!(await confirm({
+      title: ending ? `Mark this appointment ${nextStatus}?` : "Save changes to this appointment?",
+      message: nextStatus === "Cancelled" ? "The visit is cancelled and its time is freed." : undefined,
+      details: [
+        ["Visit", appointmentReference(selected)],
+        statusChanged ? ["Status", `${selected.status} → ${nextStatus}`] : null,
+        timingChanged ? ["New time", formatDateTime(nextScheduledAt)] : null,
+      ],
+      confirmLabel: ending ? `Mark ${nextStatus}` : "Save changes",
+      tone: nextStatus === "Cancelled" ? "danger" : undefined,
+    }))) return;
+
     if (timingChanged && selected.status !== "Reschedule") {
-      if (nextStatus !== "Reschedule") {
-        const refusal = "Set the status to Reschedule before changing the date, time, or duration.";
-        showError(refusal);
-        setMessage(refusal);
-        return;
-      }
       const prepareResult = await updateAppointment({ ...selected, technicianIds, status: "Reschedule" });
       if (typeof prepareResult === "string") {
         showError(prepareResult);
@@ -610,6 +637,14 @@ function SchedulingPage() {
       showError("Tick the services performed on this visit.");
       return;
     }
+
+    const completing = Boolean(confirmation?.signatureFile || confirmation?.completionNote);
+    if (!(await confirm({
+      title: completing ? "Complete this visit?" : "Save this report?",
+      message: completing ? "The report is filed and the visit is marked Completed." : "The report is saved; the visit stays open until the customer signs.",
+      details: [["Visit", appointmentReference(selected)]],
+      confirmLabel: completing ? "Complete visit" : "Save report",
+    }))) return;
 
     // The signature image is uploaded first; only its object key reaches the
     // report, so a failed upload never completes a visit.
@@ -695,6 +730,16 @@ function SchedulingPage() {
   // StockOutForm validates and owns its rows; this records them. Returns true
   // or the error string, so the form knows whether to clear itself.
   const handleStockSubmit = async ({ entries, date }) => {
+    const lines = entries.map((entry) => {
+      const item = inventory.find((candidate) => candidate.id === entry.itemId);
+      return `${item?.name || "Item"} ${entry.amount} ${item?.unit || ""}`.trim();
+    });
+    if (!(await confirm({
+      title: "Record this stock out?",
+      message: "Stock leaves inventory and is charged to this visit. A mistake is fixed with a return or a correction.",
+      details: [["Visit", appointmentReference(selected)], ["Items", lines.join(", ")]],
+      confirmLabel: "Record stock out",
+    }))) return "";
     const result = await stockOutMany(selected.id, entries, date);
     if (typeof result === "string") {
       showError(result);
@@ -723,6 +768,8 @@ function SchedulingPage() {
       setAnchorDate(mode === MODES.DAY ? new Date(visit.scheduledAt) : startOfWeek(new Date(visit.scheduledAt)));
     }
     setMessage(message);
+    // A pop-up as well as the banner, so the booking is never missed.
+    showSuccess(message);
     return true;
   };
 
@@ -940,10 +987,17 @@ function SchedulingPage() {
           movements={movements}
           onClose={() => setCoverOpen(false)}
           onSubmit={async (absentId, absence) => {
+            const who = activeTechnicians.find((account) => account.id === absentId)?.name || "this technician";
+            const moved = absence.changes.length;
+            if (!(await confirm({
+              title: `Mark ${who} as out?`,
+              details: [["Days", absence.startsOn === absence.endsOn ? absence.startsOn : `${absence.startsOn} to ${absence.endsOn}`], ["Reason", absence.reason || "—"], ["Visits changed", String(moved)]],
+              message: moved ? "Their visits are reassigned or rescheduled as shown." : "No visits need to change.",
+              confirmLabel: "Mark out",
+            }))) return "";
             const result = await planActions.markTechnicianOut(absentId, absence);
             if (result !== true) return result;
             setCoverOpen(false);
-            const moved = absence.changes.length;
             showSuccess(moved ? `Marked out, and ${moved} visit${moved === 1 ? "" : "s"} reassigned.` : "Marked out.");
             return true;
           }}
@@ -1189,9 +1243,18 @@ function SchedulingPage() {
             canManage: canReschedule,
             canFinish: ownsAppointment(selected),
             onAction: async (name, ...args) => {
+              // The plan changes that touch more than one visit, confirmed first.
+              const asks = {
+                updatePlanFuture: { title: "Change this and every later visit?", confirmLabel: "Change visits" },
+                addPlanVisit: { title: "Add a visit to this plan?", confirmLabel: "Add visit" },
+                cancelPlanRemaining: { title: "Cancel the rest of this plan?", message: "Every visit still to come is cancelled.", confirmLabel: "Cancel visits", tone: "danger" },
+                finishJobHere: { title: "Finish the job here?", message: "The days after this one are cancelled.", confirmLabel: "Finish job", tone: "danger" },
+                setPlanRenewal: args[1] === false ? { title: "Stop renewal reminders for this plan?", confirmLabel: "Don't renew" } : null,
+              };
+              if (asks[name] && !(await confirm(asks[name]))) return "";
               const result = await planActions[name](...args);
               if (result === true) setMessage("Plan updated.");
-              else showError(result);
+              else if (result) showError(result);
               return result;
             },
           }}
@@ -1616,9 +1679,11 @@ function CustomerConfirmation({ appointment, canOverride, onSubmit, onScheduleFo
     }
   };
 
-  const readyToConfirm = hasInk && agreed && customerName.trim().length > 0 && !busy;
+  const customerNameError = customerName.trim() ? validatePersonName(customerName, { label: "Customer name" }) : null;
+  const readyToConfirm = hasInk && agreed && customerName.trim().length > 0 && !customerNameError && !busy;
   const missing = [
     customerName.trim() ? null : "the customer's name",
+    customerNameError ? "a customer name with letters only" : null,
     hasInk ? null : "a signature",
     agreed ? null : "the confirmation tick",
   ].filter(Boolean);
@@ -2367,15 +2432,26 @@ function StockOutForm({ appointment, inventory, service, held = [], batches = []
               const disabledItem = item?.status === "DISABLED";
               return (
                 <div key={row.id} style={{ display: "grid", gap: "0.3rem" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 82px auto", gap: "0.45rem", alignItems: "center" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 150px auto", gap: "0.45rem", alignItems: "start" }}>
                   <select aria-label={`${categoryLabel(category)} item`} value={row.itemId} onChange={(event) => { updateRow(row.id, "itemId", event.target.value); updateRow(row.id, "batchId", ""); }} style={{ ...inputStyle, padding: "0.62rem 0.55rem", fontSize: "0.78rem" }}>
                     <option value="">Select item</option>
-                    {categoryItems.map((option) => <option key={option.id} value={option.id} disabled={selectedItemIds.has(option.id)}>{option.name} ({option.quantity} {option.unit})</option>)}
+                    {categoryItems.map((option) => <option key={option.id} value={option.id} disabled={selectedItemIds.has(option.id)}>{option.name}</option>)}
                   </select>
-                  <input aria-label={`${categoryLabel(category)} quantity`} type="number" min="0" max={LIMITS.MAX_MOVEMENT_QTY} step="any" value={row.amount} onChange={(event) => updateRow(row.id, "amount", event.target.value)} placeholder="Qty" style={{ ...inputStyle, padding: "0.62rem 0.55rem", fontSize: "0.78rem" }} />
+                  {/* The quantity with its unit beside it, and how much there is right under it. */}
+                  <div style={{ display: "grid", gap: "0.2rem" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                      <input aria-label={`${categoryLabel(category)} quantity`} type="number" min="0" max={LIMITS.MAX_MOVEMENT_QTY} step="any" value={row.amount} onChange={(event) => updateRow(row.id, "amount", event.target.value)} placeholder="Qty" style={{ ...inputStyle, padding: "0.62rem 0.55rem", fontSize: "0.78rem", minWidth: 0 }} />
+                      {item && <span style={{ color: colors.body, fontSize: "0.78rem", whiteSpace: "nowrap" }}>{item.unit}</span>}
+                    </div>
+                    {item && !disabledItem && (
+                      <span style={{ color: short ? colors.danger : colors.muted, fontSize: "0.7rem", fontWeight: short ? 500 : 400 }}>
+                        {`${short ? "Only " : ""}${roundAmount(stock.shelf + stock.held)} ${item.unit} available`}
+                      </span>
+                    )}
+                  </div>
                   {categoryRows.length > 1 && <button type="button" aria-label={`Remove ${categoryLabel(category)} row`} onClick={() => removeRow(row.id)} style={{ border: 0, background: "transparent", color: colors.danger, cursor: "pointer", padding: "0.4rem" }}><X size={15} /></button>}
                 </div>
-                {(short || disabledItem) && <span style={{ color: colors.danger, fontSize: "0.7rem", fontWeight: 500 }}>{disabledItem ? `${item.name} is disabled and cannot be stocked out. Remove it or pick another item.` : `Only ${describeAvailable(item, stock)} available.`}</span>}
+                {disabledItem && <span style={{ color: colors.danger, fontSize: "0.7rem", fontWeight: 500 }}>{`${item.name} is disabled and cannot be stocked out. Remove it or pick another item.`}</span>}
                 {!short && !disabledItem && stock.held > 0 && <span style={{ color: colors.muted, fontSize: "0.7rem" }}>The crew checked out {stock.held} {item.unit}; that is used first, then the shelf.</span>}
                 {/* The batch: filled in with the soonest expiry; change it only
                     when the container in hand is from another batch (055). */}

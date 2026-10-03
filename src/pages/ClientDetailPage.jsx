@@ -9,6 +9,7 @@ import Skeleton, { SkeletonBar } from "../components/ui/Skeleton";
 import useAuth from "../hooks/useAuth";
 import useClients from "../hooks/useClients";
 import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import { SUBSYSTEMS } from "../utils/permissions";
 import { card, colors, pageShell } from "../styles/theme";
 
@@ -19,6 +20,7 @@ function ClientDetailPage() {
     useClients();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
+  const confirm = useConfirm();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const client = getClient(id);
@@ -54,6 +56,7 @@ function ClientDetailPage() {
   }
 
   const handleSave = async (form) => {
+    if (!(await confirm({ title: `Save changes to ${client.name}?`, confirmLabel: "Save changes" }))) return false;
     const result = await updateClient(client.id, form);
     if (result === true) {
       showSuccess("Client profile updated.");
@@ -64,11 +67,15 @@ function ClientDetailPage() {
   };
 
   const handleUpload = (file, category) => addDocument(client.id, file, category);
-  const handleRemove = (document) => removeDocument(client.id, document);
+  const handleRemove = async (document) => {
+    if (!(await confirm({ title: "Delete this document?", message: `"${document.name}" is removed from ${client.name}'s documents for good.`, confirmLabel: "Delete", tone: "danger" }))) return true;
+    return removeDocument(client.id, document);
+  };
 
   // Archive is the everyday way to retire a client: reversible, and the
   // history stays. Delete sits behind the "…" menu with a confirmation.
   const handleArchive = async () => {
+    if (!(await confirm({ title: `Archive ${client.name}?`, message: "The client is hidden from lists and can't be booked. Their history stays, and they can be restored.", confirmLabel: "Archive", tone: "danger" }))) return;
     const result = await archiveClient(client.id);
     if (result !== true) {
       showError(result);

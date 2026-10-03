@@ -24,6 +24,7 @@ import useNow from "../hooks/useNow";
 import useServices from "../hooks/useServices";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
+import { useConfirm } from "../context/ConfirmContext";
 import SignaturePad from "../components/scheduling/SignaturePad";
 import Button from "../components/ui/Button";
 import StatusPill from "../components/ui/StatusPill";
@@ -32,7 +33,7 @@ import { combineServices, crewOf, isAssignedTo, servicesOf } from "../utils/sche
 import { heldBy, openCheckouts } from "../utils/custody";
 import BatchSelect from "../components/inventory/BatchSelect";
 import { isEarlierJobDay, isMultiDay, planLabel } from "../utils/plans";
-import { todayISO, validateAttachment } from "../utils/validators";
+import { todayISO, validateAttachment, validatePersonName } from "../utils/validators";
 import { isInspectionVisit } from "../utils/sprint4";
 import {
   VISIT_STEPS,
@@ -131,6 +132,7 @@ function VisitPage() {
   const { activeServices, serviceById, serviceByName } = useServices();
   const { appointments, loading, startVisit, submitReport, uploadSignature, addAttachment, removeAttachment, addStockUsed, planActions } = useScheduling();
   const { showError, showSuccess } = useToast();
+  const confirm = useConfirm();
 
   const appointment = appointments.find((entry) => entry.id === id) || null;
   const client = appointment ? clients.find((entry) => entry.id === appointment.clientId) : null;
@@ -246,6 +248,7 @@ function VisitPage() {
   };
 
   const handleStart = async () => {
+    if (!(await confirm({ title: "Start this visit?", message: "Do this when you are on site. The office sees the visit as In progress.", confirmLabel: "Start visit" }))) return;
     setStarting(true);
     const result = await startVisit(appointment.id);
     setStarting(false);
@@ -331,6 +334,7 @@ function VisitPage() {
   // The job ended early: the days after this one are cancelled, so this day
   // becomes the last and the full report flow opens on it.
   const finishHere = async () => {
+    if (!(await confirm({ title: "Finish the job today?", message: "The days after today are cancelled.", confirmLabel: "Finish job", tone: "danger" }))) return;
     setSending(true);
     const result = await planActions.finishJobHere(appointment.id);
     setSending(false);
@@ -348,6 +352,7 @@ function VisitPage() {
       showError(problem);
       return;
     }
+    if (!(await confirm({ title: "Submit this report?", message: "The report is filed with the office. With the customer's signature, the visit is completed.", confirmLabel: "Submit report" }))) return;
     setSending(true);
     try {
       const report = {
@@ -376,6 +381,11 @@ function VisitPage() {
       if (customerFile) {
         if (!draft.customerName.trim()) {
           showError("Add the customer's name next to their signature.");
+          return;
+        }
+        const customerNameError = validatePersonName(draft.customerName, { label: "Customer name" });
+        if (customerNameError) {
+          showError(customerNameError);
           return;
         }
         const upload = await uploadSignature(appointment.id, customerFile);

@@ -96,6 +96,10 @@ function ClientForm({ initialValues, onSubmit, submitLabel = "Save Client", foot
   };
 
   const styleFor = (field) => (errors[field] ? invalidInputStyle : inputStyle);
+  const phoneTyped = String(form.phone || "").trim();
+  const sharedPhone = phoneTyped.length === 11
+    ? clients.filter((client) => client.id !== initialValues?.id && String(client.phone || "").trim() === phoneTyped)
+    : [];
 
   return (
     <form onSubmit={handleSubmit}>
@@ -136,6 +140,12 @@ function ClientForm({ initialValues, onSubmit, submitLabel = "Save Client", foot
             onChange={handleFieldChange}
             style={styleFor("phone")}
           />
+          {/* Allowed (a household, a company's branches), but worth knowing. */}
+          {sharedPhone.length > 0 && !errors.phone && (
+            <span role="status" style={{ color: "#9a5b0b", fontSize: "0.8rem", fontWeight: 400 }}>
+              Also the phone number of {sharedPhone.map((client) => `${client.name}${client.reference ? ` (${client.reference})` : ""}`).join(", ")}.
+            </span>
+          )}
         </Field>
 
         <Field label="Address" error={errors.address}>
