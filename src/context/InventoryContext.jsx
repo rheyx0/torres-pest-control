@@ -255,6 +255,50 @@ export function InventoryProvider({ children }) {
     [actor, reloadStock]
   );
 
+  // Several items out at once (Stock out on the Inventory page, 069).
+  const stockOutLines = useCallback(
+    async (lines, { date, reason, technicianId, note, forAppointmentId }) => {
+      if (!lines.length) return "Add at least one item to stock out.";
+      const dateError = validateMovementDate(date);
+      if (dateError) return dateError;
+      for (const line of lines) {
+        const item = inventory.find((entry) => entry.id === line.itemId);
+        if (!item) return "Pick an item on every line.";
+        const quantityError = validateQuantity(line.amount, { label: `Quantity of ${item.name}` });
+        if (quantityError) return quantityError;
+        if (Number(line.amount) > Number(item.quantity)) return `Only ${item.quantity} ${item.unit} of ${item.name} is in stock.`;
+      }
+      if (reason === "TECHNICIAN_CHECKOUT" && !technicianId) return "Select the technician the stock was checked out to.";
+      const result = await inventoryService.stockOutLines(lines, { date, reason, technicianId, note, forAppointmentId });
+      if (result.error) return result.error;
+      await reloadStock();
+      const summary = lines.map((line) => {
+        const item = inventory.find((entry) => entry.id === line.itemId);
+        return `${line.amount} ${item?.unit || ""} "${item?.name || "item"}"`.replace("  ", " ");
+      }).join(", ");
+      addLog(actor, `Stocked out ${summary} (${STOCK_OUT_REASON_LABELS[reason] || reason}).`, LOG_TYPES.INVENTORY);
+      return true;
+    },
+    [actor, inventory, reloadStock]
+  );
+
+  // Checked-out stock lost, stolen or damaged with the technician (069).
+  const reportCheckoutLoss = useCallback(
+    async (checkout, { amount, kind, note, date }) => {
+      const quantityError = validateQuantity(amount, { label: "Quantity" });
+      if (quantityError) return quantityError;
+      const dateError = validateMovementDate(date);
+      if (dateError) return dateError;
+      if (!String(note || "").trim()) return "Write what happened.";
+      const result = await inventoryService.reportCheckoutLoss(checkout.id, { amount, kind, note, date });
+      if (result.error) return result.error;
+      await reloadStock();
+      addLog(actor, `Reported ${amount} ${checkout.itemUnit || ""} of "${checkout.itemName}" ${String(kind).toLowerCase()} while with a technician: ${String(note).trim()}`.replace("  ", " "), LOG_TYPES.INVENTORY);
+      return true;
+    },
+    [actor, reloadStock]
+  );
+
   /** A counted difference; for a chemical, on `batchId` or by expiry (migration 055). */
   const stockCorrection = useCallback(async (itemId, delta, reason, { batchId } = {}) => {
     const target = inventory.find((entry) => entry.id === itemId);
@@ -310,6 +354,8 @@ export function InventoryProvider({ children }) {
       stockInMany,
       stockOutManual,
       stockOutMany,
+      stockOutLines,
+      reportCheckoutLoss,
       returnCheckout,
       stockCorrection,
       movements,
@@ -335,6 +381,8 @@ export function InventoryProvider({ children }) {
       stockInMany,
       stockOutManual,
       stockOutMany,
+      stockOutLines,
+      reportCheckoutLoss,
       returnCheckout,
       stockCorrection,
       movements,

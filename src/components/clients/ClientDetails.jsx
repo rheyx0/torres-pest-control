@@ -15,6 +15,8 @@ import ImagePreviewModal, { isImageFile } from "../common/ImagePreviewModal";
 import SignaturePreview from "../common/SignaturePreview";
 import ServiceReportPrinter from "../scheduling/ServiceReportPrinter";
 import EmptyState from "../common/EmptyState";
+import JobTimeline from "./JobTimeline";
+import { clientNow } from "../../utils/jobStatus";
 import DataTable from "../ui/DataTable";
 import StatusPill from "../ui/StatusPill";
 import { ActivityTrend, ClientFacts, ClientHeader, ClientTimeline, NextVisitBanner, Tabs } from "./ClientProfileParts";
@@ -408,6 +410,9 @@ function ClientDetails({
   const billingEvents = useMemo(() => (billingRecords ? clientBillingEvents(billingRecords) : []), [billingRecords]);
   const balance = billingRecords ? clientBalance(billingRecords) : null;
   const trend = useMemo(() => activityTrend(visits), [visits]);
+  // What is going on with this client right now, and one job's story.
+  const [jobOpen, setJobOpen] = useState(null);
+  const nowNotes = clientNow({ visits, ...(billingRecords || {}), nameOf });
   const events = useMemo(() => timelineEvents(client, visits, new Date(), billingEvents), [client, visits, billingEvents]);
   const [printRequest, setPrintRequest] = useState(null);
   const [signatureUrl, setSignatureUrl] = useState("");
@@ -543,6 +548,17 @@ function ClientDetails({
         <ClientFacts client={client} value={value} canEdit={canEdit} onEdit={() => setIsEditModalOpen(true)} />
 
         <section style={{ ...neutralCard, minWidth: 0 }}>
+          <div aria-label="Right now" role="region" style={{ padding: "12px 18px", borderBottom: `1px solid ${colors.line}`, display: "grid", gap: "6px" }}>
+            <span style={{ fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.muted, fontWeight: 500 }}>Right now</span>
+            {nowNotes.length === 0 ? (
+              <span style={{ fontSize: "13.5px", color: colors.body }}>Nothing open. No visits booked, and nothing waiting to be billed.</span>
+            ) : nowNotes.map((note) => (
+              <span key={note.key} style={{ display: "flex", alignItems: "baseline", gap: "8px", fontSize: "13.5px", color: colors.ink }}>
+                <span aria-hidden="true" style={{ width: "7px", height: "7px", borderRadius: "50%", flex: "none", transform: "translateY(-1px)", background: { now: "#2f6b3f", alert: "#9a2d24", wait: "#b7791f", info: "#96897b" }[note.tone] }} />
+                {note.text}
+              </span>
+            ))}
+          </div>
           <Tabs tabs={tabs} value={tab} onChange={setTab} />
 
           {tab === "timeline" && events.length === 0 && emptyTab(`Nothing has happened with ${client.name} yet. Their visits, reports and billing will show here.`, bookAction)}
@@ -560,7 +576,7 @@ function ClientDetails({
                 caption="Visits"
                 columns={visitColumns}
                 rows={visits}
-                onRowClick={(row) => (row.reportSubmitted ? openReport(row) : navigate(`/scheduling?appointment=${encodeURIComponent(row.id)}`))}
+                onRowClick={(row) => setJobOpen(row)}
                 empty="No visits booked yet."
               />
             </div>
@@ -690,6 +706,18 @@ function ClientDetails({
           )}
         </section>
       </div>
+
+      {jobOpen && (
+        <JobTimeline
+          visit={visits.find((entry) => entry.id === jobOpen.id) || jobOpen}
+          quote={billing?.quoteById?.(jobOpen.quoteId) || null}
+          invoice={billing?.invoiceById?.(jobOpen.invoiceId) || null}
+          payments={billingRecords?.payments || []}
+          nameOf={nameOf}
+          onOpenReport={(visit) => { setJobOpen(null); openReport(visit); }}
+          onClose={() => setJobOpen(null)}
+        />
+      )}
 
       <ServiceReportPrinter request={printRequest} onDone={() => setPrintRequest(null)} onProblem={(text) => window.alert(text)} getAttachmentUrl={getAttachmentUrl} getSignatureUrl={getSignatureUrl} />
 

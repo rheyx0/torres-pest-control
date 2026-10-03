@@ -375,6 +375,53 @@ export async function stockOutManual(itemId, { amount, date, reason, technicianI
 }
 
 /**
+ * Several items out at once (stock_out_lines, migration 069): one date,
+ * reason, technician and note for every line, all recorded or none. Before
+ * 069 the lines go one by one through stock_out_manual.
+ * lines = [{ itemId, amount, batchId }]
+ */
+export async function stockOutLines(lines, { date, reason, technicianId, note, forAppointmentId }) {
+  const checkout = reason === "TECHNICIAN_CHECKOUT";
+  const { data, error } = await supabase.rpc("stock_out_lines", {
+    p_lines: lines.map((line) => ({ item_id: line.itemId, amount: Number(line.amount), batch_id: line.batchId || null })),
+    p_movement_date: date,
+    p_reason: reason,
+    p_technician_id: checkout ? technicianId || null : null,
+    p_note: nullIfBlank(note),
+    p_for_appointment_id: checkout && forAppointmentId ? forAppointmentId : null,
+  });
+  if (error && /stock_out_lines|schema cache|does not exist/i.test(`${error.message || ""} ${error.details || ""}`)) {
+    for (const line of lines) {
+      const one = await stockOutManual(line.itemId, { amount: line.amount, date, reason, technicianId, note, forAppointmentId, batchId: line.batchId });
+      if (one.error) return { error: one.error };
+    }
+    return { error: null };
+  }
+  if (error) return { error: describeError(error) };
+  return { error: null, rows: Array.isArray(data) ? data : [] };
+}
+
+/**
+ * Stock a technician was holding that was lost, stolen or damaged
+ * (report_checkout_loss, migration 069): it closes that much of the checkout
+ * without putting anything back on the shelf. kind: LOST | STOLEN | DAMAGED.
+ */
+export async function reportCheckoutLoss(checkoutId, { amount, kind, note, date }) {
+  const { data, error } = await supabase.rpc("report_checkout_loss", {
+    p_checkout_id: checkoutId,
+    p_amount: Number(amount),
+    p_kind: kind,
+    p_note: nullIfBlank(note),
+    p_movement_date: date || null,
+  });
+  if (error) {
+    return { error: /report_checkout_loss|schema cache/i.test(`${error.message || ""} ${error.details || ""}`) ? "Reporting a loss needs migration 069." : describeError(error) };
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  return { error: null, remaining: row ? Number(row.remaining) : null };
+}
+
+/**
  * Checked-out stock coming back to the shelf (return_checkout, migration 054).
  * `reason` is one of RETURN_REASONS; a cancelled visit names `appointmentId`,
  * "OTHER" needs a note.

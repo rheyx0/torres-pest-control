@@ -117,3 +117,20 @@ describe("expiryHint", () => {
     expect(expiryHint("2027-09-25", "2026-09-25")).toBe("Kept with this batch. The soonest-expiring batch is used first.");
   });
 });
+
+describe("Stock In price in another unit", () => {
+  it("converts the price with the unit, and stores it per the item's unit", async () => {
+    const onSubmit = renderModal("c1");
+    fillHeader();
+    fireEvent.change(screen.getByLabelText("Received unit"), { target: { value: "mL" } });
+    // ₱100 per L becomes ₱0.1 per mL
+    expect(screen.getByLabelText("Purchase cost per unit")).toHaveValue(0.1);
+    expect(screen.getByText("₱100.00", { exact: false })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Stock In quantity"), { target: { value: "500" } });
+    fireEvent.change(screen.getByLabelText("Expiry date"), { target: { value: shiftDays(200) } });
+    fireEvent.change(screen.getByLabelText("Lot number"), { target: { value: "L1" } });
+    fireEvent.submit(screen.getByLabelText("Expiry date").closest("form"));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0][0]).toMatchObject({ amount: 0.5, unitCost: 100, enteredAmount: 500, enteredUnit: "mL" });
+  });
+});

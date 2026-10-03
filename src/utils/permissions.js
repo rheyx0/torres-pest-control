@@ -50,7 +50,9 @@ const MATRIX = {
     users: NONE,
     clients: ["view", "create", "edit"],
     clientDocuments: ["view", "create", "delete"],
-    inventory: READ_ONLY,
+    // Staff hand stock to technicians, take returns and report losses
+    // ("edit"); adding items, deliveries and corrections stay with the admin.
+    inventory: ["view", "edit"],
     // Staff book appointments (the office's daily work); the server's
     // create_appointment already admits any signed-in office account.
     scheduling: ["view", "create", "edit"],

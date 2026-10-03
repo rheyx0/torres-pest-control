@@ -16,7 +16,7 @@ export const isCheckout = (movement) => movement?.stockOutReason === "TECHNICIAN
 
 /**
  * Every live checkout with what has happened to it:
- * [{ checkout, used, returned, remaining, settledBy: [movements] }], oldest first.
+ * [{ checkout, used, returned, lost, remaining, settledBy: [movements] }], oldest first.
  */
 export function checkoutBalances(movements = []) {
   const settled = new Map();
@@ -31,9 +31,13 @@ export function checkoutBalances(movements = []) {
     .filter((movement) => isCheckout(movement) && !movement.custodyClosedAt)
     .map((checkout) => {
       const settledBy = settled.get(checkout.id) || [];
-      const used = settledBy.filter((entry) => entry.movementType !== "RETURN").reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
-      const returned = settledBy.filter((entry) => entry.movementType === "RETURN").reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
-      return { checkout, used: round(used), returned: round(returned), remaining: round(Math.max(0, Number(checkout.amount || 0) - used - returned)), settledBy };
+      // Lost, stolen or damaged while out (069): an OUT with a loss reason.
+      const isLoss = (entry) => entry.movementType !== "RETURN" && ["MISSING", "DAMAGED"].includes(entry.stockOutReason);
+      const sumOf = (list) => list.reduce((sum, entry) => sum + Number(entry.amount || 0), 0);
+      const used = sumOf(settledBy.filter((entry) => entry.movementType !== "RETURN" && !isLoss(entry)));
+      const returned = sumOf(settledBy.filter((entry) => entry.movementType === "RETURN"));
+      const lost = sumOf(settledBy.filter(isLoss));
+      return { checkout, used: round(used), returned: round(returned), lost: round(lost), remaining: round(Math.max(0, Number(checkout.amount || 0) - used - returned - lost)), settledBy };
     })
     .sort((a, b) => String(a.checkout.movementDate).localeCompare(String(b.checkout.movementDate))
       || String(a.checkout.createdAt || "").localeCompare(String(b.checkout.createdAt || "")));

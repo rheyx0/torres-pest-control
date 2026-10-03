@@ -64,6 +64,7 @@ import VisitExtras from "../components/billing/VisitExtras";
 import VisitBillingLink from "../components/billing/VisitBillingLink";
 import StatusHistory from "../components/scheduling/StatusHistory";
 import FollowUpLink from "../components/scheduling/FollowUpLink";
+import CompletedSummary from "../components/scheduling/CompletedSummary";
 import InspectionFields from "../components/scheduling/InspectionFields";
 import SchedulingToolbar, { MODES, isCalendarMode } from "../components/scheduling/SchedulingToolbar";
 import {
@@ -131,6 +132,7 @@ function SchedulingPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [clientFilter, setClientFilter] = useState("ALL");
   const [pestConcernFilter, setPestConcernFilter] = useState("ALL");
+  const [serviceFilter, setServiceFilter] = useState("ALL");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   // The list opens on what's coming, not on every visit since the beginning.
@@ -149,7 +151,7 @@ function SchedulingPage() {
   // schedule, so it keeps the plain legend instead.
   const showSidePanel = !isTechnician;
   const listFiltersSet = Boolean(
-    appointmentSearch || statusFilter !== "ALL" || clientFilter !== "ALL" || pestConcernFilter !== "ALL" || dateFrom || dateTo
+    appointmentSearch || statusFilter !== "ALL" || clientFilter !== "ALL" || pestConcernFilter !== "ALL" || serviceFilter !== "ALL" || dateFrom || dateTo
   );
   // A technician "owns" a visit they are on, lead or not — an appointment can
   // carry a crew since migration 041.
@@ -322,8 +324,13 @@ function SchedulingPage() {
         .map((id) => allAccounts.find((account) => account.id === id))
         .map((account) => account?.name || account?.username || "")
         .join(" ");
-      const text = `${appointment.id} ${appointment.reference || ""} ${client?.name || ""} ${client?.address || ""} ${appointment.pestConcern || ""} ${appointment.status} ${crewNames}`.toLowerCase();
-      return (!term || text.includes(term))
+      const text = `${appointment.id} ${appointment.reference || ""} ${client?.name || ""} ${client?.address || ""} ${appointment.pestConcern || ""} ${appointment.serviceType || ""} ${appointment.status} ${crewNames}`.toLowerCase();
+      // "follow up" finds "Follow-up Visit": hyphens and spaces count the same.
+      const loose = (value) => value.replace(/[-\s]+/g, " ");
+      const wanted = serviceFilter === "ALL" ? null : serviceById(serviceFilter);
+      return (!term || loose(text).includes(loose(term)))
+        && (!wanted || (appointment.serviceIds?.length ? appointment.serviceIds : [appointment.serviceId]).includes(wanted.id)
+          || String(appointment.serviceType || "").toLowerCase().split(", ").includes(wanted.name.toLowerCase()))
         && (technicianFilter === "ALL" || isAssignedTo(appointment, technicianFilter))
         && (statusFilter === "ALL" || appointment.status === statusFilter)
         && (clientFilter === "ALL" || appointment.clientId === clientFilter)
@@ -333,7 +340,7 @@ function SchedulingPage() {
         && (!dateFrom || localDateKey(new Date(appointment.scheduledAt)) >= dateFrom)
         && (!dateTo || localDateKey(new Date(appointment.scheduledAt)) <= dateTo);
     });
-  }, [appointments, appointmentSearch, clients, allAccounts, technicianFilter, statusFilter, clientFilter, pestConcernFilter, dateFrom, dateTo, isTechnician, currentUser?.id]);
+  }, [appointments, appointmentSearch, clients, allAccounts, technicianFilter, statusFilter, clientFilter, pestConcernFilter, serviceFilter, serviceById, dateFrom, dateTo, isTechnician, currentUser?.id]);
 
   const pestConcernOptions = useMemo(
     () => Array.from(new Set(appointments.filter(ownsAppointment).map((appointment) => appointment.pestConcern).filter(Boolean))).sort(),
@@ -1044,6 +1051,7 @@ function SchedulingPage() {
                   setStatusFilter("ALL");
                   setClientFilter("ALL");
                   setPestConcernFilter("ALL");
+                  setServiceFilter("ALL");
                   setDateFrom("");
                   setDateTo("");
                 }}
@@ -1057,7 +1065,7 @@ function SchedulingPage() {
                 <Input
                   value={appointmentSearch}
                   onChange={(event) => setAppointmentSearch(event.target.value)}
-                  placeholder="Client, address, technician, pest concern, ID"
+                  placeholder="Client, service, address, technician, pest concern, ID"
                 />
               </Field>
               <Field label="Status">
@@ -1070,6 +1078,12 @@ function SchedulingPage() {
                 <Select value={clientFilter} onChange={(event) => setClientFilter(event.target.value)}>
                   <option value="ALL">All clients</option>
                   {clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}
+                </Select>
+              </Field>
+              <Field label="Service">
+                <Select aria-label="Service" value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)}>
+                  <option value="ALL">All services</option>
+                  {activeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
                 </Select>
               </Field>
               <Field label="Pest concern">
@@ -1858,6 +1872,11 @@ function AppointmentPanel({
   } = files;
   const { onSave, onStockSubmit, onScheduleFollowUp, onProblem } = actions;
   const { inventory, service, services, serviceById, serviceByName, held, batches } = stock;
+  // A completed visit is read only; an admin can reopen it to correct it.
+  const [correcting, setCorrecting] = useState(false);
+  useEffect(() => setCorrecting(false), [appointment.id]);
+  const locked = appointment.status === "Completed" && !correcting;
+  const summary = <CompletedSummary appointment={appointment} accounts={activeAccounts} onCorrect={() => setCorrecting(true)} />;
 
   const busyTechnicians = busyTechnicianIds(appointments, appointment);
   // Out on this visit's day (migration 057): cannot be added to it.
@@ -1987,6 +2006,9 @@ function AppointmentPanel({
                 />
               )}
               {scheduleNotice}
+              {locked && summary}
+              {correcting && notice("Correcting a completed visit. Save only what needs fixing; the change is logged.")}
+              {!locked && (
               <fieldset disabled={!canReschedule} style={fieldsetReset}>
                 <AppointmentOverviewForm
                   key={appointment.id}
@@ -1999,6 +2021,7 @@ function AppointmentPanel({
                   onSave={onSave}
                 />
               </fieldset>
+              )}
               <VisitBillingLink appointment={appointment} />
               <FollowUpLink appointment={appointment} />
               <StatusHistory appointment={appointment} />
@@ -2006,7 +2029,9 @@ function AppointmentPanel({
             </>
           )}
 
-          {tab !== "Overview" && (
+          {tab !== "Overview" && tab !== "Documents" && locked && summary}
+
+          {tab !== "Overview" && (tab === "Documents" || !locked) && (
             <>
               {serviceNotice}
               <fieldset disabled={!canFileService} style={fieldsetReset}>
@@ -2212,7 +2237,7 @@ function AppointmentPanel({
         </div>
 
         {/* 7. Sticky Footer Actions (Report tab) */}
-        {tab === "Report" && !earlierJobDay && (
+        {tab === "Report" && !earlierJobDay && !locked && (
           <div
             className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0"
             style={{ padding: "0.875rem 1.5rem", background: "#efe9e0", borderTop: "1px solid #efe9e0", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}

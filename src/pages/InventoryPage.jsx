@@ -13,7 +13,7 @@
 // original note this replaced) — the file's just bigger now.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, FlaskConical, MoreHorizontal, Package, PackagePlus, Plus, Search, Wrench } from "lucide-react";
+import { AlertTriangle, FlaskConical, MoreHorizontal, Package, PackageMinus, PackagePlus, Plus, Search, Wrench } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import useInventory from "../hooks/useInventory";
@@ -382,7 +382,8 @@ function InventoryPage() {
     updateItem,
     setItemStatus,
     stockInMany,
-    stockOutManual,
+    stockOutLines,
+    reportCheckoutLoss,
     returnCheckout,
     stockCorrection,
     removeItem,
@@ -406,6 +407,8 @@ function InventoryPage() {
   // Receiving and reordering stock is an inventory write: admins only, per
   // the permission matrix (staff and technicians read inventory).
   const canManageStock = can(SUBSYSTEMS.INVENTORY, "create");
+  // Stock out to technicians, returns and losses: Staff as well (069).
+  const canIssueStock = can(SUBSYSTEMS.INVENTORY, "edit");
   const now = useNow(60 * 60 * 1000);
   const [openForm, setOpenForm] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -415,7 +418,9 @@ function InventoryPage() {
   // user came in from a specific row.
   const [stockInOpen, setStockInOpen] = useState(false);
   const [stockInSeedItemId, setStockInSeedItemId] = useState("");
-  const [stockOutItem, setStockOutItem] = useState(null);
+  // null: closed; "": open with an empty line; an item id: open with that item.
+  const [stockOutSeed, setStockOutSeed] = useState(null);
+  const [lossTarget, setLossTarget] = useState(null);
   const [correctionItem, setCorrectionItem] = useState(null);
   // An open checkout being returned: { checkout, remaining }.
   const [returnTarget, setReturnTarget] = useState(null);
@@ -725,6 +730,11 @@ function InventoryPage() {
           {canManageStock && (
             <Button variant="secondary" icon={<Plus size={15} />} onClick={() => { setTab("items"); setOpenForm((value) => !value); }}>
               {openForm ? "Close form" : "Add item"}
+            </Button>
+          )}
+          {canIssueStock && (
+            <Button variant="secondary" icon={<PackageMinus size={15} />} onClick={() => setStockOutSeed("")}>
+              Stock out
             </Button>
           )}
           {canManageStock && (
@@ -1105,7 +1115,7 @@ function InventoryPage() {
                         >
                           {!isDisabled && <button type="button" onClick={() => { setActionMenuItemId(null); setStockInSeedItemId(item.id); setStockInOpen(true); }} style={{ ...menuActionStyle, color: "#211b15" }}>Stock In</button>}
                           <button type="button" onClick={() => { setActionMenuItemId(null); setEditItem(item); }} style={{ ...menuActionStyle, color: "#211b15" }}>Edit</button>
-                          {!isDisabled && <button type="button" onClick={() => { setActionMenuItemId(null); setStockOutItem(item); }} style={{ ...menuActionStyle, color: "#9a2d24" }}>Stock Out</button>}
+                          {!isDisabled && <button type="button" onClick={() => { setActionMenuItemId(null); setStockOutSeed(item.id); }} style={{ ...menuActionStyle, color: "#9a2d24" }}>Stock Out</button>}
                           {!isDisabled && <button type="button" onClick={() => { setActionMenuItemId(null); setCorrectionItem(item); }} style={{ ...menuActionStyle, color: "#211b15" }}>Correct Stock</button>}
                           <button type="button" onClick={() => { setActionMenuItemId(null); if (isDisabled) setItemStatus(item.id, INVENTORY_STATUS.ACTIVE).then((r) => handleStatusResult(r, showSuccess, showError, item.name, "enabled")); else setDisableTarget(item); }} style={{ ...menuActionStyle, color: isDisabled ? "#4a6b4a" : "#9a2d24" }}>
                             {isDisabled ? "Enable" : "Disable"}
@@ -1133,10 +1143,11 @@ function InventoryPage() {
           entries={outWithTechnicians}
           technicianName={technicianName}
           appointmentLabel={appointmentLabel}
-          canManage={canManageStock}
+          canManage={canIssueStock}
           loading={movementsLoading}
           error={movementsError}
           onReturn={setReturnTarget}
+          onReportLoss={setLossTarget}
         />
       )}
 
@@ -1468,23 +1479,62 @@ function InventoryPage() {
         />
       )}
 
-      {stockOutItem && (
+      {stockOutSeed !== null && (
         <StockOutModal
-          item={stockOutItem}
+          inventory={inventory}
+          initialItemId={stockOutSeed}
           technicians={technicians}
           appointments={appointments}
           batches={batches}
-          onClose={() => setStockOutItem(null)}
+          onClose={() => setStockOutSeed(null)}
           onSubmit={async (values) => {
-            if (!(await confirm({ title: "Record this stock out?", details: [["Item", stockOutItem.name], ["Amount", `${values.amount} ${stockOutItem.unit}`]], message: "The stock leaves the shelf.", confirmLabel: "Record stock out" }))) return false;
-            const result = await stockOutManual(stockOutItem.id, values);
+            const label = (line) => {
+              const item = inventory.find((entry) => entry.id === line.itemId);
+              return `${item?.name || "Item"} ${line.amount} ${item?.unit || ""}`.trim();
+            };
+            if (!(await confirm({
+              title: "Record this stock out?",
+              details: [
+                ["Reason", STOCK_OUT_REASON_LABELS[values.reason] || values.reason],
+                values.technicianId ? ["Technician", technicianName(values.technicianId)] : null,
+                ["Items", values.lines.map(label).join(", ")],
+              ],
+              message: "The stock leaves the shelf.",
+              confirmLabel: "Record stock out",
+            }))) return false;
+            const result = await stockOutLines(values.lines, values);
             if (result !== true) {
               showError(typeof result === "string" ? result : "Could not record the Stock Out.");
               return false;
             }
-            showSuccess(`Removed ${values.amount} ${stockOutItem.unit} from ${stockOutItem.name}.`);
-            setStockOutItem(null);
+            showSuccess(`Stocked out ${values.lines.length} item${values.lines.length === 1 ? "" : "s"}${values.technicianId ? ` to ${technicianName(values.technicianId)}` : ""}.`);
+            setStockOutSeed(null);
             return true;
+          }}
+        />
+      )}
+
+      {lossTarget && (
+        <LossModal
+          entry={lossTarget}
+          technicianName={technicianName}
+          onClose={() => setLossTarget(null)}
+          onSubmit={async (values) => {
+            const { checkout } = lossTarget;
+            if (!(await confirm({
+              title: `Report this stock as ${values.kind.toLowerCase()}?`,
+              details: [["Item", checkout.itemName], ["Amount", `${values.amount} ${checkout.itemUnit || ""}`.trim()], ["Technician", technicianName(checkout.technicianId)]],
+              message: "It is written off: nothing goes back on the shelf.",
+              confirmLabel: "Report loss",
+              tone: "danger",
+            }))) return;
+            const result = await reportCheckoutLoss(checkout, values);
+            if (result !== true) {
+              showError(typeof result === "string" ? result : "Could not record the loss.");
+              return;
+            }
+            showSuccess(`Recorded ${values.amount} ${checkout.itemUnit || ""} of ${checkout.itemName} as ${values.kind.toLowerCase()}.`.replace("  ", " "));
+            setLossTarget(null);
           }}
         />
       )}
@@ -1865,7 +1915,16 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
 
   const updateRow = (key, changes) => {
     setValidationError("");
-    setRows((current) => current.map((row) => (row.key === key ? { ...row, ...changes } : row)));
+    setRows((current) => current.map((row) => {
+      if (row.key !== key) return row;
+      // Switching the unit received in converts the price typed so far too:
+      // ₱100 per L is ₱0.10 per mL.
+      if (changes.enteredUnit && changes.enteredUnit !== row.enteredUnit && row.unitCost !== "") {
+        const ratio = conversionFactor(changes.enteredUnit, row.enteredUnit);
+        if (ratio) return { ...row, ...changes, unitCost: String(Math.round(Number(row.unitCost) * ratio * 10000) / 10000) };
+      }
+      return { ...row, ...changes };
+    }));
   };
 
   const pickItem = (key, itemId) => {
@@ -1891,10 +1950,20 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
     return convertAmount(row.amount, row.enteredUnit, item.unit);
   };
 
+  /** The price per the item's own unit (what the stock and the item's cost use). */
+  const baseUnitCost = (row) => {
+    const item = findItem(row.itemId);
+    if (row.unitCost === "" || !item) return null;
+    const price = Number(row.unitCost);
+    if (!Number.isFinite(price)) return null;
+    const factor = row.enteredUnit ? conversionFactor(row.enteredUnit, item.unit) : 1;
+    return factor ? Math.round((price / factor) * 100) / 100 : price;
+  };
+
+  // Typed quantity × typed price: both are in the unit received in.
   const rowTotal = (row) => {
-    const amount = baseAmount(row);
-    if (amount === null) return 0;
-    return amount * (Number(row.unitCost) || 0);
+    if (row.amount === "" || baseAmount(row) === null) return 0;
+    return (Number(row.amount) || 0) * (Number(row.unitCost) || 0);
   };
 
   const totalCapitalSpent = rows.reduce((sum, row) => sum + rowTotal(row), 0);
@@ -1932,7 +2001,7 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
       }
       const limitError =
         validateQuantity(amount, { label: `Quantity for ${item?.name || "an item"}` }) ||
-        validateMoney(row.unitCost, { max: LIMITS.MAX_UNIT_COST, label: `Cost per unit for ${item?.name || "an item"}` });
+        validateMoney(baseUnitCost(row) ?? row.unitCost, { max: LIMITS.MAX_UNIT_COST, label: `Cost per ${item?.unit || "unit"} for ${item?.name || "an item"}` });
       if (limitError) {
         setValidationError(limitError);
         return;
@@ -1959,7 +2028,7 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
       entries.push({
         itemId: row.itemId,
         amount,
-        unitCost: row.unitCost === "" ? null : Number(row.unitCost),
+        unitCost: baseUnitCost(row),
         enteredAmount: converted ? Number(row.amount) : null,
         enteredUnit: converted ? row.enteredUnit : null,
         conversionFactor: converted ? conversionFactor(row.enteredUnit, item.unit) : 1,
@@ -2102,7 +2171,7 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
                     )}
                   </Field>
 
-                  <Field label="Cost / unit (₱)">
+                  <Field label={`Cost per ${row.enteredUnit || item?.unit || "unit"} (₱)`}>
                     <input
                       aria-label="Purchase cost per unit"
                       type="number"
@@ -2130,6 +2199,11 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
                   {conversionNote && (
                     <div style={{ gridColumn: "2 / 4", color: "#4a6b4a", fontSize: "0.74rem", lineHeight: 1.4 }}>
                       <strong>{conversionNote}</strong> · stock is counted in {item.unit}
+                    </div>
+                  )}
+                  {conversionNote && baseUnitCost(row) !== null && (
+                    <div style={{ gridColumn: "4 / 5", color: "#4a6b4a", fontSize: "0.74rem", lineHeight: 1.4 }}>
+                      = <strong>{peso(baseUnitCost(row))}</strong> per {item.unit}
                     </div>
                   )}
                 </div>
@@ -2233,26 +2307,36 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
  * found days after it happened, and backdating it is what keeps the movement
  * log lined up with the physical count.
  */
-function StockOutModal({ item, technicians, appointments = [], batches = [], onClose, onSubmit }) {
-  const [amount, setAmount] = useState("");
+function StockOutModal({ inventory, initialItemId = "", technicians, appointments = [], batches = [], onClose, onSubmit }) {
+  // Several items out at once, like Receive delivery (migration 069): one
+  // date, reason, technician and note, a line per item.
+  const stockable = inventory.filter((item) => item.status !== INVENTORY_STATUS.DISABLED);
+  const newLine = (itemId = "") => ({ key: `out-${Math.random().toString(36).slice(2, 9)}`, itemId, amount: "", batchId: "" });
+  const [lines, setLines] = useState(() => [newLine(initialItemId)]);
   const [date, setDate] = useState(() => todayISO());
   const [reason, setReason] = useState(STOCK_OUT_REASONS[0].value);
   const [technicianId, setTechnicianId] = useState("");
   const [forAppointmentId, setForAppointmentId] = useState("");
-  // A chemical's batch (migration 055): blank = soonest expiry first.
-  const [batchId, setBatchId] = useState("");
-  const withBatches = item.type === "CHEMICAL" && batches.some((batch) => batch.itemId === item.id);
-  const usable = withBatches
-    ? Math.round(usableBatches(batches, item.id, date).reduce((sum, batch) => sum + batch.quantity, 0) * 1e6) / 1e6
-    : Number(item.quantity);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState("");
 
   const selectedReason = STOCK_OUT_REASONS.find((entry) => entry.value === reason) || STOCK_OUT_REASONS[0];
   const activeTechnicians = technicians.filter((account) => account.status !== ACCOUNT_STATUS.INACTIVE);
-  // A checkout may name the visit it is for (migration 054): that visit uses it
-  // first. Only the technician's visits still to be done are offered.
+  const findItem = (id) => stockable.find((item) => item.id === id) || null;
+  const updateLine = (key, changes) => {
+    setValidationError("");
+    setLines((current) => current.map((line) => (line.key === key ? { ...line, ...changes } : line)));
+  };
+  // What can leave the shelf on that date: a chemical's unexpired batches.
+  const usableOf = (item) => {
+    if (!item) return 0;
+    const withBatches = item.type === "CHEMICAL" && batches.some((batch) => batch.itemId === item.id);
+    return withBatches
+      ? Math.round(usableBatches(batches, item.id, date).reduce((sum, batch) => sum + batch.quantity, 0) * 1e6) / 1e6
+      : Number(item.quantity);
+  };
+  // A checkout may name the visit it is for (054): the technician's visits still to come.
   const upcomingVisits = useMemo(() => {
     if (!technicianId) return [];
     const startOfToday = new Date();
@@ -2267,139 +2351,206 @@ function StockOutModal({ item, technicians, appointments = [], batches = [], onC
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const parsedAmount = Number(amount);
-    const limitError = validateQuantity(amount) || validateMovementDate(date);
-    if (limitError) {
-      setValidationError(limitError);
+    const filled = lines.filter((line) => line.itemId);
+    if (filled.length === 0) {
+      setValidationError("Add at least one item.");
       return;
     }
-    if (parsedAmount > usable) {
-      setValidationError(withBatches && usable < Number(item.quantity)
-        ? `Only ${usable} ${item.unit} is usable; the rest has expired. Write the expired batch off from the item's details.`
-        : `Only ${item.quantity} ${item.unit} is in stock.`);
+    const dateError = validateMovementDate(date);
+    if (dateError) {
+      setValidationError(dateError);
+      return;
+    }
+    for (const line of filled) {
+      const item = findItem(line.itemId);
+      const limitError = validateQuantity(line.amount, { label: `Quantity of ${item?.name || "an item"}` });
+      if (limitError) {
+        setValidationError(limitError);
+        return;
+      }
+      if (Number(line.amount) > usableOf(item)) {
+        setValidationError(`Only ${usableOf(item)} ${item.unit} of ${item.name} can go out.`);
+        return;
+      }
+    }
+    const repeated = filled.find((line, index) => findItem(line.itemId)?.type !== "CHEMICAL" && filled.findIndex((other) => other.itemId === line.itemId) !== index);
+    if (repeated) {
+      setValidationError(`${findItem(repeated.itemId)?.name} is on two lines. Put it on one.`);
       return;
     }
     if (selectedReason.requiresTechnician && !technicianId) {
-      setValidationError("Select the technician the stock was checked out to.");
+      setValidationError("Select the technician the stock is going to.");
       return;
     }
     setSaving(true);
     await onSubmit({
-      amount: parsedAmount,
       date,
       reason,
       technicianId,
       forAppointmentId: selectedReason.requiresTechnician ? forAppointmentId : "",
-      batchId: withBatches ? batchId : "",
       note: note.trim(),
+      lines: filled.map((line) => ({ itemId: line.itemId, amount: Number(line.amount), batchId: line.batchId })),
     });
     setSaving(false);
   };
 
   return (
-    <ModalShell onClose={onClose} title="Stock Out" subtitle={`Item: ${item.name} • Current Stock: ${item.quantity} ${item.unit}`}>
+    <ModalShell onClose={onClose} title="Stock out" subtitle="One or more items, to a technician or written off." maxWidth="46rem">
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: "1rem" }}>
-        {validationError && (
-          <p style={{ margin: 0, color: "#9a2d24", fontSize: "0.85rem", fontWeight: 500 }}>{validationError}</p>
-        )}
+        {validationError && <p role="alert" style={{ margin: 0, color: "#9a2d24", fontSize: "0.85rem", fontWeight: 500 }}>{validationError}</p>}
 
-        <Field label={`Quantity (${item.unit}) *`}>
-          <input
-            type="number"
-            min="0"
-            step="any"
-            inputMode="decimal"
-            value={amount}
-            onChange={(event) => { setValidationError(""); setAmount(event.target.value); }}
-            style={inputStyle}
-            placeholder="0"
-            required
-            autoFocus
-          />
-        </Field>
-
-        <Field label="Date *" hint="Defaults to today. Change it to record a stock-out that happened earlier.">
-          <input type="date" value={date} max={todayISO()} onChange={(event) => { setValidationError(""); setDate(event.target.value); }} style={inputStyle} required />
-        </Field>
-
-        {withBatches && (
-          <Field label="Batch">
-            <BatchSelect
-              item={item}
-              batches={batches}
-              date={date}
-              value={batchId}
-              onChange={(value) => { setValidationError(""); setBatchId(value); }}
-              amount={amount}
-              label="Batch"
-              selectStyle={inputStyle}
-              noteStyle={{ color: "#96897b", fontSize: "0.74rem", fontWeight: 400 }}
-            />
-          </Field>
-        )}
-
-        <Field label="Reason *">
-          <select
-            value={reason}
-            onChange={(event) => { setValidationError(""); setReason(event.target.value); }}
-            style={inputStyle}
-            required
-          >
-            {STOCK_OUT_REASONS.map((entry) => (
-              <option key={entry.value} value={entry.value}>{entry.label}</option>
-            ))}
-          </select>
-        </Field>
-
-        {selectedReason.requiresTechnician && (
-          <Field label="Technician *">
-            <select
-              value={technicianId}
-              onChange={(event) => { setValidationError(""); setTechnicianId(event.target.value); setForAppointmentId(""); }}
-              style={inputStyle}
-              required
-            >
-              <option value="">Select a technician</option>
-              {activeTechnicians.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.reference ? `${account.reference} — ` : ""}{account.name || account.username}
-                </option>
-              ))}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))", gap: "0.75rem", alignItems: "start" }}>
+          <Field label="Reason *">
+            <select aria-label="Stock out reason" value={reason} onChange={(event) => { setValidationError(""); setReason(event.target.value); }} style={inputStyle} required>
+              {STOCK_OUT_REASONS.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
             </select>
-            {activeTechnicians.length === 0 && (
-              <span style={{ color: "#9a2d24", fontSize: "0.74rem" }}>No active technician accounts to check stock out to.</span>
-            )}
           </Field>
-        )}
+          {selectedReason.requiresTechnician && (
+            <Field label="Technician *">
+              <select aria-label="Technician" value={technicianId} onChange={(event) => { setValidationError(""); setTechnicianId(event.target.value); setForAppointmentId(""); }} style={inputStyle} required>
+                <option value="">Select a technician</option>
+                {activeTechnicians.map((account) => (
+                  <option key={account.id} value={account.id}>{account.reference ? `${account.reference} — ` : ""}{account.name || account.username}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <Field label="Date *" hint="Defaults to today. Change it to record a stock-out that happened earlier.">
+            <input aria-label="Stock out date" type="date" value={date} max={todayISO()} onChange={(event) => { setValidationError(""); setDate(event.target.value); }} style={inputStyle} required />
+          </Field>
+        </div>
 
         {selectedReason.requiresTechnician && technicianId && (
           <Field label="For visit" hint="Optional. The stock stays with the technician either way; their next visit's materials are taken from it before the shelf.">
-            <select value={forAppointmentId} onChange={(event) => setForAppointmentId(event.target.value)} style={inputStyle}>
+            <select aria-label="For visit" value={forAppointmentId} onChange={(event) => setForAppointmentId(event.target.value)} style={inputStyle}>
               <option value="">Not for a particular visit</option>
               {upcomingVisits.map((visit) => (
-                <option key={visit.id} value={visit.id}>
-                  {appointmentReference(visit)} · {new Date(visit.scheduledAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                </option>
+                <option key={visit.id} value={visit.id}>{appointmentReference(visit)} · {new Date(visit.scheduledAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</option>
               ))}
             </select>
           </Field>
         )}
 
+        <div style={{ display: "grid", gap: "0.6rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <strong style={{ color: "#211b15", fontSize: "0.92rem" }}>Items</strong>
+            <Button size="sm" icon={<Plus size={14} />} onClick={() => setLines((current) => [...current, newLine()])}>Add item</Button>
+          </div>
+          {lines.map((line) => {
+            const item = findItem(line.itemId);
+            const usable = usableOf(item);
+            const tooMuch = item && Number(line.amount) > usable;
+            const chemicalWithBatches = item?.type === "CHEMICAL" && batches.some((batch) => batch.itemId === item.id);
+            return (
+              <div key={line.key} style={{ display: "grid", gap: "0.45rem", padding: "0.75rem", border: "1px solid #efe9e0", borderRadius: "3.75px", background: "#fcfaf1" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 150px 28px", gap: "0.6rem", alignItems: "start" }}>
+                  <Field label="Item">
+                    <select aria-label="Stock out item" value={line.itemId} onChange={(event) => updateLine(line.key, { itemId: event.target.value, batchId: "" })} style={inputStyle}>
+                      <option value="">Select item</option>
+                      {stockable.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Quantity">
+                    <span style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                      <input aria-label="Stock out quantity" type="number" min="0" step="any" inputMode="decimal" value={line.amount} onChange={(event) => updateLine(line.key, { amount: event.target.value })} style={{ ...inputStyle, minWidth: 0 }} placeholder="0" />
+                      {item && <span style={{ color: "#50463c", fontSize: "0.82rem", fontWeight: 400, whiteSpace: "nowrap" }}>{item.unit}</span>}
+                    </span>
+                    {item && <span style={{ color: tooMuch ? "#9a2d24" : "#96897b", fontSize: "0.72rem", fontWeight: tooMuch ? 500 : 400 }}>{tooMuch ? "Only " : ""}{usable} {item.unit} available</span>}
+                  </Field>
+                  {lines.length > 1 ? (
+                    <button type="button" aria-label="Remove item line" onClick={() => setLines((current) => current.filter((other) => other.key !== line.key))} style={{ border: 0, background: "transparent", color: "#9a2d24", cursor: "pointer", padding: "0.6rem 0.2rem", marginTop: "1.55rem", fontSize: "0.95rem" }}>✕</button>
+                  ) : <span />}
+                </div>
+                {chemicalWithBatches && (
+                  <BatchSelect
+                    item={item}
+                    batches={batches}
+                    date={date}
+                    value={line.batchId}
+                    onChange={(value) => updateLine(line.key, { batchId: value })}
+                    amount={line.amount}
+                    label="Batch"
+                    selectStyle={inputStyle}
+                    noteStyle={{ color: "#96897b", fontSize: "0.74rem", fontWeight: 400 }}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
         <Field label="Note">
-          <textarea
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            style={{ ...inputStyle, minHeight: "80px", resize: "vertical" }}
-            placeholder="Anything worth recording — where it went, how it was damaged"
-            maxLength={LIMITS.NOTES_MAX}
-          />
+          <textarea aria-label="Stock out note" value={note} onChange={(event) => setNote(event.target.value)} style={{ ...inputStyle, minHeight: "70px", resize: "vertical" }} placeholder="Anything worth recording — where it went, how it was damaged" maxLength={LIMITS.NOTES_MAX} />
         </Field>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.65rem", paddingTop: "0.75rem", borderTop: "1px solid #efe9e0" }}>
           <button type="button" onClick={onClose} style={secondaryButton}>Cancel</button>
-          <button type="submit" disabled={saving} style={buttonWhen(saving)}>
-            {saving ? "Recording…" : "Record stock out"}
-          </button>
+          <button type="submit" disabled={saving} style={buttonWhen(saving)}>{saving ? "Recording…" : "Record stock out"}</button>
+        </div>
+      </form>
+    </ModalShell>
+  );
+}
+
+const LOSS_KINDS = [
+  { value: "LOST", label: "Lost" },
+  { value: "STOLEN", label: "Stolen" },
+  { value: "DAMAGED", label: "Damaged" },
+];
+
+/**
+ * Stock a technician was holding that is gone: lost, stolen or damaged
+ * (migration 069). It closes that much of the checkout without putting
+ * anything back on the shelf, and counts in "Missing / damaged".
+ */
+function LossModal({ entry, technicianName, onClose, onSubmit }) {
+  const { checkout, remaining } = entry;
+  const [amount, setAmount] = useState(String(remaining));
+  const [kind, setKind] = useState("LOST");
+  const [note, setNote] = useState("");
+  const [date, setDate] = useState(() => todayISO());
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState("");
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (!(Number(amount) > 0) || Number(amount) > remaining) {
+      setProblem(`Enter an amount from 0 to ${remaining} ${checkout.itemUnit || ""}.`.trim());
+      return;
+    }
+    if (!note.trim()) {
+      setProblem("Write what happened.");
+      return;
+    }
+    setSaving(true);
+    await onSubmit({ amount: Number(amount), kind, note: note.trim(), date });
+    setSaving(false);
+  };
+
+  return (
+    <ModalShell onClose={onClose} title="Report lost or damaged stock" subtitle={`${checkout.itemName} · with ${technicianName(checkout.technicianId) || "a technician"} · ${remaining} ${checkout.itemUnit || ""} still out`}>
+      <form onSubmit={handleSubmit} style={{ display: "grid", gap: "1rem" }}>
+        {problem && <p role="alert" style={{ margin: 0, color: "#9a2d24", fontSize: "0.85rem", fontWeight: 500 }}>{problem}</p>}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", alignItems: "start" }}>
+          <Field label="What happened *">
+            <select aria-label="What happened" value={kind} onChange={(event) => setKind(event.target.value)} style={inputStyle}>
+              {LOSS_KINDS.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+            </select>
+          </Field>
+          <Field label={`Quantity (${checkout.itemUnit || "units"}) *`}>
+            <input aria-label="Quantity lost" type="number" min="0" max={remaining} step="any" inputMode="decimal" value={amount} onChange={(event) => { setProblem(""); setAmount(event.target.value); }} style={inputStyle} required />
+          </Field>
+        </div>
+        <Field label="Date *">
+          <input aria-label="Date of loss" type="date" value={date} max={todayISO()} onChange={(event) => setDate(event.target.value)} style={inputStyle} required />
+        </Field>
+        <Field label="Details *">
+          <textarea aria-label="Details" value={note} onChange={(event) => { setProblem(""); setNote(event.target.value); }} style={{ ...inputStyle, minHeight: "80px", resize: "vertical" }} placeholder="e.g. Left at the client's site and not found; bottle cracked in the van" maxLength={LIMITS.NOTES_MAX} required />
+        </Field>
+        <p style={{ margin: 0, color: "#96897b", fontSize: "0.8rem" }}>Nothing is added back to the shelf. The loss is recorded against the technician and counts in Missing / damaged.</p>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.65rem", paddingTop: "0.75rem", borderTop: "1px solid #efe9e0" }}>
+          <button type="button" onClick={onClose} style={secondaryButton}>Cancel</button>
+          <button type="submit" disabled={saving} style={buttonWhen(saving, primaryButton, { background: "#9a2d24" })}>{saving ? "Recording…" : "Report loss"}</button>
         </div>
       </form>
     </ModalShell>
@@ -2411,8 +2562,8 @@ function StockOutModal({ item, technicians, appointments = [], batches = [], onC
  * (migration 054). A visit's materials come out of these first, so what is
  * listed here is what is physically in someone's van right now.
  */
-function CustodyList({ entries, technicianName, appointmentLabel, canManage, loading, error, onReturn }) {
-  const template = "1.1fr 1.3fr 110px 1fr 120px 1.1fr 110px";
+function CustodyList({ entries, technicianName, appointmentLabel, canManage, loading, error, onReturn, onReportLoss }) {
+  const template = "1.1fr 1.3fr 110px 1fr 120px 1.2fr 220px";
   const cell = { color: "#50463c" };
   return (
     <div style={{ background: "#ffffff", border: "1px solid #efe9e0", borderRadius: "7.5px", overflow: "hidden" }}>
@@ -2429,7 +2580,7 @@ function CustodyList({ entries, technicianName, appointmentLabel, canManage, loa
           <div style={{ padding: "1.75rem", textAlign: "center", color: "#96897b" }}>Nothing is checked out right now.</div>
         )}
         {entries.map((entry) => {
-          const { checkout, remaining, used, returned } = entry;
+          const { checkout, remaining, used, returned, lost = 0 } = entry;
           return (
             <div key={checkout.id} style={{ display: "grid", gridTemplateColumns: template, minWidth: "900px", gap: "0.75rem", padding: "0.85rem 1.25rem", borderTop: "1px solid #efe9e0", alignItems: "center", fontSize: "0.9rem" }}>
               <span style={{ color: "#211b15", fontWeight: 500 }}>{technicianName(checkout.technicianId) || "A technician"}</span>
@@ -2437,9 +2588,10 @@ function CustodyList({ entries, technicianName, appointmentLabel, canManage, loa
               <span style={cell}>{formatDate(checkout.movementDate)}</span>
               <span style={cell}>{checkout.forAppointmentId ? appointmentLabel(checkout.forAppointmentId) : "—"}</span>
               <span style={{ fontWeight: 600, color: "#211b15", fontVariantNumeric: "tabular-nums" }}>{remaining} {checkout.itemUnit}</span>
-              <span style={{ ...cell, fontSize: "0.8rem" }}>of {checkout.amount} · {used} used · {returned} returned</span>
-              <span style={{ textAlign: "right" }}>
+              <span style={{ ...cell, fontSize: "0.8rem" }}>of {checkout.amount} · {used} used · {returned} returned{lost ? ` · ${lost} lost` : ""}</span>
+              <span style={{ textAlign: "right", display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}>
                 {canManage && <Button size="sm" variant="secondary" onClick={() => onReturn(entry)}>Return</Button>}
+                {canManage && onReportLoss && <Button size="sm" variant="quiet" onClick={() => onReportLoss(entry)}>Report lost / damaged</Button>}
               </span>
             </div>
           );
