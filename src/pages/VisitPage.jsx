@@ -352,7 +352,7 @@ function VisitPage() {
       showError(problem);
       return;
     }
-    if (!(await confirm({ title: "Submit this report?", message: "The report is filed with the office. With the customer's signature, the visit is completed.", confirmLabel: "Submit report" }))) return;
+    if (!(await confirm({ title: "Submit this report?", message: "The report is filed with the office. With both signatures, the visit is completed.", confirmLabel: "Submit report" }))) return;
     setSending(true);
     try {
       const report = {
@@ -378,6 +378,13 @@ function VisitPage() {
       }
 
       const customerFile = await customerPad.current?.toFile();
+      const technicianFile = await technicianPad.current?.toFile();
+      // The customer's signature completes the visit, so it goes only with
+      // the technician's: already on file or signed now.
+      if (customerFile && !technicianFile && !appointment.technicianSignaturePath) {
+        showError("Sign as the technician too. The visit is completed only when you and the customer have both signed.");
+        return;
+      }
       if (customerFile) {
         if (!draft.customerName.trim()) {
           showError("Add the customer's name next to their signature.");
@@ -396,7 +403,6 @@ function VisitPage() {
         report.signaturePath = upload.storagePath;
         report.customerName = draft.customerName.trim();
       }
-      const technicianFile = await technicianPad.current?.toFile();
       if (technicianFile) {
         const upload = await uploadSignature(appointment.id, technicianFile, "technician");
         if (upload.error) {
@@ -814,7 +820,7 @@ function VisitPage() {
                   style={{ ...field, marginBottom: "10px" }}
                 />
                 <SignaturePad ref={customerPad} />
-                <p style={{ margin: "8px 0 0", color: neutral.bark, fontSize: "13px" }}>The customer's signature completes the visit. Without it the report is filed and the visit stays open.</p>
+                <p style={{ margin: "8px 0 0", color: neutral.bark, fontSize: "13px" }}>The visit is completed once you and the customer have both signed. Without both, the report is filed and the visit stays open.</p>
               </>
             )}
             <p style={{ ...label, marginTop: "24px" }}>Your signature</p>
