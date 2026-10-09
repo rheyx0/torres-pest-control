@@ -10,7 +10,6 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button, Select } from "../ui";
 import { colors } from "../../styles/theme";
-import { canBookFromQuote } from "../../utils/billing";
 import { formatPeso } from "../../utils/formatters";
 import { SUBSYSTEMS } from "../../utils/permissions";
 import useAuth from "../../hooks/useAuth";
@@ -47,7 +46,7 @@ function VisitBillingLink({ appointment }) {
   const canLink = can(SUBSYSTEMS.BILLING, "edit") && appointment.status !== "Cancelled" && !appointment.invoiceId;
   const quotes = billing.quotes
     .filter((entry) => entry.clientId === appointment.clientId && entry.status === "APPROVED")
-    .map((entry) => ({ entry, check: canBookFromQuote(entry, billing.paymentsForQuote(entry.id)) }));
+    .map((entry) => ({ entry, check: billing.bookingCheck(entry) }));
   const contracts = appointment.planId
     ? (billing.contracts || []).filter((entry) => entry.clientId === appointment.clientId && entry.status === "ACTIVE" && !entry.planId)
     : [];

@@ -434,6 +434,7 @@ function BillingPage() {
           payments={paymentsForQuote(openQuoteRecord.id)}
           visits={appointments.filter((visit) => visit.quoteId === openQuoteRecord.id)}
           invoices={billing.invoicesForQuote(openQuoteRecord.id)}
+          invoicePayments={billing.invoicesForQuote(openQuoteRecord.id).flatMap((invoice) => billing.paymentsForInvoice(invoice.id))}
           canReverse={canReverse}
           onEdit={() => setEditing({ quote: openQuoteRecord })}
           onSend={async () => {

@@ -33,14 +33,14 @@ const daysFrom = (fromKey, toKey) => Math.round((new Date(`${toKey}T00:00:00`) -
  * `ready`, so the form can offer to book under it.
  *   { ok, via: source | service | client | none, reason, ready? { type, id, reference } }
  */
-export function paymentCheck({ client, services = [], source = null, quotes = [], payments = [], contracts = [], appointments = [] }, now = new Date()) {
+export function paymentCheck({ client, services = [], source = null, quotes = [], payments = [], invoices = [], contracts = [], appointments = [] }, now = new Date()) {
   if (!client) return { ok: true, via: "none", reason: "" };
   if (source) return { ok: true, via: "source", reason: "" };
   if (services.length > 0 && services.every((service) => service?.skipPaymentCheck)) return { ok: true, via: "service", reason: "" };
   if (client.skipPaymentCheck) return { ok: true, via: "client", reason: "" };
 
   const used = new Set(appointments.filter((visit) => visit.quoteId && visit.status !== "Cancelled").map((visit) => visit.quoteId));
-  const quote = quotes.find((entry) => entry.clientId === client.id && !used.has(entry.id) && canBookFromQuote(entry, payments, now).ok);
+  const quote = quotes.find((entry) => entry.clientId === client.id && !used.has(entry.id) && canBookFromQuote(entry, payments, now, invoices).ok);
   if (quote) {
     return {
       ok: false,

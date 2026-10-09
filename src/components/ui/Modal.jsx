@@ -169,9 +169,11 @@ function Modal({
           </header>
         )}
 
-        <div ref={bodyRef} style={{ padding: "20px 24px", overflowY: "auto", flex: "1 1 auto" }}>
-          {children}
-        </div>
+        {children != null && children !== false && (
+          <div ref={bodyRef} style={{ padding: "20px 24px", overflowY: "auto", flex: "1 1 auto" }}>
+            {children}
+          </div>
+        )}
 
         {footer && (
           <footer

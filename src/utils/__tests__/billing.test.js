@@ -91,6 +91,19 @@ describe("payments and the down payment", () => {
     expect(canBookFromQuote({ ...quote, depositAmount: 0 }, []).ok).toBe(true);
   });
 
+  test("a payment on the quote's invoice covers the down payment (071)", () => {
+    const invoice = { id: "inv1", quoteId: quote.id, voidedAt: "" };
+    const onInvoice = (fields) => pay({ kind: "PAYMENT", quoteId: "", invoiceId: "inv1", ...fields });
+    expect(canBookFromQuote(quote, [onInvoice({ amount: 5000 })], undefined, [invoice]).ok).toBe(true);
+    expect(canBookFromQuote(quote, [pay({ amount: 400 }), onInvoice({ amount: 600 })], undefined, [invoice]).ok).toBe(true);
+    expect(canBookFromQuote(quote, [onInvoice({ amount: 500 })], undefined, [invoice]).ok).toBe(false);
+    expect(canBookFromQuote(quote, [onInvoice({ amount: 1000, method: "CHECK", checkStatus: "PENDING" })], undefined, [invoice]).reason).toMatch(/not cleared/);
+    expect(canBookFromQuote(quote, [onInvoice({ amount: 1000, reversedAt: "2026-10-01" })], undefined, [invoice]).ok).toBe(false);
+    // A voided invoice, or another quote's, does not count.
+    expect(canBookFromQuote(quote, [onInvoice({ amount: 1000 })], undefined, [{ ...invoice, voidedAt: "2026-10-01" }]).ok).toBe(false);
+    expect(canBookFromQuote(quote, [onInvoice({ amount: 1000 })], undefined, [{ ...invoice, quoteId: "other" }]).ok).toBe(false);
+  });
+
   test("only an approved quote can be booked", () => {
     expect(canBookFromQuote({ ...quote, status: "SENT", depositAmount: 0 }, []).ok).toBe(false);
   });

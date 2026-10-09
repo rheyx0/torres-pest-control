@@ -24,7 +24,6 @@ import useInventory from "../hooks/useInventory";
 import useUsers from "../hooks/useUsers";
 import useServices from "../hooks/useServices";
 import { useOptionalBilling } from "../hooks/useBilling";
-import { canBookFromQuote } from "../utils/billing";
 import { findFollowUpService, followUpPriceFor, paymentCheck } from "../utils/sprint4";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
@@ -215,7 +214,7 @@ function SchedulingPage() {
     const quoteId = searchParams.get("quote");
     if (!quoteId || isTechnician || !billing || billing.loading) return;
     const quote = billing.quoteById(quoteId);
-    const booking = quote ? canBookFromQuote(quote, billing.paymentsForQuote(quote.id)) : { ok: false, reason: "That quote was not found." };
+    const booking = quote ? billing.bookingCheck(quote) : { ok: false, reason: "That quote was not found." };
     if (booking.ok) {
       setCreateClientId(quote.clientId);
       setCreateScheduledAt("");
@@ -860,6 +859,7 @@ function SchedulingPage() {
       source: source || null,
       quotes: billing.quotes,
       payments: billing.payments,
+      invoices: billing.invoices || [],
       contracts: billing.contracts || [],
       appointments,
     });
@@ -871,7 +871,7 @@ function SchedulingPage() {
       quotes: billing.quotes
         .filter((quote) => quote.status === "APPROVED")
         .map((quote) => {
-          const check = canBookFromQuote(quote, billing.paymentsForQuote(quote.id));
+          const check = billing.bookingCheck(quote);
           return {
             id: quote.id, clientId: quote.clientId, label: `${quote.reference} · ${formatPeso(quote.total)}`, bookable: check.ok, reason: check.reason,
             // What picking it fills in on the form.

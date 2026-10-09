@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useBillingContext, useOptionalBillingContext } from "../context/BillingContext";
+import { canBookFromQuote } from "../utils/billing";
 
 function withLookups(context) {
   const { quotes, payments, invoices = [], extras = [], contracts = [] } = context;
@@ -18,6 +19,9 @@ function withLookups(context) {
     paymentsForClient: (clientId) => payments.filter((payment) => payment.clientId === clientId),
     paymentsForQuote: (quoteId) => payments.filter((payment) => payment.quoteId === quoteId),
     paymentsForInvoice: (invoiceId) => payments.filter((payment) => payment.invoiceId === invoiceId),
+    // Whether visits can be booked under a quote: its down payment, or what
+    // was paid on its invoices (071).
+    bookingCheck: (quote) => canBookFromQuote(quote, payments, new Date(), invoices),
     extrasForVisit: (appointmentId) => extras.filter((extra) => extra.appointmentId === appointmentId),
   };
 }

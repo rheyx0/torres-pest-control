@@ -59,6 +59,7 @@ export function ConfirmProvider({ children }) {
               </>
             )}
           >
+            {(request.message || request.details?.length || danger) ? (
             <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
               {danger && <AlertTriangle size={18} aria-hidden="true" style={{ color: status.danger, flex: "none", marginTop: "2px" }} />}
               <div style={{ display: "grid", gap: "8px", color: neutral.saddle, ...text.body }}>
@@ -75,6 +76,7 @@ export function ConfirmProvider({ children }) {
                 )}
               </div>
             </div>
+            ) : null}
           </Modal>
         </div>,
         document.body

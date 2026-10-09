@@ -479,7 +479,13 @@ export default function ServiceProfilesAdmin() {
   const itemsById = useMemo(() => new Map(inventory.map((item) => [item.id, item])), [inventory]);
 
   const handleSave = async (fields) => {
-    if (!(await confirm({ title: editing?.id ? `Save changes to ${fields.name || editing.name}?` : `Add the service ${fields.name}?`, confirmLabel: editing?.id ? "Save changes" : "Add service" }))) return;
+    if (!(await confirm({
+      title: editing?.id ? `Save changes to ${fields.name || editing.name}?` : `Add the service ${fields.name}?`,
+      message: editing?.id
+        ? "New bookings and quotations use these details. Visits, quotations and invoices already made keep the price they were made with."
+        : "The service is added to the catalog and can be booked and quoted straight away.",
+      confirmLabel: editing?.id ? "Save changes" : "Add service",
+    }))) return;
     setBusy(true);
     const result = await saveService(editing?.id || null, fields);
     setBusy(false);

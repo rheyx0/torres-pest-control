@@ -1415,7 +1415,7 @@ function InventoryPage() {
           item={editItem}
           onClose={() => setEditItem(null)}
           onSave={async (values) => {
-            if (!(await confirm({ title: `Save changes to ${values.name}?`, confirmLabel: "Save changes" }))) return false;
+            if (!(await confirm({ title: `Save changes to ${values.name}?`, message: "The item's details are updated. Its stock only changes through a delivery, a stock out or a correction.", confirmLabel: "Save changes" }))) return false;
             const result = await updateItem(editItem.id, values);
             if (result !== true) {
               showError(typeof result === "string" ? result : "Could not update the item.");

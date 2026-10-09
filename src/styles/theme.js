@@ -97,6 +97,9 @@ export const sunkenPanel = {
 
 export const inputStyle = {
   width: "100%",
+  // Lets a field shrink in a grid or flex row instead of widening it to
+  // its longest option (a sideways scrollbar in the window).
+  minWidth: 0,
   border: `1px solid ${neutral.loam}`,
   borderRadius: radius.control,
   padding: "8px 11px",

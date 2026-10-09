@@ -36,7 +36,7 @@ function UsersPage() {
     if (!(await confirm({
       title: `Save changes to ${nameOf(userId)}?`,
       details: roleChanged ? [["Role", `${before.role} → ${fields.role}`]] : undefined,
-      message: roleChanged ? "Changing the role changes what this person can see and do." : undefined,
+      message: roleChanged ? "Changing the role changes what this person can see and do." : "The account's details are updated.",
       confirmLabel: "Save changes",
     }))) return "";
     const result = await updateAccount(userId, fields);

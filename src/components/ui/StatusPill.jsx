@@ -58,6 +58,7 @@ const STATUS_TONES = {
   Reversed: "neutral",
   "Down payment due": "warning",
   "Down payment paid": "success",
+  "Paid on invoice": "success",
 };
 
 /** The tone for a status or role string, falling back to neutral. */

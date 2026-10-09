@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import VisitBillingLink from "../VisitBillingLink";
+import { canBookFromQuote } from "../../../utils/billing";
 import { useOptionalBilling } from "../../../hooks/useBilling";
 
 jest.mock("../../../hooks/useAuth", () => () => ({ can: () => true }));
@@ -19,6 +20,7 @@ function setup({ quotes = [paid, unpaid], contracts = [contract], appointment = 
     contracts,
     quoteById: (id) => quotes.find((quote) => quote.id === id) || null,
     paymentsForQuote: () => [],
+    bookingCheck: (quote) => canBookFromQuote(quote, []),
     linkQuoteAppointments: jest.fn().mockResolvedValue(1),
     linkContractPlan: jest.fn().mockResolvedValue({}),
   };

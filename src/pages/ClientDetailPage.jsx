@@ -56,7 +56,7 @@ function ClientDetailPage() {
   }
 
   const handleSave = async (form) => {
-    if (!(await confirm({ title: `Save changes to ${client.name}?`, confirmLabel: "Save changes" }))) return false;
+    if (!(await confirm({ title: `Save changes to ${client.name}?`, message: "The client's profile is updated. Their past visits, quotations and invoices are not changed.", confirmLabel: "Save changes" }))) return false;
     const result = await updateClient(client.id, form);
     if (result === true) {
       showSuccess("Client profile updated.");

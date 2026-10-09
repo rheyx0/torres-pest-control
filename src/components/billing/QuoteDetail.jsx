@@ -28,6 +28,7 @@ const DEPOSIT_WORDS = {
   PARTIAL: "Down payment due",
   PENDING_CHECK: "Pending check",
   PAID: "Down payment paid",
+  ON_INVOICE: "Paid on invoice",
 };
 
 function QuoteDetail({
@@ -36,6 +37,7 @@ function QuoteDetail({
   payments = [],
   visits = [],
   invoices = [],
+  invoicePayments = [],
   canReverse = false,
   onEdit,
   onSend,
@@ -66,8 +68,13 @@ function QuoteDetail({
 
   const status = quoteStatus(quote);
   const deposit = depositStatus(quote, payments);
-  const booking = canBookFromQuote(quote, payments);
+  // Payments on the quote's invoices count towards the down payment (071).
+  const booking = canBookFromQuote(quote, [...payments, ...invoicePayments], undefined, invoices);
   const own = payments.filter((payment) => payment.quoteId === quote.id);
+  // Once the quote has an invoice, money is taken on the invoice (071): a
+  // down payment recorded after it would never be deducted from it.
+  const invoiced = invoices.some((invoice) => !invoice.voidedAt);
+  const depositWords = deposit.state !== "PAID" && invoiced && booking.ok ? DEPOSIT_WORDS.ON_INVOICE : DEPOSIT_WORDS[deposit.state];
   const terms = PAYMENT_TERMS.find((term) => term.value === quote.paymentTerms)?.label || "";
 
   const act = async (call) => {
@@ -127,7 +134,7 @@ function QuoteDetail({
       )}
       {status === "APPROVED" && (
         <>
-          {deposit.required > 0 && deposit.state !== "PAID" && (
+          {deposit.required > 0 && deposit.state !== "PAID" && !invoiced && (
             <Button onClick={onRecordDeposit}>Record down payment</Button>
           )}
           {onInvoice && <Button onClick={onInvoice}>Create invoice</Button>}
@@ -143,7 +150,7 @@ function QuoteDetail({
       <div style={{ display: "grid", gap: "1rem" }}>
         <div style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap", color: colors.body, fontSize: "0.88rem" }}>
           <StatusPill status={QUOTE_STATUS_LABELS[status]} />
-          {deposit.required > 0 && <StatusPill status={DEPOSIT_WORDS[deposit.state]} />}
+          {deposit.required > 0 && <StatusPill status={depositWords} />}
           <span>One-time service</span>
           <span>· Valid until {formatDate(quote.validUntil)}</span>
           {terms && <span>· Payment {terms.toLowerCase()}</span>}

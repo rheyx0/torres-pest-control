@@ -83,14 +83,27 @@ export function depositStatus(quote, payments = []) {
   return { required, paid, pending, remaining, state };
 }
 
-/** Whether visits can be booked from this quote now, and if not why. */
-export function canBookFromQuote(quote, payments = [], now = new Date()) {
+/**
+ * Whether visits can be booked from this quote now, and if not why.
+ *
+ * The down payment can be received on the quote itself or, when the client
+ * paid up front, on an invoice issued from it (071): payments on the quote's
+ * live invoices count towards it too. Pass every payment and the invoices.
+ */
+export function canBookFromQuote(quote, payments = [], now = new Date(), invoices = []) {
   if (quoteStatus(quote, now) !== "APPROVED") return { ok: false, reason: "Only an approved quote can be booked." };
   const deposit = depositStatus(quote, payments);
-  if (deposit.state === "DUE" || deposit.state === "PARTIAL" || deposit.state === "PENDING_CHECK") {
-    return { ok: false, reason: deposit.state === "PENDING_CHECK" ? "The down payment check has not cleared yet." : "The down payment has not been received yet." };
-  }
-  return { ok: true, reason: "" };
+  if (deposit.state === "NONE" || deposit.state === "PAID") return { ok: true, reason: "" };
+
+  const invoiceIds = new Set(invoices.filter((invoice) => invoice.quoteId === quote.id && !invoice.voidedAt).map((invoice) => invoice.id));
+  const onInvoices = payments.filter((payment) => payment.invoiceId && invoiceIds.has(payment.invoiceId) && payment.kind === "PAYMENT" && !payment.reversedAt);
+  const paid = round2(deposit.paid + onInvoices.filter(paymentCounts).reduce((sum, payment) => sum + payment.amount, 0));
+  if (paid >= deposit.required) return { ok: true, reason: "" };
+  const pending = round2(deposit.pending + onInvoices
+    .filter((payment) => payment.method === "CHECK" && payment.checkStatus === "PENDING")
+    .reduce((sum, payment) => sum + payment.amount, 0));
+  if (paid + pending >= deposit.required) return { ok: false, reason: "The down payment check has not cleared yet." };
+  return { ok: false, reason: "The down payment has not been received yet." };
 }
 
 /** A validity date `days` from today, as "YYYY-MM-DD". */
