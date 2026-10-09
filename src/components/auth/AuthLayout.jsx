@@ -76,7 +76,7 @@ function AuthLayout({ children }) {
 
         <div className="auth-form">{children}</div>
 
-        <p className="auth-footer">© {new Date().getFullYear()} Torres Pest Control · Brgy. Tacunan, Davao City, Philippines</p>
+        <p className="auth-footer">© {new Date().getFullYear()} Torres Pest Control · Purok 13 Brgy, Martylville Subdivision, B11A L65, Tugbok</p>
       </main>
 
       <aside className="auth-panel" aria-label="Pest control facts">

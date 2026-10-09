@@ -83,10 +83,16 @@ export function AuthProvider({ children }) {
     [admins, staff, technicians]
   );
 
+  // The full account from the list when it is there; otherwise the profile
+  // the server just validated (it carries the role), so a session whose
+  // account is missing from the loaded list (an old saved sign-in, a list
+  // still loading) never shows a role-less app with no way to sign out.
   const currentUser = useMemo(() => {
     if (!session) return null;
-    return accounts.find((account) => account.id === session.id) || null;
-  }, [session, accounts]);
+    const account = accounts.find((entry) => entry.id === session.id);
+    if (account) return account;
+    return sessionVerified && session.role ? { ...session } : null;
+  }, [session, accounts, sessionVerified]);
 
   const setCollectionFor = useCallback((role) => {
     if (role === ROLES.ADMIN) return setAdmins;
