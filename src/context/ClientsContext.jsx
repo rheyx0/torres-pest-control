@@ -68,7 +68,7 @@ export function ClientsProvider({ children }) {
 
   const archiveClient = useCallback(
     async (clientId) => {
-      if (!allowed(SUBSYSTEMS.CLIENTS, "delete")) return "You do not have permission to archive client profiles.";
+      if (!allowed(SUBSYSTEMS.CLIENTS, "archive")) return "You do not have permission to archive client profiles.";
       const target = clients.find((client) => client.id === clientId);
       if (!target) return "Client not found.";
       const { client, error: archiveError } = await clientService.archiveClient(clientId, target.version);
@@ -82,7 +82,7 @@ export function ClientsProvider({ children }) {
 
   const restoreClient = useCallback(
     async (clientId) => {
-      if (!allowed(SUBSYSTEMS.CLIENTS, "delete")) return "You do not have permission to restore client profiles.";
+      if (!allowed(SUBSYSTEMS.CLIENTS, "archive")) return "You do not have permission to restore client profiles.";
       const target = clients.find((client) => client.id === clientId);
       if (!target) return "Client not found.";
       const { client, error: restoreError } = await clientService.restoreClient(clientId, target.version);
@@ -108,7 +108,7 @@ export function ClientsProvider({ children }) {
     [actor, allowed, clients]
   );
 
-  // Admin only (066): a trusted client is booked without a paid quote.
+  // The office (066, 070): a trusted client is booked without a paid quote.
   const setClientPaymentCheck = useCallback(
     async (client, skip) => {
       const { error: flagError } = await clientService.setClientPaymentCheck(client.id, skip);

@@ -48,7 +48,7 @@ function CompletedSummary({ appointment, accounts = [], onCorrect }) {
         <strong style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", color: "#2f6b3f", fontSize: "0.95rem", fontWeight: 600 }}>
           <CheckCircle2 size={17} aria-hidden="true" /> Completed{finishedAt ? ` · ${formatDateTime(finishedAt)}` : ""}
         </strong>
-        {currentUser?.role === "ADMIN" && onCorrect && (
+        {(currentUser?.role === "ADMIN" || currentUser?.role === "STAFF") && onCorrect && (
           <Button size="sm" variant="quiet" icon={<PencilLine size={14} />} onClick={onCorrect}>Correct this visit</Button>
         )}
       </div>

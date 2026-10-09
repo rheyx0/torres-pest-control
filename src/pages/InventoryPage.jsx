@@ -404,8 +404,7 @@ function InventoryPage() {
 
   const [tab, setTab] = useState("items"); // "items" | "custody" | "history"
   const { can } = useAuth();
-  // Receiving and reordering stock is an inventory write: admins only, per
-  // the permission matrix (staff and technicians read inventory).
+  // Receiving stock, items, corrections and batch tools: the office (070).
   const canManageStock = can(SUBSYSTEMS.INVENTORY, "create");
   // Stock out to technicians, returns and losses: Staff as well (069).
   const canIssueStock = can(SUBSYSTEMS.INVENTORY, "edit");

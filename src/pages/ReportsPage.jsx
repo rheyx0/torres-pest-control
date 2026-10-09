@@ -1,4 +1,4 @@
-// Reports (Sprint 4, admin only): sales and collections, stock usage, and
+// Reports (Sprint 4, admin and staff, read only): sales and collections, stock usage, and
 // technician performance over a date range, each downloadable as Excel (CSV)
 // or PDF. Worked out from the lists already loaded (utils/reports.js); the
 // PDF prints through BillingPrinter with the company letterhead.

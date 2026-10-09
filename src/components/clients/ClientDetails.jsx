@@ -338,6 +338,7 @@ function ClientDetails({
   client,
   canEdit,
   canDelete,
+  canArchive = canDelete,
   canUploadDocuments,
   canRemoveDocuments,
   canBook = false,
@@ -466,14 +467,14 @@ function ClientDetails({
   };
 
   const menuItems = [
-    ...(canDelete
+    ...(canArchive
       ? [
           client.status === "ARCHIVED"
             ? { label: "Restore client", onClick: onRestore }
             : { label: "Archive client", onClick: onArchive },
-          { label: "Delete permanently…", onClick: onDelete, danger: true, separated: true },
         ]
       : []),
+    ...(canDelete ? [{ label: "Delete permanently…", onClick: onDelete, danger: true, separated: true }] : []),
   ];
   const openReport = (appointment) => setSelectedHistory(appointment);
   const tabs = [
@@ -635,13 +636,13 @@ function ClientDetails({
                   <strong style={{ fontWeight: 500, color: colors.ink }}>Payment check before booking: </strong>
                   {client.skipPaymentCheck ? "Off. This client can be booked without a paid quotation." : "On. A treatment needs a paid quotation or an active contract."}
                 </span>
-                {role === "ADMIN" ? (
+                {role === "ADMIN" || role === "STAFF" ? (
                   <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13.5px", color: colors.ink, cursor: "pointer" }}>
                     <input type="checkbox" checked={Boolean(client.skipPaymentCheck)} disabled={checkBusy} onChange={(event) => toggleClientCheck(event.target.checked)} />
                     Skip the payment check for this client
                   </label>
                 ) : (
-                  <span style={{ fontSize: "12.5px", color: colors.muted }}>Only an admin can change this.</span>
+                  <span style={{ fontSize: "12.5px", color: colors.muted }}>Only the office can change this.</span>
                 )}
                 {checkError && <span role="alert" style={{ flexBasis: "100%", color: colors.danger, fontSize: "12.5px" }}>{checkError}</span>}
               </section>

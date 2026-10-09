@@ -115,6 +115,7 @@ function ClientDetailPage() {
         client={client}
         canEdit={can(SUBSYSTEMS.CLIENTS, "edit")}
         canDelete={can(SUBSYSTEMS.CLIENTS, "delete")}
+        canArchive={can(SUBSYSTEMS.CLIENTS, "archive")}
         canBook={can(SUBSYSTEMS.SCHEDULING, "create")}
         onArchive={handleArchive}
         onRestore={handleRestore}

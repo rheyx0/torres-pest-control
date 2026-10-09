@@ -82,16 +82,26 @@ describe("Sidebar groups", () => {
 
   // Filtering the items without then dropping the empty group would leave a
   // "Setup" heading floating above nothing.
-  it.each(["TECHNICIAN", "STAFF"])("drops the whole Setup group for a %s, not just its links", (role) => {
-    renderSidebar("/", role);
+  it("drops the whole Setup group for a TECHNICIAN, not just its links", () => {
+    renderSidebar("/", "TECHNICIAN");
 
-    expect(can(role, "users")).toBe(false);
-    expect(can(role, "settings")).toBe(false);
+    expect(can("TECHNICIAN", "users")).toBe(false);
+    expect(can("TECHNICIAN", "settings")).toBe(false);
 
     expect(screen.queryByText("Setup")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Accounts/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Activity log/ })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Schedule/ })).toBeInTheDocument();
+  });
+
+  // Staff keep the service catalog (070) but never accounts or the log.
+  it("shows a STAFF only Services under Setup", () => {
+    renderSidebar("/", "STAFF");
+
+    expect(screen.getByText("Setup")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Services/ })).toHaveAttribute("href", "/services");
+    expect(screen.queryByRole("link", { name: /Accounts/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Activity log/ })).not.toBeInTheDocument();
   });
 
   it("labels each group's list by its heading, so the grouping reaches a screen reader", () => {

@@ -37,7 +37,9 @@ const NONE = [];
 const MATRIX = {
   [ROLES.ADMIN]: {
     users: ALL,
-    clients: ALL,
+    // "archive" is archiving and restoring a client; "delete" is deleting
+    // one permanently.
+    clients: [...ALL, "archive"],
     clientDocuments: ALL,
     inventory: ALL,
     scheduling: ALL,
@@ -48,18 +50,22 @@ const MATRIX = {
   },
   [ROLES.STAFF]: {
     users: NONE,
-    clients: ["view", "create", "edit"],
+    // Staff run the office (070): everything but deleting a client for good.
+    clients: ["view", "create", "edit", "archive"],
     clientDocuments: ["view", "create", "delete"],
-    // Staff hand stock to technicians, take returns and report losses
-    // ("edit"); adding items, deliveries and corrections stay with the admin.
-    inventory: ["view", "edit"],
+    // Items, deliveries, corrections and batch tools as well as stock out (070).
+    inventory: ALL,
     // Staff book appointments (the office's daily work); the server's
     // create_appointment already admits any signed-in office account.
     scheduling: ["view", "create", "edit"],
     logs: NONE,
-    settings: NONE,
+    // The service catalog and its prices (070).
+    settings: ALL,
+    // Reversing a payment and voiding an invoice ("delete") stay with the
+    // admin: whoever takes the money should not be able to erase it.
     billing: ["view", "create", "edit"],
-    reports: NONE,
+    // Staff read the sales, stock and technician reports too.
+    reports: READ_ONLY,
   },
   [ROLES.TECHNICIAN]: {
     users: NONE,
