@@ -72,9 +72,18 @@ describe("followUpReminders", () => {
     expect(followUpReminders([{ ...done, followUpDate: "2026-10-10" }], [juan], now)).toHaveLength(0);
   });
 
-  it("drops the reminder once something is booked for the client", () => {
-    const booked = { id: "v2", clientId: "c1", status: "Pending", scheduledAt: "2026-10-03T09:00:00" };
-    expect(followUpReminders([{ ...done, followUpDate: "2026-10-03" }, booked], [juan], now)).toHaveLength(0);
+  it("drops the reminder once a follow-up of that visit is booked", () => {
+    const linked = { id: "v2", clientId: "c1", status: "Pending", followUpOf: "v1", serviceType: "Follow-up Visit", scheduledAt: "2026-10-03T09:00:00" };
+    expect(followUpReminders([{ ...done, followUpDate: "2026-10-03" }, linked], [juan], now)).toHaveLength(0);
+    const unlinked = { id: "v3", clientId: "c1", status: "Pending", serviceType: "Follow-up Visit", scheduledAt: "2026-10-03T09:00:00" };
+    expect(followUpReminders([{ ...done, followUpDate: "2026-10-03" }, unlinked], [juan], now)).toHaveLength(0);
+  });
+
+  it("keeps the reminder when only another job is booked for the client", () => {
+    const other = { id: "v4", clientId: "c1", status: "Pending", serviceType: "General Pest Control", scheduledAt: "2026-10-03T09:00:00" };
+    expect(followUpReminders([{ ...done, followUpDate: "2026-10-03" }, other], [juan], now)).toHaveLength(1);
+    const cancelled = { id: "v5", clientId: "c1", status: "Cancelled", followUpOf: "v1", scheduledAt: "2026-10-03T09:00:00" };
+    expect(followUpReminders([{ ...done, followUpDate: "2026-10-03" }, cancelled], [juan], now)).toHaveLength(1);
   });
 });
 

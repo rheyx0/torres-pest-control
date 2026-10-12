@@ -404,6 +404,22 @@ export async function uploadSignature(appointmentId, file, kind = "customer") {
   return { storagePath };
 }
 
+/**
+ * After a report with a follow-up date: book the follow-up (migration 073)
+ * when every booking rule passes. { status, message, appointmentId,
+ * reference }, or null before 073 (the reminder still covers it).
+ */
+export async function bookFollowUpFromReport(appointmentId) {
+  const { data, error } = await supabase.rpc("book_follow_up_from_report", { p_appointment_id: appointmentId });
+  if (error) {
+    if (/book_follow_up_from_report|schema cache|does not exist/i.test(`${error.message || ""} ${error.details || ""}`)) return null;
+    return { status: "REFUSED", message: describeError(error), appointmentId: "", reference: "" };
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return { status: row.status, message: row.message || "", appointmentId: row.appointment_id || "", reference: row.reference || "" };
+}
+
 /** Short-lived link for a stored signature, same contract as getAttachmentUrl. */
 export async function getSignatureUrl(storagePath) {
   const { data, error } = await supabase.storage

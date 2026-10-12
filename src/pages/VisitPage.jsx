@@ -29,6 +29,7 @@ import SignaturePad from "../components/scheduling/SignaturePad";
 import Button from "../components/ui/Button";
 import StatusPill from "../components/ui/StatusPill";
 import { ACTIVITY_LEVELS, REPORT_UPLOAD_CATEGORIES, ROLES } from "../utils/constants";
+import { announceFollowUp } from "../utils/followUpBooking";
 import { combineServices, crewOf, isAssignedTo, servicesOf } from "../utils/scheduling";
 import { heldBy, openCheckouts } from "../utils/custody";
 import BatchSelect from "../components/inventory/BatchSelect";
@@ -131,7 +132,7 @@ function VisitPage() {
   const { inventory, movements, batches, stockOutMany } = useInventory();
   const { activeServices, serviceById, serviceByName } = useServices();
   const { appointments, loading, startVisit, submitReport, uploadSignature, addAttachment, removeAttachment, addStockUsed, planActions } = useScheduling();
-  const { showError, showSuccess } = useToast();
+  const { showError, showSuccess, showInfo } = useToast();
   const confirm = useConfirm();
 
   const appointment = appointments.find((entry) => entry.id === id) || null;
@@ -417,6 +418,7 @@ function VisitPage() {
         showError(result);
         return;
       }
+      announceFollowUp(result.followUp, showSuccess, showInfo);
 
       // Materials last: a report is the record that matters, and a stock
       // problem (say, less on hand than typed) must not lose it.

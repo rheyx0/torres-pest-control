@@ -67,8 +67,8 @@ export function paymentCheck({ client, services = [], source = null, quotes = []
 
 /**
  * Follow-up dates set on a report (the visit's followUpDate) that fall within
- * `withinDays`, or have passed in the last 30 days, with nothing booked for
- * the client since that visit. Soonest first.
+ * `withinDays`, or have passed in the last 30 days, with no follow-up booked
+ * for that visit yet. Soonest first.
  *   [{ visit, client, dueOn, days }]   days < 0 when it has passed
  */
 export function followUpReminders(appointments = [], clients = [], now = new Date(), withinDays = 7) {
@@ -79,10 +79,15 @@ export function followUpReminders(appointments = [], clients = [], now = new Dat
     .map((visit) => ({ visit, client: clientById.get(visit.clientId) || null, dueOn: String(visit.followUpDate).slice(0, 10) }))
     .map((entry) => ({ ...entry, days: daysFrom(today, entry.dueOn) }))
     .filter(({ days }) => days <= withinDays && days >= -30)
+    // Cleared only by an actual follow-up: one linked to this visit (068,
+    // 073), or a Follow-up Visit booked for the client after it (before the
+    // link existed). Another job for the client no longer hides it.
     .filter(({ visit }) => !appointments.some((other) => other.id !== visit.id
-      && other.clientId === visit.clientId
       && other.status !== "Cancelled"
-      && new Date(other.scheduledAt) > new Date(visit.scheduledAt)))
+      && (other.followUpOf === visit.id
+        || (!other.followUpOf && other.clientId === visit.clientId
+          && /follow[\s-]?up/i.test(other.serviceType || "")
+          && new Date(other.scheduledAt) > new Date(visit.scheduledAt)))))
     .sort((a, b) => a.dueOn.localeCompare(b.dueOn));
 }
 

@@ -144,8 +144,15 @@ export function SchedulingProvider({ children }) {
       ...(reportFields.inspectionAreaSqm !== undefined ? { inspectionAreaSqm: reportFields.inspectionAreaSqm === "" ? null : Number(reportFields.inspectionAreaSqm) } : {}),
       ...(reportFields.recommendedServiceIds !== undefined ? { recommendedServiceIds: reportFields.recommendedServiceIds } : {}),
     } : entry));
-    return result.report;
-  }, []);
+    // A follow-up date books the follow-up (migration 073) when every rule
+    // passes; the answer says what happened, and the reminder covers the rest.
+    let followUp = null;
+    if (result.report.follow_up_date) {
+      followUp = await appointmentService.bookFollowUpFromReport(appointmentId);
+      if (followUp?.status === "BOOKED") await refresh();
+    }
+    return { ...result.report, followUp };
+  }, [refresh]);
 
   // A technician starting a visit on site: status In progress, started_at set.
   const startVisit = useCallback(async (appointmentId) => {

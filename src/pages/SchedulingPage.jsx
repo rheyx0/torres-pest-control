@@ -25,6 +25,7 @@ import useUsers from "../hooks/useUsers";
 import useServices from "../hooks/useServices";
 import { useOptionalBilling } from "../hooks/useBilling";
 import { findFollowUpService, followUpPriceFor, paymentCheck } from "../utils/sprint4";
+import { announceFollowUp } from "../utils/followUpBooking";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
@@ -94,7 +95,7 @@ const STOCK_CATEGORIES = ["CHEMICAL", "MATERIAL", "EQUIPMENT"];
 
 function SchedulingPage() {
   const { can, currentUser } = useAuth();
-  const { showError, showSuccess } = useToast();
+  const { showError, showSuccess, showInfo } = useToast();
   const confirm = useConfirm();
   const { clients, addDocument, removeDocument, getDocumentUrl } = useClients();
   const { inventory, movements, batches, stockOutMany } = useInventory();
@@ -689,6 +690,7 @@ function SchedulingPage() {
       setMessage(result);
       return;
     }
+    announceFollowUp(result.followUp, showSuccess, showInfo);
     const message = completing
       ? "Both signed. Service marked Completed."
       : selected.status === "Completed"
