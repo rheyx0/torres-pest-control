@@ -2190,7 +2190,7 @@ function AppointmentPanel({
                     <div style={{ marginTop: "1.5rem", paddingTop: "1.25rem", borderTop: "1px solid #efe9e0" }}>
                       <h3 style={{ margin: 0, color: colors.body, fontSize: "1rem", fontWeight: 500 }}>Report attachments</h3>
                       <p style={{ margin: "0.2rem 0 0.9rem", color: colors.muted, fontSize: "0.74rem" }}>
-                        Files for this visit only. JPG, PNG, or PDF up to 5MB each.
+                        Files for this visit only. JPG, PNG, or PDF up to 10MB each.
                       </p>
                       <div
                         className="grid grid-cols-1 md:grid-cols-2 gap-3.5 overflow-hidden"

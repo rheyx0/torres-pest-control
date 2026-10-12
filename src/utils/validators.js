@@ -231,7 +231,7 @@ export function validateDocument(file) {
     ALLOWED_DOCUMENT_EXTENSIONS.some((extension) => name.endsWith(extension));
 
   if (!typeAllowed) return "Only PDF, DOC, DOCX, JPG, and PNG files are allowed.";
-  if (file.size > MAX_DOCUMENT_BYTES) return "File exceeds the 2MB upload limit.";
+  if (file.size > MAX_DOCUMENT_BYTES) return `File exceeds the ${Math.round(MAX_DOCUMENT_BYTES / 1024 / 1024)}MB upload limit.`;
 
   return null;
 }
@@ -246,7 +246,7 @@ export function validateAttachment(file) {
     ALLOWED_ATTACHMENT_EXTENSIONS.some((extension) => name.endsWith(extension));
 
   if (!typeAllowed) return "Only JPG, PNG, and PDF files are allowed.";
-  if (file.size > MAX_ATTACHMENT_BYTES) return "File exceeds the 5MB upload limit.";
+  if (file.size > MAX_ATTACHMENT_BYTES) return `File exceeds the ${Math.round(MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB upload limit.`;
 
   return null;
 }

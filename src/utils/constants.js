@@ -251,7 +251,9 @@ export const ALLOWED_DOCUMENT_TYPES = [
 
 export const ALLOWED_DOCUMENT_EXTENSIONS = [".pdf", ".doc", ".docx", ".png", ".jpg", ".jpeg"];
 
-export const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024; // 2MB
+// 10MB since Sprint 5 (migration 074): phone photos of signed papers are
+// often 3–5MB. Storage enforces the same limit on the bucket.
+export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024; // 10MB
 
 // Client-level paperwork, chosen at upload time. Values mirror the check
 // constraint in migration 031. These belong to the client and outlive any one
@@ -270,7 +272,7 @@ export const DOCUMENT_CATEGORIES = [
 // document cap. Mirrored by the report-attachments bucket in migration 028.
 export const ALLOWED_ATTACHMENT_TYPES = ["image/jpeg", "image/png", "application/pdf"];
 export const ALLOWED_ATTACHMENT_EXTENSIONS = [".jpg", ".jpeg", ".png", ".pdf"];
-export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5MB
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // 10MB (074)
 
 // What a report file is, chosen at upload time. Values mirror the check
 // constraint in migration 029; OTHER covers service-specific PDFs and anything

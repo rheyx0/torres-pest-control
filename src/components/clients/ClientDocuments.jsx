@@ -149,7 +149,7 @@ function ClientDocuments({
   onResolveUrl,
   onPreview,
   title = "Attached Documents",
-  hint = "PDF, DOCX, PNG up to 2MB",
+  hint = "PDF, DOCX, JPG, PNG up to 10MB",
   accept = ".pdf,.doc,.docx,.png,.jpg,.jpeg",
   validate = validateDocument,
   emptyMessage = "No documents attached yet.",
