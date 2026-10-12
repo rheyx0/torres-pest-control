@@ -16,6 +16,7 @@ import SignaturePreview from "../common/SignaturePreview";
 import ServiceReportPrinter from "../scheduling/ServiceReportPrinter";
 import EmptyState from "../common/EmptyState";
 import JobTimeline from "./JobTimeline";
+import WarrantyPanel from "./WarrantyPanel";
 import { clientNow } from "../../utils/jobStatus";
 import DataTable from "../ui/DataTable";
 import StatusPill from "../ui/StatusPill";
@@ -354,7 +355,7 @@ function ClientDetails({
 }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState(null);
-  const { appointments, getAttachmentUrl, getSignatureUrl, removeAttachment } = useScheduling();
+  const { appointments, getAttachmentUrl, getSignatureUrl, removeAttachment, bookWarrantyVisits } = useScheduling();
   const { staff, technicians } = useUsers();
   const { inventory } = useInventory();
   const accounts = [...staff, ...technicians];
@@ -558,6 +559,17 @@ function ClientDetails({
         <ClientFacts client={client} value={value} canEdit={canEdit} onEdit={() => setIsEditModalOpen(true)} />
 
         <section style={{ ...neutralCard, minWidth: 0 }}>
+          {hasBilling && (
+            <WarrantyPanel
+              clientId={client.id}
+              quotes={billingRecords?.quotes || []}
+              contracts={billingRecords?.contracts || []}
+              appointments={appointments}
+              technicians={technicians.filter((account) => account.status !== "INACTIVE")}
+              canBook={canBook && Boolean(bookWarrantyVisits)}
+              onBook={(request) => bookWarrantyVisits(request)}
+            />
+          )}
           <div aria-label="Right now" role="region" style={{ padding: "12px 18px", borderBottom: `1px solid ${colors.line}`, display: "grid", gap: "6px" }}>
             <span style={{ fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.muted, fontWeight: 500 }}>Right now</span>
             {nowNotes.length === 0 ? (

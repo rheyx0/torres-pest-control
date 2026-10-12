@@ -83,6 +83,12 @@ function CompletedSummary({ appointment, accounts = [], onCorrect, visitServices
           </div>
         ))}
       </dl>
+      {appointment.warrantyKind === "CHECKUP" && ["MEDIUM", "HIGH"].includes(appointment.activityLevel) && (
+        <p role="status" style={{ margin: 0, padding: "0.55rem 0.7rem", borderRadius: "0.5rem", background: "#fdf1dc", color: "#8a5a12", fontSize: "0.84rem" }}>
+          Pests found on this checkup. Book a warranty re-treatment from the client's Warranty box.{" "}
+          <button type="button" onClick={() => navigate(`/clients/${encodeURIComponent(appointment.clientId)}`)} style={{ border: 0, background: "none", padding: 0, color: "#7f1111", textDecoration: "underline", cursor: "pointer", font: "inherit" }}>Open the client</button>
+        </p>
+      )}
       <p style={{ margin: 0, color: colors.muted, fontSize: "0.78rem" }}>
         A completed visit can't be edited. Print the service form, book a follow-up or bill it from here.
       </p>

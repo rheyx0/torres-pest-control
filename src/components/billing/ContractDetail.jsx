@@ -8,6 +8,7 @@
 // Cancelling cancels the visits still to come on its plan.
 
 import { useRef, useState } from "react";
+import { warrantyLabel } from "../../utils/warranty";
 import { Ban, Mail, Printer, Trash2 } from "lucide-react";
 import { Button, Input, Modal, MoreMenu, StatusPill } from "../ui";
 import { colors } from "../../styles/theme";
@@ -128,6 +129,7 @@ function ContractDetail({ contract, client, signedDocument = null, visits = [], 
           {contract.visitCount ? row("Contract value", formatPeso(contract.visitCount * contract.pricePerVisit)) : null}
           {deposit && deposit.required > 0 ? row("Down payment", `${formatPeso(deposit.required)} · ${deposit.state === "PAID" ? "paid" : deposit.state === "PENDING_CHECK" ? "check not cleared yet" : `${formatPeso(deposit.paid)} received`}`) : null}
           {row("Billed", labelOf(BILLING_SCHEDULES, contract.billingSchedule))}
+          {row("Warranty", contract.warrantyMonths ? `${warrantyLabel(contract.warrantyMonths)} from signing${contract.checkupFrequency ? ` · ${contract.checkupFrequency === "MONTHLY" ? "monthly" : "quarterly"} checkups at no extra charge` : ""}` : "None")}
           {row("Payment terms", labelOf(PAYMENT_TERMS, contract.paymentTerms))}
           {row("Included", contract.inclusions)}
           {row("Cancellation", contract.cancellationTerms)}

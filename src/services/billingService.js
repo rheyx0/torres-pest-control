@@ -56,6 +56,9 @@ export function mapQuoteRow(row) {
     notes: row.notes || "",
     revisionOf: row.revision_of || "",
     inspectionId: row.inspection_id || "", // 066
+    // 078: the warranty, in months, and its checkups.
+    warrantyMonths: row.warranty_months ?? null,
+    checkupFrequency: row.checkup_frequency || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     sentAt: row.sent_at || "",
@@ -246,6 +249,12 @@ const recordContractDeposit = (payment) => call("record_contract_deposit", {
   },
 }, (row) => row && mapPaymentRow(row));
 
+/** The warranty and its checkups (078), set apart from the terms. */
+export const setQuoteWarranty = (quoteId, months, checkups) =>
+  call("set_quote_warranty", { p_quote_id: quoteId, p_months: months ? Number(months) : null, p_checkups: months && checkups ? checkups : null }, (row) => row && mapQuoteRow(row));
+export const setContractWarranty = (contractId, months, checkups) =>
+  call("set_contract_warranty", { p_contract_id: contractId, p_months: months ? Number(months) : null, p_checkups: months && checkups ? checkups : null }, (row) => row && mapContractRow(row));
+
 /** None, a fixed amount or a percentage of the contract total (077). */
 export const setContractDeposit = (contractId, type, value) =>
   call("set_contract_deposit", { p_contract_id: contractId, p_type: type, p_value: Number(value) || 0 }, (row) => row && mapContractRow(row));
@@ -355,6 +364,9 @@ export function mapContractRow(row) {
     depositType: row.deposit_type || "NONE",
     depositValue: Number(row.deposit_value) || 0,
     depositAmount: Number(row.deposit_amount) || 0,
+    // 078: the warranty, in months, and its checkups.
+    warrantyMonths: row.warranty_months ?? null,
+    checkupFrequency: row.checkup_frequency || "",
     createdAt: row.created_at,
   };
 }

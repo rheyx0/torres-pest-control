@@ -122,6 +122,8 @@ function NewAppointmentModal({
   // Picking the Follow-up Visit service by hand asks which visit it follows:
   // (originalId) => { followUpOf: { id, reference }, price, quoteId }.
   followUpDetails = null,
+  // The running warranty a follow-up falls under (078): { type, id, reference, end }.
+  initialFollowUpWarranty = null,
   // Booking a contract's visits (063): its length, as a number of visits or an end date.
   initialVisitCount = null,
   initialUntil = "",
@@ -177,6 +179,7 @@ function NewAppointmentModal({
   const selectedClient = clients.find((client) => client.id === clientId) || null;
   const [source, setSource] = useState(initialSource);
   const [followUpOf, setFollowUpOf] = useState(initialFollowUpOf);
+  const [followUpWarranty, setFollowUpWarranty] = useState(initialFollowUpWarranty);
   // "Still make appointment without an approved quotation", with its reason.
   const [override, setOverride] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
@@ -360,7 +363,7 @@ function NewAppointmentModal({
     : [];
   const chooseFollowUpOf = (originalId) => {
     setFormError("");
-    if (!originalId) { setFollowUpOf(null); return; }
+    if (!originalId) { setFollowUpOf(null); setFollowUpWarranty(null); return; }
     const details = followUpDetails?.(originalId);
     const original = appointments.find((visit) => visit.id === originalId);
     setFollowUpOf(details?.followUpOf || { id: originalId, reference: original?.reference || "" });
@@ -369,6 +372,7 @@ function NewAppointmentModal({
       setPriceTouched(true);
     }
     if (details?.quoteId) setSource(`quote:${details.quoteId}`);
+    setFollowUpWarranty(details?.warranty || null);
   };
 
   const handleSubmit = async (event) => {
@@ -446,6 +450,7 @@ function NewAppointmentModal({
       ...(!check.ok ? { paymentOverride: overrideReason.trim() } : {}),
       // A follow-up: linked to the visit it checks on once booked.
       ...(followUpOf && (initialFollowUpOf || followUpTicked) ? { followUpOf: followUpOf.id } : {}),
+      ...(followUpOf && followUpWarranty ? { followUpWarranty } : {}),
     };
     // A plan, or one visit carrying several services, is booked in one go
     // (book_appointments, 052). A plain single visit keeps the older path,
@@ -867,7 +872,9 @@ function NewAppointmentModal({
         {followUpOf && (initialFollowUpOf || followUpTicked) && (
           <p role="status" style={{ gridColumn: "1 / -1", margin: 0, padding: "9px 12px", background: surface.sunken, borderRadius: radius.control, color: neutral.ink, ...text.small }}>
             <strong style={{ fontWeight: weight.medium }}>Follow-up of {followUpOf.reference}.</strong>{" "}
-            Priced at the follow-up price of that visit's services, and booked under its quotation.
+            {followUpWarranty
+              ? `Covered by warranty ${followUpWarranty.reference} until ${new Date(`${followUpWarranty.end}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}: a free re-treatment, no charge.`
+              : "Priced at the follow-up price of that visit's services, and booked under its quotation."}
           </p>
         )}
 

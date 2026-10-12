@@ -190,6 +190,23 @@ export function SchedulingProvider({ children }) {
 
   // A follow-up visit names the visit it checks on (068). Resolves to true, or
   // the error message.
+  // Warranty checkups and re-treatments (078): booked, then the schedule reloads.
+  const bookWarrantyVisits = useCallback(async (booking) => {
+    const result = await appointmentService.bookWarrantyVisits(booking);
+    if (result.error) return result.error;
+    await refresh();
+    return result.appointments;
+  }, [refresh]);
+
+  const markWarrantyRetreatment = useCallback(async (appointmentId, source) => {
+    const result = await appointmentService.markWarrantyRetreatment(appointmentId, source);
+    if (result.error) return result.error;
+    setAppointments((current) => current.map((entry) => (entry.id === appointmentId
+      ? { ...entry, warrantyKind: "RETREATMENT", warrantyQuoteId: source.type === "QUOTE" ? source.id : "", warrantyContractId: source.type === "CONTRACT" ? source.id : "", price: 0 }
+      : entry)));
+    return true;
+  }, []);
+
   const linkFollowUp = useCallback(async (appointmentId, originalId) => {
     const { error: linkError } = await appointmentService.linkFollowUp(appointmentId, originalId);
     if (linkError) return linkError;
@@ -204,8 +221,8 @@ export function SchedulingProvider({ children }) {
   }, [currentUser?.name]);
 
   const value = useMemo(
-    () => ({ appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl, uploadSignature: appointmentService.uploadSignature, getSignatureUrl: appointmentService.getSignatureUrl, fetchStatusHistory: appointmentService.fetchStatusHistory, logBookingOverride, linkFollowUp }),
-    [appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, logBookingOverride, linkFollowUp]
+    () => ({ appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl: appointmentService.getAttachmentUrl, uploadSignature: appointmentService.uploadSignature, getSignatureUrl: appointmentService.getSignatureUrl, fetchStatusHistory: appointmentService.fetchStatusHistory, logBookingOverride, linkFollowUp, bookWarrantyVisits, markWarrantyRetreatment }),
+    [appointments, absences, loading, error, refresh, createAppointment, bookAppointments, planActions, updateAppointment, startVisit, submitReport, addStockUsed, addAttachment, removeAttachment, logBookingOverride, linkFollowUp, bookWarrantyVisits, markWarrantyRetreatment]
   );
   return <SchedulingContext.Provider value={value}>{children}</SchedulingContext.Provider>;
 }

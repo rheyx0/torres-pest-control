@@ -11,6 +11,7 @@
 
 import { useMemo, useState } from "react";
 import { ChargeButtons, LaborParts, TransportHint } from "./FieldCharges";
+import WarrantyFields, { validateWarranty } from "./WarrantyFields";
 import { CHARGE_LABELS, chargeKind, updateCharge } from "../../utils/fieldCharges";
 import { Plus, X } from "lucide-react";
 import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
@@ -47,6 +48,8 @@ export function validateQuote(form, lines, today = todayISO()) {
   if (discountError) return discountError;
   if (form.depositType === "PERCENT" && Number(form.depositValue) > 100) return "A down payment cannot be more than 100%.";
   if (form.depositType !== "NONE" && !(Number(form.depositValue) > 0)) return "Enter the down payment, or choose No down payment.";
+  const warrantyProblem = validateWarranty(form.warrantyMonths);
+  if (warrantyProblem) return warrantyProblem;
   return null;
 }
 
@@ -67,6 +70,9 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
     depositType: quote?.depositType || (inspectionDeposit ? "PERCENT" : "NONE"),
     depositValue: quote?.depositValue ?? inspectionDeposit,
     notes: quote?.notes || "",
+    // 078: the warranty, from the day the job is completed.
+    warrantyMonths: quote?.warrantyMonths ?? "",
+    checkupFrequency: quote?.checkupFrequency || "",
   }));
   const [lines, setLines] = useState(() => (quote
     ? (quote.lines || []).map((line) => newLine({
@@ -310,6 +316,12 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
               <Input aria-label="Down payment value" type="number" min="0" step="0.01" value={form.depositValue} disabled={form.depositType === "NONE"} onChange={(event) => set("depositValue", event.target.value)} />
             </div>
           </Field>
+          <WarrantyFields
+            months={form.warrantyMonths}
+            frequency={form.checkupFrequency}
+            clientFrequency={clients.find((client) => client.id === form.clientId)?.checkupFrequency || ""}
+            onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+          />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(220px, 280px)", gap: "1rem", alignItems: "start" }}>

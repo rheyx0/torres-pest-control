@@ -371,7 +371,8 @@ export function draftInvoiceLines({ quote = null, quoteInvoiced = false, visits 
 // A visit of a contract billed up front (Sprint 4) is already paid for, so it
 // is left out: `prepaid` is a Set of plan ids (prepaidPlanIds in sprint4.js).
 export const invoiceableVisits = (appointments = [], clientId, prepaid = new Set()) =>
-  appointments.filter((visit) => visit.clientId === clientId && visit.status === "Completed" && !visit.invoiceId && !(visit.planId && prepaid.has(visit.planId)));
+  // A warranty's checkups and re-treatments (078) are free, never invoiced.
+  appointments.filter((visit) => visit.clientId === clientId && visit.status === "Completed" && !visit.invoiceId && !visit.warrantyKind && !(visit.planId && prepaid.has(visit.planId)));
 
 /**
  * The billing figures on the office Today page (Sprint 3):

@@ -10,6 +10,7 @@
 // the same rule the server enforces when it links the visit to the quote.
 
 import { useState } from "react";
+import { warrantyLabel } from "../../utils/warranty";
 import { Copy, Mail, Printer, Trash2 } from "lucide-react";
 import { Button, Input, Modal, MoreMenu, StatusPill } from "../ui";
 import { colors } from "../../styles/theme";
@@ -152,6 +153,7 @@ function QuoteDetail({
           <StatusPill status={QUOTE_STATUS_LABELS[status]} />
           {deposit.required > 0 && <StatusPill status={depositWords} />}
           <span>One-time service</span>
+          {quote.warrantyMonths ? <span>· Warranty {warrantyLabel(quote.warrantyMonths)} from completion{quote.checkupFrequency ? `, ${quote.checkupFrequency === "MONTHLY" ? "monthly" : "quarterly"} checkups` : ""}</span> : null}
           <span>· Valid until {formatDate(quote.validUntil)}</span>
           {terms && <span>· Payment {terms.toLowerCase()}</span>}
           {quote.areaSqm && <span>· {quote.areaSqm} sqm</span>}

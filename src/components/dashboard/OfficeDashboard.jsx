@@ -136,7 +136,7 @@ function OfficeDashboard() {
   const billing = useOptionalBilling();
   const billingOn = Boolean(billing?.office && billing.invoicesAvailable);
   const attention = attentionItems(
-    { appointments, clients, inventory, users, absences, invoices: billingOn ? billing.invoices : null, payments: billingOn ? billing.payments : [] },
+    { appointments, clients, inventory, users, absences, invoices: billingOn ? billing.invoices : null, payments: billingOn ? billing.payments : [], quotes: billing?.office ? billing.quotes || [] : [], contracts: billing?.office ? billing.contracts || [] : [] },
     { now, canBook, canSeeStock }
   );
   const bars = weekBars(appointments, now);

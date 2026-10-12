@@ -141,7 +141,7 @@ export function contractInvoicesDue({ contracts = [], appointments = [], invoice
     .forEach((contract) => {
       const planVisits = contract.planId ? appointments.filter((visit) => visit.planId === contract.planId) : [];
       const unbilled = planVisits
-        .filter((visit) => visit.status === "Completed" && !visit.invoiceId)
+        .filter((visit) => visit.status === "Completed" && !visit.invoiceId && !visit.warrantyKind)
         .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
 
       if (contract.billingSchedule === "UPFRONT") {

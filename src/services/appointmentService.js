@@ -7,7 +7,7 @@ const ATTACHMENT_BUCKET = "report-attachments";
 const ATTACHMENT_COLUMNS = "id, appointment_id, name, mime_type, size_bytes, storage_path, category, uploaded_at";
 const SIGNED_URL_TTL_SECONDS = 60;
 
-const APPOINTMENT_COLUMNS = "id, reference, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, plan_id, plan_position, day_done_at, quote_id, invoice_id, activity_level, open_issues, inspection_area_sqm, recommended_service_ids, follow_up_of, created_at, updated_at";
+const APPOINTMENT_COLUMNS = "id, reference, client_id, scheduled_at, duration_minutes, pest_concern, service_type, service_location, cancellation_reason, technician_id, status, notes, created_by, service_frequency, price, service_id, started_at, plan_id, plan_position, day_done_at, quote_id, invoice_id, activity_level, open_issues, inspection_area_sqm, recommended_service_ids, follow_up_of, warranty_kind, warranty_quote_id, warranty_contract_id, created_at, updated_at";
 const REPORT_COLUMNS = "appointment_id, findings, treatment_performed, recommendations, follow_up_date, submitted_by, submitted_at, customer_name, signature_path, signed_at, completion_note, technician_signature_path, technician_signed_at";
 
 function describeError(error) {
@@ -60,6 +60,10 @@ export function mapAppointmentRow(row, report = null) {
     recommendedServiceIds: row.recommended_service_ids || [],
     // The visit this follow-up checks on (068).
     followUpOf: row.follow_up_of || "",
+    // A warranty's checkup or re-treatment (078), and whose warranty.
+    warrantyKind: row.warranty_kind || "",
+    warrantyQuoteId: row.warranty_quote_id || "",
+    warrantyContractId: row.warranty_contract_id || "",
     planPosition: row.plan_position ?? null,
     planKind: row.planKind || "",
     planFrequency: row.planFrequency || "",
@@ -95,7 +99,7 @@ export function mapAppointmentRow(row, report = null) {
 // naming a column that doesn't exist. Rather than blank the whole schedule
 // when the app is deployed ahead of a migration, retry without whichever
 // column it named.
-const OPTIONAL_COLUMNS = ["reference", "started_at", "plan_id", "plan_position", "day_done_at", "quote_id", "invoice_id", "activity_level", "open_issues", "inspection_area_sqm", "recommended_service_ids", "follow_up_of"];
+const OPTIONAL_COLUMNS = ["reference", "started_at", "plan_id", "plan_position", "day_done_at", "quote_id", "invoice_id", "activity_level", "open_issues", "inspection_area_sqm", "recommended_service_ids", "follow_up_of", "warranty_kind", "warranty_quote_id", "warranty_contract_id"];
 
 async function selectAppointments() {
   let columns = APPOINTMENT_COLUMNS;
@@ -427,6 +431,31 @@ export async function getSignatureUrl(storagePath) {
     .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
   if (error) return { error: describeError(error) };
   return { url: data.signedUrl };
+}
+
+/**
+ * Checkups or a re-treatment under a warranty (078), at ₱0, in one go.
+ * kind CHECKUP | RETREATMENT; source { type: QUOTE | CONTRACT, id };
+ * visits [{ scheduledAt, durationMinutes }].
+ */
+export async function bookWarrantyVisits({ kind, source, visits, technicianIds = [], reason = "" }) {
+  const { data, error } = await supabase.rpc("book_warranty_visits", {
+    p_kind: kind,
+    p_source_type: source.type,
+    p_source_id: source.id,
+    p_visits: visits.map((visit) => ({ scheduled_at: new Date(visit.scheduledAt).toISOString(), duration_minutes: Number(visit.durationMinutes) || 60 })),
+    p_technician_ids: technicianIds,
+    p_reason: reason || null,
+  });
+  if (error) return { error: describeError(error) };
+  return { appointments: (Array.isArray(data) ? data : data ? [data] : []).map((row) => mapAppointmentRow(row)) };
+}
+
+/** A follow-up booked under a running warranty becomes its free re-treatment (078). */
+export async function markWarrantyRetreatment(appointmentId, source) {
+  const { error } = await supabase.rpc("mark_warranty_retreatment", { p_appointment_id: appointmentId, p_source_type: source.type, p_source_id: source.id });
+  if (error) return { error: describeError(error) };
+  return { error: null };
 }
 
 /** Mark a visit In progress (migration 048's start_visit). */

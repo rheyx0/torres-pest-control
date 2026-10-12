@@ -11,6 +11,7 @@
 // office still issues those from its registered booklet.
 
 import { ACTIVITY_LEVELS, BILLING_SCHEDULES, COMPANY, PAYMENT_METHOD_LABELS, PAYMENT_TERMS } from "../../utils/constants";
+import { warrantyLabel } from "../../utils/warranty";
 import { depositStatus, invoiceBalance, inspectionIncludedText } from "../../utils/billing";
 import { appointmentReference } from "../../utils/scheduling";
 import { formatDate, formatDateTime, formatPeso } from "../../utils/formatters";
@@ -85,6 +86,9 @@ function Letterhead({ kind, reference, title = null }) {
   );
 }
 
+// "2 years from signing. Includes quarterly checkups at no extra charge during the warranty period."
+const warrantyText = (months, frequency, from) => `${warrantyLabel(months)} ${from}.${frequency ? ` Includes ${frequency === "MONTHLY" ? "monthly" : "quarterly"} checkups at no extra charge during the warranty period.` : ""}`;
+
 function QuoteBody({ quote, client, payments, includesFor, inspection }) {
   const deposit = depositStatus(quote, payments);
   return (
@@ -99,6 +103,7 @@ function QuoteBody({ quote, client, payments, includesFor, inspection }) {
           <Row label="Payment terms" value={termsLabel(quote.paymentTerms)} />
           <Row label="Service" value="One-time service" />
           {quote.areaSqm && <Row label="Area" value={`${quote.areaSqm} sqm`} />}
+          {quote.warrantyMonths ? <Row label="Warranty" value={warrantyText(quote.warrantyMonths, quote.checkupFrequency, "from the day the work is completed")} /> : null}
           {inspection && <Row label="Site inspection" value={`${inspectionIncludedText(inspection).replace(/^Includes free site inspection /, "Included at no charge ")}`} />}
         </tbody>
       </table>
@@ -233,6 +238,7 @@ function ContractBody({ contract, client }) {
           {contract.areaSqm ? <Row label="Area" value={`${contract.areaSqm} sqm`} /> : null}
           <Row label="Starts" value={formatDate(contract.startsOn)} />
           <Row label="Length" value={length} />
+          {contract.warrantyMonths ? <Row label="Warranty" value={warrantyText(contract.warrantyMonths, contract.checkupFrequency, "from signing")} /> : null}
         </tbody>
       </table>
 
@@ -247,6 +253,7 @@ function ContractBody({ contract, client }) {
             {value !== null && <tr className="bd-strong"><th>Contract value</th><td>{formatPeso(value)}</td></tr>}
             <tr><th>Billed</th><td>{schedule}</td></tr>
             <tr><th>Payment terms</th><td>{termsLabel(contract.paymentTerms)}</td></tr>
+            {contract.depositAmount > 0 ? <tr className="bd-strong"><th>Down payment to book</th><td>{formatPeso(contract.depositAmount)}</td></tr> : null}
           </tbody>
         </table>
       </section>

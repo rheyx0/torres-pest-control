@@ -7,6 +7,7 @@
 // minimum charge. It stays editable, and once typed over it is left alone.
 
 import { useState } from "react";
+import WarrantyFields, { validateWarranty } from "./WarrantyFields";
 import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
 import { colors } from "../../styles/theme";
 import { BILLING_SCHEDULES, LIMITS, PAYMENT_TERMS, SERVICE_FREQUENCIES } from "../../utils/constants";
@@ -42,7 +43,7 @@ export function validateContract(values) {
     if (values.depositType === "PERCENT" && value > 100) return "A down payment cannot be more than 100%.";
     if (values.depositType === "PERCENT" && values.lengthBy === "until") return "A contract with an end date takes the down payment as an amount (₱).";
   }
-  return null;
+  return validateWarranty(values.warrantyMonths);
 }
 
 function ContractEditor({ contract = null, clients = [], services = [], initialClientId = "", onSave, onClose }) {
@@ -65,6 +66,9 @@ function ContractEditor({ contract = null, clients = [], services = [], initialC
     // 077: the down payment taken once it is signed.
     depositType: contract?.depositType || "PERCENT",
     depositValue: contract ? String(contract.depositValue || "") : "30",
+    // 078: the warranty, from the day it is signed.
+    warrantyMonths: contract?.warrantyMonths ?? "",
+    checkupFrequency: contract?.checkupFrequency || "",
   }));
   const [priceTouched, setPriceTouched] = useState(Boolean(contract));
   const [saving, setSaving] = useState(false);
@@ -216,6 +220,13 @@ function ContractEditor({ contract = null, clients = [], services = [], initialC
               </Select>
             </div>
           </Field>
+          <WarrantyFields
+            months={values.warrantyMonths}
+            frequency={values.checkupFrequency}
+            startsWhen="when the contract is signed"
+            clientFrequency={clients.find((client) => client.id === values.clientId)?.checkupFrequency || ""}
+            onChange={(patch) => setValues((current) => ({ ...current, ...patch }))}
+          />
           <Field label="Billed">
             <Select aria-label="Billing schedule" value={values.billingSchedule} onChange={set("billingSchedule")}>
               {BILLING_SCHEDULES.map((schedule) => <option key={schedule.value} value={schedule.value}>{schedule.label}</option>)}

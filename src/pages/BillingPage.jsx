@@ -183,6 +183,10 @@ function BillingPage() {
         showError(`The contract was saved, but its down payment was not: ${deposit}`);
       }
     }
+    if (result?.id && billing.setContractWarranty && ((values.warrantyMonths || "") !== (contract?.warrantyMonths ?? "") || (values.checkupFrequency || "") !== (contract?.checkupFrequency || ""))) {
+      const warranty = await billing.setContractWarranty(result, values.warrantyMonths, values.checkupFrequency);
+      if (typeof warranty === "string" && !/set_contract_warranty|schema cache|does not exist/i.test(warranty)) showError(`The contract was saved, but its warranty was not: ${warranty}`);
+    }
     showSuccess(contract ? `${contract.reference} saved.` : `Contract ${result?.reference || ""} created as a draft.`);
     setContractEditing(null);
     setTab("contracts");
@@ -221,6 +225,11 @@ function BillingPage() {
     const quote = editing?.quote || null;
     const result = await billing.saveQuote(quote?.id || null, form, lines);
     if (typeof result === "string") return result;
+    // The warranty (078) is set right after the terms.
+    if (result?.id && billing.setQuoteWarranty && ((form.warrantyMonths || "") !== (quote?.warrantyMonths ?? "") || (form.checkupFrequency || "") !== (quote?.checkupFrequency || ""))) {
+      const warranty = await billing.setQuoteWarranty(result, form.warrantyMonths, form.checkupFrequency);
+      if (typeof warranty === "string" && !/set_quote_warranty|schema cache|does not exist/i.test(warranty)) showError(`The quote was saved, but its warranty was not: ${warranty}`);
+    }
     showSuccess(quote ? `${quote.reference} saved.` : `Quote ${result?.reference || ""} created.`);
     // A new quote from an inspection names it.
     if (!quote && inspectionVisit && result?.id) await billing.setQuoteInspection(result.id, inspectionVisit.id);

@@ -26,6 +26,7 @@ import useServices from "../hooks/useServices";
 import { useOptionalBilling } from "../hooks/useBilling";
 import { findFollowUpService, followUpPriceFor, paymentCheck } from "../utils/sprint4";
 import { announceFollowUp } from "../utils/followUpBooking";
+import { coveringWarranty } from "../utils/warranty";
 import { SERVICE_CATEGORIES, visitCategory } from "../utils/categories";
 import CategoryBadge from "../components/ui/CategoryBadge";
 import { useScheduling } from "../context/SchedulingContext";
@@ -104,7 +105,7 @@ function SchedulingPage() {
   const outWithTechnicians = useMemo(() => openCheckouts(movements), [movements]);
   const { staff, technicians } = useUsers();
   const { activeServices, serviceById, serviceByName } = useServices();
-  const { logBookingOverride, linkFollowUp, appointments, absences, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
+  const { logBookingOverride, linkFollowUp, markWarrantyRetreatment, appointments, absences, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
   const billing = useOptionalBilling();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState(null);
@@ -177,10 +178,13 @@ function SchedulingPage() {
   const followUpPrefill = (original) => {
     const followUpService = findFollowUpService(activeServices);
     const price = followUpPriceFor(original, servicesOf(original, serviceById, serviceByName), followUpService);
+    // Under a running warranty (078) the follow-up is a free re-treatment.
+    const covered = billing?.office ? coveringWarranty(original, { quotes: billing.quotes || [], contracts: billing.contracts || [], appointments }) : null;
     return {
       followUpOf: { id: original.id, reference: appointmentReference(original) },
       serviceIds: followUpService ? [followUpService.id] : [],
-      price: price ?? "",
+      price: covered ? 0 : price ?? "",
+      warranty: covered ? { type: covered.type, id: covered.id, reference: covered.reference, end: covered.end } : null,
       frequency: "One-time",
       pestConcern: original.pestConcern || "",
       quoteId: original.quoteId || undefined,
@@ -803,6 +807,7 @@ function SchedulingPage() {
     if (typeof result === "string") return result;
     logOverride(fields);
     await linkToOriginal(fields.followUpOf, [result.id]);
+    await markRetreatment(fields.followUpWarranty, [result.id]);
     return showBooked(result, await linkToSource(fields.source, [result.id], "Appointment created."));
   };
 
@@ -813,10 +818,23 @@ function SchedulingPage() {
     if (typeof result === "string") return result;
     logOverride(booking);
     await linkToOriginal(booking.followUpOf, result?.bookedIds || []);
+    await markRetreatment(booking.followUpWarranty, result?.bookedIds || []);
     const count = booking.visits.length;
     return showBooked(result, await linkToSource(booking.source, result?.bookedIds || [], booking.kind === "MULTI_DAY"
       ? `${count}-day job booked.`
       : booking.kind ? `${count} visits booked.` : "Appointment created."));
+  };
+
+  // A follow-up under a running warranty (078) is marked its free re-treatment.
+  const markRetreatment = async (warranty, ids) => {
+    if (!warranty || ids.length === 0 || !markWarrantyRetreatment) return;
+    for (const id of ids) {
+      const marked = await markWarrantyRetreatment(id, { type: warranty.type, id: warranty.id });
+      if (marked !== true) {
+        showError(`Booked, but not marked as a warranty re-treatment: ${marked}`);
+        return;
+      }
+    }
   };
 
   // A follow-up (068) names the visit it checks on. The visit stands either
@@ -1314,6 +1332,7 @@ function SchedulingPage() {
           initialPestConcern={createPrefill?.pestConcern || ""}
           initialPrice={createPrefill?.price ?? ""}
           initialFollowUpOf={createPrefill?.followUpOf || null}
+          initialFollowUpWarranty={createPrefill?.warranty || null}
           followUpDetails={(originalId) => {
             const original = appointments.find((entry) => entry.id === originalId);
             return original ? followUpPrefill(original) : null;

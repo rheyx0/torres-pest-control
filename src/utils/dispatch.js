@@ -19,6 +19,7 @@ import { plansEnding } from "./plans";
 import { describeOut, outOn } from "./absences";
 import { byTime, dayKey, hasPlausiblePrice, weekWindow } from "./dashboardMetrics";
 import { followUpReminders, paymentReminders } from "./sprint4";
+import { checkupReminders } from "./warranty";
 import { formatPeso } from "./formatters";
 
 export const BOARD_START_HOUR = 7;
@@ -263,7 +264,7 @@ function whenPhrase(value, now) {
  * not act on.
  */
 export function attentionItems(
-  { appointments = [], clients = [], inventory = [], users = [], absences = [], invoices = null, payments = [] },
+  { appointments = [], clients = [], inventory = [], users = [], absences = [], invoices = null, payments = [], quotes = [], contracts = [] },
   { now = new Date(), canBook = true, canSeeStock = true, expiryDays = 30 } = {}
 ) {
   const clientName = (id) => clients.find((client) => client.id === id)?.name || "Unknown client";
@@ -397,6 +398,23 @@ export function attentionItems(
       action: canBook
         ? { label: "Book", to: `/scheduling?new=1&client=${encodeURIComponent(first.visit.clientId)}&date=${first.dueOn}&followup=${encodeURIComponent(first.visit.id)}` }
         : { label: "View", to: `/clients/${encodeURIComponent(first.visit.clientId)}` },
+    });
+  }
+
+  // Warranty checkups (078) due within 7 days, or missed, and not booked.
+  const checkups = checkupReminders({ quotes, contracts, appointments }, now);
+  if (checkups.length) {
+    const [first] = checkups;
+    const clientId = first.warranty.source.clientId;
+    items.push({
+      key: "checkups",
+      kind: "checkup",
+      tone: first.days < 0 ? "warning" : "neutral",
+      title: checkups.length === 1 ? `${clientName(clientId)} has a checkup to book` : `${checkups.length} checkups to book`,
+      detail: checkups.length === 1
+        ? `Due ${shortDate(new Date(`${first.dueOn}T00:00:00`))} under ${first.warranty.reference} · no charge`
+        : listNames(checkups.map((entry) => `${clientName(entry.warranty.source.clientId)} (${shortDate(new Date(`${entry.dueOn}T00:00:00`))})`), 2),
+      action: { label: "Book", to: `/clients/${encodeURIComponent(clientId)}` },
     });
   }
 
