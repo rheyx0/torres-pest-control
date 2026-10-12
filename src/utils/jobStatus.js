@@ -86,11 +86,15 @@ export function clientNow({ visits = [], quotes = [], invoices = [], payments = 
  * still to come (not booked, not invoiced…) has done false and no date.
  * statusHistory = [{ fromStatus, toStatus, changedAt, changedByName }] (066).
  */
-export function jobTimeline(visit, { quote = null, invoice = null, payments = [], statusHistory = [], nameOf = () => "" } = {}) {
+export function jobTimeline(visit, { quote = null, invoice = null, payments = [], statusHistory = [], nameOf = () => "", inspection = null } = {}) {
   if (!visit) return [];
   const steps = [];
   const add = (key, at, label, detail = "") => steps.push({ key, at: at || null, label, detail, done: Boolean(at) });
 
+  // The free site inspection the quote was made from: the job's first step.
+  if (inspection && inspection.id !== visit.id) {
+    add("inspection", inspection.reportSubmittedAt || inspection.scheduledAt, `Site inspection ${appointmentReference(inspection)} (free)`, inspection.inspectionAreaSqm ? `${inspection.inspectionAreaSqm} sqm` : "");
+  }
   if (quote) {
     if (quote.sentAt) add("q-sent", quote.sentAt, `Quotation ${quote.reference} sent`, formatPeso(quote.total));
     if (quote.status === "APPROVED" || quote.decidedAt) add("q-ok", quote.decidedAt || quote.sentAt, `Quotation ${quote.reference} ${quote.status === "REJECTED" ? "rejected" : "approved"}`);

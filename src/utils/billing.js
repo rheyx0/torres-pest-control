@@ -219,8 +219,22 @@ export function visitMaterialLines(visit, services = [], itemById = () => null) 
  *     ₱0, extra ones charged; a multi-day job's days counted together;
  *   - the visits' approved extras not yet on an invoice.
  */
-export function draftInvoiceLines({ quote = null, quoteInvoiced = false, visits = [], extras = [], servicesFor = () => [], itemById = () => null }) {
+/**
+ * The free inspection a quote was made from, as words for the quote, its
+ * printout and the invoice (Sprint 5): it is part of the service.
+ */
+export function inspectionIncludedText(inspection) {
+  if (!inspection) return "";
+  const when = inspection.scheduledAt ? new Date(inspection.scheduledAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "";
+  return `Includes free site inspection (${[appointmentReference(inspection), when].filter(Boolean).join(", ")})`;
+}
+
+export function draftInvoiceLines({ quote = null, quoteInvoiced = false, visits = [], extras = [], servicesFor = () => [], itemById = () => null, inspection = null }) {
   const lines = [];
+  // The inspection was part of the service: shown at no charge.
+  if (quote && !quoteInvoiced && inspection) {
+    lines.push({ kind: "SERVICE", serviceId: "", itemId: "", appointmentId: "", description: `Site inspection (${appointmentReference(inspection)}): included`, quantity: 1, unit: "visit", unitPrice: 0 });
+  }
   if (quote && !quoteInvoiced) {
     quote.lines.forEach((line) => lines.push({
       kind: line.kind,

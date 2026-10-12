@@ -262,7 +262,7 @@ function BillingPage() {
   // Quotes, invoices and receipts print through BillingPrinter ("Save as PDF").
   // What a quote's service line covers, on screen and on the printout.
   const includesFor = (line) => (line.kind === "SERVICE" ? includedMaterialsText(serviceById(line.serviceId), itemById) : "");
-  const printQuote = (quote) => setPrintRequest({ kind: "QUOTE", quote, client: clientById.get(quote.clientId), payments: paymentsForQuote(quote.id), includesFor });
+  const printQuote = (quote) => setPrintRequest({ kind: "QUOTE", quote, client: clientById.get(quote.clientId), payments: paymentsForQuote(quote.id), includesFor, inspection: quote.inspectionId ? appointments.find((visit) => visit.id === quote.inspectionId) || null : null });
   const printInvoice = (invoice) => {
     const lineVisits = new Set(invoice.lines.map((line) => line.appointmentId).filter(Boolean));
     setPrintRequest({

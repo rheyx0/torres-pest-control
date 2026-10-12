@@ -17,7 +17,8 @@ const when = (value) => new Date(value).toLocaleString([], { month: "short", day
 
 function JobTimeline({ visit, quote = null, invoice = null, payments = [], nameOf, onOpenReport, onClose }) {
   const navigate = useNavigate();
-  const { fetchStatusHistory } = useScheduling();
+  const { fetchStatusHistory, appointments = [] } = useScheduling();
+  const inspection = quote?.inspectionId ? appointments.find((entry) => entry.id === quote.inspectionId) || null : null;
   const [history, setHistory] = useState([]);
 
   useEffect(() => {
@@ -30,7 +31,7 @@ function JobTimeline({ visit, quote = null, invoice = null, payments = [], nameO
     return () => { cancelled = true; };
   }, [visit.id, fetchStatusHistory]);
 
-  const steps = jobTimeline(visit, { quote, invoice, payments, statusHistory: history, nameOf });
+  const steps = jobTimeline(visit, { quote, invoice, payments, statusHistory: history, nameOf, inspection });
 
   return (
     <Modal

@@ -14,7 +14,7 @@ import { Copy, Mail, Printer, Trash2 } from "lucide-react";
 import { Button, Input, Modal, MoreMenu, StatusPill } from "../ui";
 import { colors } from "../../styles/theme";
 import { PAYMENT_TERMS, QUOTE_STATUS_LABELS } from "../../utils/constants";
-import { canBookFromQuote, depositStatus, quoteStatus } from "../../utils/billing";
+import { canBookFromQuote, depositStatus, inspectionIncludedText, quoteStatus } from "../../utils/billing";
 import { appointmentReference } from "../../utils/scheduling";
 import { formatDate, formatPeso } from "../../utils/formatters";
 import PaymentList from "./PaymentList";
@@ -155,7 +155,7 @@ function QuoteDetail({
           <span>· Valid until {formatDate(quote.validUntil)}</span>
           {terms && <span>· Payment {terms.toLowerCase()}</span>}
           {quote.areaSqm && <span>· {quote.areaSqm} sqm</span>}
-          {inspection && <span>· From inspection {inspection.reference || ""}</span>}
+          {inspection && <span>· {inspectionIncludedText(inspection)}</span>}
         </div>
 
         <div style={{ overflowX: "auto" }}>

@@ -169,6 +169,10 @@ export const PAYMENT_METHOD_LABELS = Object.fromEntries(PAYMENT_METHODS.map((ent
 // How often a service recurs. Mirrors the appointments_service_frequency_check
 // constraint (migration 041, "Daily" added by 052) — changing one side needs a
 // migration on the other.
+// The business's usual rate per square metre (Sprint 5): a service switched
+// to per-sqm pricing starts here, and it stays editable.
+export const DEFAULT_AREA_RATE = 150;
+
 export const SERVICE_FREQUENCIES = [
   "One-time",
   "Daily",

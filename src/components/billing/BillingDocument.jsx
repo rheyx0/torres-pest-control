@@ -11,7 +11,7 @@
 // office still issues those from its registered booklet.
 
 import { ACTIVITY_LEVELS, BILLING_SCHEDULES, COMPANY, PAYMENT_METHOD_LABELS, PAYMENT_TERMS } from "../../utils/constants";
-import { depositStatus, invoiceBalance } from "../../utils/billing";
+import { depositStatus, invoiceBalance, inspectionIncludedText } from "../../utils/billing";
 import { appointmentReference } from "../../utils/scheduling";
 import { formatDate, formatDateTime, formatPeso } from "../../utils/formatters";
 
@@ -85,7 +85,7 @@ function Letterhead({ kind, reference, title = null }) {
   );
 }
 
-function QuoteBody({ quote, client, payments, includesFor }) {
+function QuoteBody({ quote, client, payments, includesFor, inspection }) {
   const deposit = depositStatus(quote, payments);
   return (
     <>
@@ -99,6 +99,7 @@ function QuoteBody({ quote, client, payments, includesFor }) {
           <Row label="Payment terms" value={termsLabel(quote.paymentTerms)} />
           <Row label="Service" value="One-time service" />
           {quote.areaSqm && <Row label="Area" value={`${quote.areaSqm} sqm`} />}
+          {inspection && <Row label="Site inspection" value={`${inspectionIncludedText(inspection).replace(/^Includes free site inspection /, "Included at no charge ")}`} />}
         </tbody>
       </table>
       <section className="sf-block"><h2 className="sf-h2">Scope and price</h2><Lines lines={quote.lines} includesFor={includesFor} /></section>
@@ -363,7 +364,7 @@ function ReportBody({ report }) {
   );
 }
 
-function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, monitoring = null, report = null, payments = [], visits = [], includesFor }) {
+function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, monitoring = null, report = null, payments = [], visits = [], includesFor, inspection = null }) {
   if (kind === "REPORT") {
     if (!report) return null;
     return (
@@ -380,7 +381,7 @@ function BillingDocument({ kind, client, quote = null, invoice = null, payment =
   return (
     <div className="service-form billing-document">
       <Letterhead kind={kind} reference={reference} />
-      {kind === "QUOTE" && <QuoteBody quote={quote} client={client} payments={payments} includesFor={includesFor} />}
+      {kind === "QUOTE" && <QuoteBody quote={quote} client={client} payments={payments} includesFor={includesFor} inspection={inspection} />}
       {kind === "INVOICE" && <InvoiceBody invoice={invoice} client={client} quote={quote} payments={payments} visits={visits} />}
       {kind === "RECEIPT" && <ReceiptBody payment={payment} client={client} quote={quote} invoice={invoice} payments={payments} />}
       {kind === "CONTRACT" && <ContractBody contract={contract} client={client} />}

@@ -20,7 +20,7 @@ import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
 import { useToast } from "../../context/ToastContext";
 import useInventory from "../../hooks/useInventory";
 import useServices from "../../hooks/useServices";
-import { LIMITS } from "../../utils/constants";
+import { LIMITS, DEFAULT_AREA_RATE } from "../../utils/constants";
 import { validateDuration, validateMoney, validateQuantity } from "../../utils/validators";
 import { formatPeso } from "../../utils/formatters";
 import { card, colors } from "../../styles/theme";
@@ -237,7 +237,12 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
             the same line: a stretched Field hands the extra height to its rows
             and pushes one input down whenever the hints wrap differently. */}
         <Field label="How is it priced?" hint="A flat price per visit, or by the size of the area treated.">
-          <Select aria-label="Pricing" value={form.pricingMode} onChange={(event) => set("pricingMode", event.target.value)}>
+          <Select aria-label="Pricing" value={form.pricingMode} onChange={(event) => {
+            const mode = event.target.value;
+            set("pricingMode", mode);
+            // Per sqm starts at the business's usual rate; it stays editable.
+            if (mode === "AREA" && (form.areaRate === "" || form.areaRate === null || form.areaRate === undefined)) set("areaRate", String(DEFAULT_AREA_RATE));
+          }}>
             <option value="FLAT">Flat price per visit</option>
             <option value="AREA">Per square metre</option>
           </Select>

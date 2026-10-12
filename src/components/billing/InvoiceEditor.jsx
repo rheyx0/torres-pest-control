@@ -98,7 +98,7 @@ function InvoiceEditor({
 
   // The lines start again from the choices whenever they change.
   useEffect(() => {
-    setLines([...presetLines, ...draftInvoiceLines({ quote, quoteInvoiced, visits: chosenVisits, extras, servicesFor, itemById })].map(keyed));
+    setLines([...presetLines, ...draftInvoiceLines({ quote, quoteInvoiced, visits: chosenVisits, extras, servicesFor, itemById, inspection: quote?.inspectionId ? appointments.find((visit) => visit.id === quote.inspectionId) || null : null })].map(keyed));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.clientId, form.quoteId, visitIds.join(",")]);
 

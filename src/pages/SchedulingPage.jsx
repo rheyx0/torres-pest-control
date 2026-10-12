@@ -60,7 +60,6 @@ import NewAppointmentModal from "../components/scheduling/NewAppointmentModal";
 import TechnicianUnavailableModal from "../components/scheduling/TechnicianUnavailableModal";
 import TechnicianPicker from "../components/scheduling/TechnicianPicker";
 import PlanPanel from "../components/scheduling/PlanPanel";
-import VisitExtras from "../components/billing/VisitExtras";
 import VisitBillingLink from "../components/billing/VisitBillingLink";
 import StatusHistory from "../components/scheduling/StatusHistory";
 import FollowUpLink from "../components/scheduling/FollowUpLink";
@@ -2039,7 +2038,6 @@ function AppointmentPanel({
               <VisitBillingLink appointment={appointment} />
               <FollowUpLink appointment={appointment} />
               <StatusHistory appointment={appointment} />
-              <VisitExtras appointment={appointment} />
             </>
           )}
 
