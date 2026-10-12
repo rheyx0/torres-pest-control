@@ -43,13 +43,14 @@ export function ServicesProvider({ children }) {
         ...service,
         skipPaymentCheck: service.skipPaymentCheck ?? Boolean(previous?.skipPaymentCheck),
         followUpPrice: service.followUpPrice !== undefined ? service.followUpPrice : previous?.followUpPrice ?? null,
+        category: service.category !== undefined ? service.category : previous?.category || "",
       };
       return [...current.filter((entry) => entry.id !== service.id), merged].sort(byOrder);
     });
 
   // Saves the row, then its materials list. The materials are written by
   // their own RPC, so the row is re-read afterwards to pick them up.
-  const saveService = useCallback(async (id, { materials, skipPaymentCheck, followUpPrice, ...fields }) => {
+  const saveService = useCallback(async (id, { materials, skipPaymentCheck, followUpPrice, category, ...fields }) => {
     const saved = id
       ? await serviceCatalogService.updateService(id, fields)
       : await serviceCatalogService.createService(fields);
@@ -85,12 +86,23 @@ export function ServicesProvider({ children }) {
       }
       followUp = normal(followUpPrice);
     }
+    // The category (075), also on its own.
+    let savedCategory = previous?.category || "";
+    if (category && category !== savedCategory) {
+      const categorised = await serviceCatalogService.setServiceCategory(saved.service.id, category);
+      if (categorised.error) {
+        replaceOne({ ...saved.service, skipPaymentCheck: exempt, followUpPrice: followUp, category: savedCategory });
+        return `The service was saved, but its category was not: ${categorised.error}`;
+      }
+      savedCategory = category;
+    }
     // billingMode (060) is kept too: dropping it made every material read as
     // Included until a reload, so "Charge extra" never reached the invoice.
     replaceOne({
       ...saved.service,
       skipPaymentCheck: exempt,
       followUpPrice: followUp,
+      category: savedCategory,
       materials: materials
         ? materials.map((m) => ({ itemId: m.itemId, defaultAmount: Number(m.defaultAmount), billingMode: ["EXTRA_CHARGED", "CHARGE_ALL"].includes(m.billingMode) ? m.billingMode : "INCLUDED" }))
         : saved.service.materials,

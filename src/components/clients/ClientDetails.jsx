@@ -35,7 +35,9 @@ import useUsers from "../../hooks/useUsers";
 import useInventory from "../../hooks/useInventory";
 import { formatDate, formatDateTime, formatFileSize, formatPeso, formatTime } from "../../utils/formatters";
 import { DOCUMENT_CATEGORIES } from "../../utils/constants";
-import { appointmentReference, crewOf } from "../../utils/scheduling";
+import { appointmentReference, crewOf, servicesOf } from "../../utils/scheduling";
+import { suggestedClientCategory } from "../../utils/categories";
+import { useOptionalServiceList } from "../../hooks/useServices";
 import { printableJob } from "../../utils/plans";
 import { colors, pageShell, secondaryButton } from "../../styles/theme";
 
@@ -363,6 +365,13 @@ function ClientDetails({
     return account?.name || account?.username || "";
   };
   const visits = useMemo(() => clientVisits(appointments, client.id), [appointments, client.id]);
+  // What the client's visits suggest for their category (Sprint 5).
+  const serviceList = useOptionalServiceList();
+  const suggestedCategory = useMemo(() => {
+    const byId = (id) => serviceList.find((service) => service.id === id) || null;
+    const byName = (name) => serviceList.find((service) => service.name.trim().toLowerCase() === String(name || "").trim().toLowerCase()) || null;
+    return suggestedClientCategory(visits, (visit) => servicesOf(visit, byId, byName));
+  }, [visits, serviceList]);
   const reports = visits.filter((entry) => entry.reportSubmitted);
   const upcoming = nextVisit(visits);
   const value = lifetimeValue(visits);
@@ -1067,7 +1076,7 @@ function ClientDetails({
               </button>
             </div>
 
-            <ClientForm initialValues={client} clients={allClients} onSubmit={async (values) => { const result = await onSave(values); if (result !== false) setIsEditModalOpen(false); }} submitLabel="Save Changes" />
+            <ClientForm initialValues={client} clients={allClients} suggestedCategory={suggestedCategory} onSubmit={async (values) => { const result = await onSave(values); if (result !== false) setIsEditModalOpen(false); }} submitLabel="Save Changes" />
           </div>
         </div>
       )}

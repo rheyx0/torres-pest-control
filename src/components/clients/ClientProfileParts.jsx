@@ -3,6 +3,8 @@
 // utils/clientTimeline.js; these only draw it.
 
 import { Link, useNavigate } from "react-router-dom";
+import CategoryBadge from "../ui/CategoryBadge";
+import { checkupLabel } from "../../utils/categories";
 import {
   ArrowLeft,
   AlertTriangle,
@@ -217,6 +219,14 @@ export function ClientFacts({ client, value, canEdit, onEdit }) {
           <span style={{ fontVariantNumeric: "tabular-nums" }}>
             {peso(value.total)} · {value.visits} {value.visits === 1 ? "visit" : "visits"}
           </span>
+        </Fact>
+        <Fact label="Category">
+          {client.category ? (
+            <span style={{ display: "inline-flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              <CategoryBadge category={client.category} />
+              {client.checkupFrequency && <span>{checkupLabel(client.checkupFrequency)} checkups</span>}
+            </span>
+          ) : missing("category")}
         </Fact>
         <Fact label="Source">{client.source || "—"}</Fact>
         <div style={{ padding: "10px 0 4px", fontSize: "12px", color: neutral.bark }}>

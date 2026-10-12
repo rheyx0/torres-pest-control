@@ -15,6 +15,7 @@ import {
 } from "../../utils/constants";
 import { humanizeEnum } from "../../utils/formatters";
 import { clientWithEmail, emailTakenMessage, validateClient } from "../../utils/validators";
+import { CHECKUP_FREQUENCIES, SERVICE_CATEGORIES, categoryLabel } from "../../utils/categories";
 import { buttonWhen, inputStyle, invalidInputStyle } from "../../styles/theme";
 
 const EMPTY_FORM = {
@@ -26,6 +27,8 @@ const EMPTY_FORM = {
   classification: "RESIDENTIAL",
   classificationOther: "",
   serviceNotes: "",
+  category: "",
+  checkupFrequency: "",
 };
 
 /**
@@ -58,7 +61,7 @@ const COMPANY_CLASSIFICATIONS = new Set([
  *                 client already has (migration 067); the one being edited is
  *                 initialValues.id and is skipped.
  */
-function ClientForm({ initialValues, onSubmit, submitLabel = "Save Client", footer, clients = [] }) {
+function ClientForm({ initialValues, onSubmit, submitLabel = "Save Client", footer, clients = [], suggestedCategory = "" }) {
   const [form, setForm] = useState(initialValues ? { ...EMPTY_FORM, ...initialValues } : EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -189,6 +192,20 @@ function ClientForm({ initialValues, onSubmit, submitLabel = "Save Client", foot
                 {humanizeEnum(option)}
               </option>
             ))}
+          </select>
+        </Field>
+
+        <Field label="Category" hint={suggestedCategory && !form.category ? `Suggested: ${categoryLabel(suggestedCategory)} — their visits used ${suggestedCategory === "CHEMICAL" ? "a chemical service" : "only non-chemical services"}.` : "Chemical or non-chemical work."}>
+          <select aria-label="Category" name="category" value={form.category || ""} onChange={handleFieldChange} style={inputStyle}>
+            <option value="">Not set</option>
+            {SERVICE_CATEGORIES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+          </select>
+        </Field>
+
+        <Field label="Checkup frequency" hint="How often their checkups are booked.">
+          <select aria-label="Checkup frequency" name="checkupFrequency" value={form.checkupFrequency || ""} onChange={handleFieldChange} style={inputStyle}>
+            <option value="">Not set</option>
+            {CHECKUP_FREQUENCIES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
           </select>
         </Field>
 

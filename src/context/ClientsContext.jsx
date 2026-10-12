@@ -59,6 +59,13 @@ export function ClientsProvider({ children }) {
       const { client, error: createError } = await clientService.createClient(form);
       if (createError) return createError;
 
+      // The category and checkup frequency (075) are saved on their own.
+      let categorised = { category: "", checkupFrequency: "" };
+      if (form.category || form.checkupFrequency) {
+        const saved = await clientService.setClientCategory(client.id, form.category, form.checkupFrequency);
+        if (!saved.error) categorised = { category: form.category || "", checkupFrequency: form.checkupFrequency || "" };
+      }
+      Object.assign(client, categorised);
       setClients((previous) => [client, ...previous]);
       addLog(actor, `Created client profile for ${client.name}.`, LOG_TYPES.CLIENT);
       return client;
@@ -127,12 +134,19 @@ export function ClientsProvider({ children }) {
       if (taken) return emailTakenMessage(taken);
       const { client, error: updateError } = await clientService.updateClient(clientId, form);
       if (updateError) return updateError;
+      const before = clients.find((entry) => entry.id === clientId);
+      let categorised = { category: before?.category || "", checkupFrequency: before?.checkupFrequency || "" };
+      if (form.category !== undefined && ((form.category || "") !== categorised.category || (form.checkupFrequency || "") !== categorised.checkupFrequency)) {
+        const saved = await clientService.setClientCategory(clientId, form.category, form.checkupFrequency);
+        if (saved.error) return `The profile was saved, but its category was not: ${saved.error}`;
+        categorised = { category: form.category || "", checkupFrequency: form.checkupFrequency || "" };
+      }
 
       // The row comes back without documents or the payment-check exemption
       // (066, read on its own); keep the ones already loaded.
       setClients((previous) =>
         previous.map((entry) =>
-          entry.id === clientId ? { ...client, documents: entry.documents, skipPaymentCheck: entry.skipPaymentCheck } : entry
+          entry.id === clientId ? { ...client, documents: entry.documents, skipPaymentCheck: entry.skipPaymentCheck, ...categorised } : entry
         )
       );
       addLog(actor, `Updated client profile for ${client.name}.`, LOG_TYPES.CLIENT);

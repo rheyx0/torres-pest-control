@@ -117,11 +117,27 @@ export async function fetchClients() {
   // Who skips the payment check before booking (066), read on its own so the
   // client list still loads before the migration.
   const exempt = await fetchPaymentCheckExemptions("clients");
+  const categories = await fetchClientCategories();
 
   return {
     error: null,
-    clients: (clientsRes.data || []).map((row) => ({ ...mapClientRow(row, byClient.get(row.id) || []), skipPaymentCheck: exempt.has(row.id) })),
+    clients: (clientsRes.data || []).map((row) => ({ ...mapClientRow(row, byClient.get(row.id) || []), skipPaymentCheck: exempt.has(row.id), ...(categories.get(row.id) || { category: "", checkupFrequency: "" }) })),
   };
+}
+
+/** id -> { category, checkupFrequency } (075). Empty before 075. */
+async function fetchClientCategories() {
+  const { data, error } = await supabase.from("clients").select("id, category, checkup_frequency");
+  return new Map(error ? [] : (data || []).map((row) => [row.id, { category: row.category || "", checkupFrequency: row.checkup_frequency || "" }]));
+}
+
+/** A client's category and checkup frequency (075), saved on their own. */
+export async function setClientCategory(clientId, category, checkupFrequency) {
+  const { error } = await supabase.from("clients").update({ category: category || null, checkup_frequency: checkupFrequency || null }).eq("id", clientId);
+  if (error) {
+    return { error: /category|checkup_frequency/.test(`${error.message} ${error.details || ""}`) ? "The category needs migration 075." : describeError(error) };
+  }
+  return { error: null };
 }
 
 /** Ids of rows in `table` marked skip_payment_check. Empty before 066. */
@@ -333,11 +349,12 @@ export async function getDocumentUrl(document, { download = false } = {}) {
  * Classification was previously excluded from the search string and had no
  * filter control at all.
  */
-export function filterClients(clients, { searchTerm = "", classification = "ALL", status = "ACTIVE" } = {}) {
+export function filterClients(clients, { searchTerm = "", classification = "ALL", status = "ACTIVE", category = "ALL" } = {}) {
   const term = searchTerm.trim().toLowerCase();
 
   return clients.filter((client) => {
     if (status !== "ALL" && client.status !== status) return false;
+    if (category !== "ALL" && (client.category || "") !== (category === "NONE" ? "" : category)) return false;
     if (classification !== "ALL" && client.classification !== classification) return false;
     if (!term) return true;
 

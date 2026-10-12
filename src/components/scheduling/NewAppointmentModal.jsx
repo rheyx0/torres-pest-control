@@ -52,6 +52,8 @@ import Textarea from "../ui/Textarea";
 import ClientCombobox from "./ClientCombobox";
 import PlanDates from "./PlanDates";
 import TechnicianPicker from "./TechnicianPicker";
+import { visitCategory } from "../../utils/categories";
+import CategoryBadge from "../ui/CategoryBadge";
 
 /** The durations the office actually books. Custom reveals the raw fields. */
 const DURATION_PRESETS = [30, 60, 90, 120];
@@ -594,6 +596,11 @@ function NewAppointmentModal({
                 ))}
                 {services.length === 0 && <span style={{ color: neutral.bark, ...text.small }}>No services set up yet.</span>}
               </div>
+              {visitCategory(selectedServices) && (
+                <span style={{ display: "flex", alignItems: "center", gap: "6px", color: neutral.bark, fontSize: text.caption.fontSize }}>
+                  This is a <CategoryBadge category={visitCategory(selectedServices)} /> job.
+                </span>
+              )}
               {materialCount > 0 && (
                 <span style={{ color: neutral.bark, fontSize: text.caption.fontSize }}>
                   Prefills {materialCount} material{materialCount === 1 ? "" : "s"} on the Stock-Out tab.

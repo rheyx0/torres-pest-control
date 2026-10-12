@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Check,
@@ -26,6 +26,8 @@ import useServices from "../hooks/useServices";
 import { useOptionalBilling } from "../hooks/useBilling";
 import { findFollowUpService, followUpPriceFor, paymentCheck } from "../utils/sprint4";
 import { announceFollowUp } from "../utils/followUpBooking";
+import { SERVICE_CATEGORIES, visitCategory } from "../utils/categories";
+import CategoryBadge from "../components/ui/CategoryBadge";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
@@ -132,6 +134,7 @@ function SchedulingPage() {
   const [clientFilter, setClientFilter] = useState("ALL");
   const [pestConcernFilter, setPestConcernFilter] = useState("ALL");
   const [serviceFilter, setServiceFilter] = useState("ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   // The list opens on what's coming, not on every visit since the beginning.
@@ -150,8 +153,10 @@ function SchedulingPage() {
   // schedule, so it keeps the plain legend instead.
   const showSidePanel = !isTechnician;
   const listFiltersSet = Boolean(
-    appointmentSearch || statusFilter !== "ALL" || clientFilter !== "ALL" || pestConcernFilter !== "ALL" || serviceFilter !== "ALL" || dateFrom || dateTo
+    appointmentSearch || statusFilter !== "ALL" || clientFilter !== "ALL" || pestConcernFilter !== "ALL" || serviceFilter !== "ALL" || categoryFilter !== "ALL" || dateFrom || dateTo
   );
+  // Chemical or Non-chemical (075), from the visit's services.
+  const categoryOf = useCallback((appointment) => visitCategory(servicesOf(appointment, serviceById, serviceByName)), [serviceById, serviceByName]);
   // A technician "owns" a visit they are on, lead or not — an appointment can
   // carry a crew since migration 041.
   const ownsAppointment = (appointment) => !isTechnician || isAssignedTo(appointment, currentUser?.id);
@@ -334,12 +339,13 @@ function SchedulingPage() {
         && (statusFilter === "ALL" || appointment.status === statusFilter)
         && (clientFilter === "ALL" || appointment.clientId === clientFilter)
         && (pestConcernFilter === "ALL" || appointment.pestConcern === pestConcernFilter)
+        && (categoryFilter === "ALL" || categoryOf(appointment) === categoryFilter)
         // Compared as local date keys so a boundary date includes the whole day
         // regardless of the appointment's time.
         && (!dateFrom || localDateKey(new Date(appointment.scheduledAt)) >= dateFrom)
         && (!dateTo || localDateKey(new Date(appointment.scheduledAt)) <= dateTo);
     });
-  }, [appointments, appointmentSearch, clients, allAccounts, technicianFilter, statusFilter, clientFilter, pestConcernFilter, serviceFilter, serviceById, dateFrom, dateTo, isTechnician, currentUser?.id]);
+  }, [appointments, appointmentSearch, clients, allAccounts, technicianFilter, statusFilter, clientFilter, pestConcernFilter, serviceFilter, categoryFilter, categoryOf, serviceById, dateFrom, dateTo, isTechnician, currentUser?.id]);
 
   const pestConcernOptions = useMemo(
     () => Array.from(new Set(appointments.filter(ownsAppointment).map((appointment) => appointment.pestConcern).filter(Boolean))).sort(),
@@ -707,7 +713,7 @@ function SchedulingPage() {
     }
     setPrintRequest({
       // A multi-day job prints as one report: every day's photos and materials.
-      appointment: printableJob(appointment, appointments),
+      appointment: { ...printableJob(appointment, appointments), jobCategory: categoryOf(appointment) },
       client,
       technician: allAccounts.find((account) => account.id === appointment.technicianId) || null,
       technicians: crewOf(appointment)
@@ -1059,6 +1065,7 @@ function SchedulingPage() {
                   setClientFilter("ALL");
                   setPestConcernFilter("ALL");
                   setServiceFilter("ALL");
+                  setCategoryFilter("ALL");
                   setDateFrom("");
                   setDateTo("");
                 }}
@@ -1093,6 +1100,12 @@ function SchedulingPage() {
                   {activeServices.map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
                 </Select>
               </Field>
+              <Field label="Category">
+                <Select aria-label="Category" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+                  <option value="ALL">Chemical and non-chemical</option>
+                  {SERVICE_CATEGORIES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+                </Select>
+              </Field>
               <Field label="Pest concern">
                 <Select value={pestConcernFilter} onChange={(event) => setPestConcernFilter(event.target.value)}>
                   <option value="ALL">All pest concerns</option>
@@ -1119,6 +1132,7 @@ function SchedulingPage() {
                 limit={listLimit}
                 onShowMore={() => setListLimit((current) => current + LIST_PAGE_SIZE)}
                 onSelect={(id) => { setSelectedId(id); setTab("Overview"); }}
+                categoryOf={categoryOf}
               />
             )}
 
@@ -1392,7 +1406,7 @@ export function scopeAppointments(appointments, scope, now = new Date()) {
   return [...appointments].sort((a, b) => startOf(a) - startOf(b));
 }
 
-function AppointmentListView({ appointments, clients, accounts, scope, limit, onShowMore, onSelect }) {
+function AppointmentListView({ appointments, clients, accounts, scope, limit, onShowMore, onSelect, categoryOf = () => "" }) {
   const clientName = (id) => clients.find((entry) => entry.id === id)?.name || "Unknown client";
   const crewFor = (appointment) => crewOf(appointment).map((id) => accounts.find((entry) => entry.id === id) || null);
   const shown = appointments.slice(0, limit);
@@ -1421,6 +1435,7 @@ function AppointmentListView({ appointments, clients, accounts, scope, limit, on
       render: (row) => (
         <span>
           {row.serviceType || "—"}
+          {categoryOf(row) && <CategoryBadge category={categoryOf(row)} style={{ marginLeft: "6px" }} />}
           {row.pestConcern && <span style={{ display: "block", color: colors.muted, fontSize: "12px" }}>{row.pestConcern}</span>}
         </span>
       ),
@@ -1889,6 +1904,7 @@ function AppointmentPanel({
   const [correcting, setCorrecting] = useState(false);
   useEffect(() => setCorrecting(false), [appointment.id]);
   const locked = appointment.status === "Completed" && !correcting;
+  const jobCategory = visitCategory(servicesOf(appointment, serviceById, serviceByName));
   const summary = <CompletedSummary appointment={appointment} accounts={activeAccounts} onCorrect={() => setCorrecting(true)} visitServices={servicesOf(appointment, serviceById, serviceByName)} services={services} />;
 
   const busyTechnicians = busyTechnicianIds(appointments, appointment);
@@ -1936,6 +1952,7 @@ function AppointmentPanel({
               style={{ margin: "0.125rem 0 0", fontSize: "1.125rem", fontWeight: 500, color: "#211b15" }}
             >
               {client.name}
+              {jobCategory && <CategoryBadge category={jobCategory} style={{ marginLeft: "0.5rem", verticalAlign: "2px" }} />}
             </h2>
             <div
               className="text-xs text-slate-500 mt-0.5"

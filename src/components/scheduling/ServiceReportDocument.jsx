@@ -11,6 +11,7 @@
 import { ACTIVITY_LEVELS, COMPANY } from "../../utils/constants";
 import { formatDate, formatDateTime, formatPeso } from "../../utils/formatters";
 import { appointmentReference } from "../../utils/scheduling";
+import { categoryLabel } from "../../utils/categories";
 
 const activityLabel = (value) => ACTIVITY_LEVELS.find((level) => level.value === value)?.label || value;
 
@@ -78,6 +79,7 @@ function ServiceReportDocument({ appointment, client, technician, technicians = 
             <Row label="Date of service" value={formatDateTime(appointment.scheduledAt)} />
           )}
           <Row label={appointment.serviceType?.includes(", ") ? "Services performed" : "Service performed"} value={appointment.serviceType} />
+          {appointment.jobCategory && <Row label="Job type" value={categoryLabel(appointment.jobCategory)} />}
           <Row label="Pest concern" value={appointment.pestConcern || client.pestConcern} />
           <Row label={crewNames.length > 1 ? "Technicians" : "Technician"} value={crewNames.join(", ") || technicianName} />
         </tbody>

@@ -5,6 +5,7 @@
 // 50 rows a page. The old rows fit about eleven clients on a screen.
 
 import { useMemo, useState } from "react";
+import CategoryBadge from "../components/ui/CategoryBadge";
 import { Link, useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import PageHeader from "../components/common/PageHeader";
@@ -42,9 +43,10 @@ function ClientsPage() {
   // Archived clients are kept out of the default view (they're inactive
   // records, not deleted ones) but stay one dropdown away.
   const [status, setStatus] = useState("ACTIVE");
+  const [category, setCategory] = useState("ALL");
   const [limit, setLimit] = useState(CLIENT_PAGE_SIZE);
 
-  const visibleClients = filter({ searchTerm, classification, status });
+  const visibleClients = filter({ searchTerm, classification, status, category });
   const dates = useMemo(() => visitDatesByClient(appointments), [appointments]);
   const sharedEmails = useMemo(() => sharedClientEmails(clients), [clients]);
   const rows = visibleClients.map((client) => ({ ...client, lastVisit: dates.get(client.id)?.last || null, nextVisit: dates.get(client.id)?.next || null }));
@@ -64,6 +66,7 @@ function ClientsPage() {
             {[row.reference, row.classification && (row.classification === "OTHER" && row.classificationOther ? row.classificationOther : humanizeEnum(row.classification))]
               .filter(Boolean)
               .join(" · ")}
+            {row.category && <CategoryBadge category={row.category} style={{ marginLeft: "6px" }} />}
           </span>
         </span>
       ),
@@ -143,6 +146,8 @@ function ClientsPage() {
           onClassificationChange={setClassification}
           status={status}
           onStatusChange={setStatus}
+          category={category}
+          onCategoryChange={setCategory}
         />
 
         {error ? (

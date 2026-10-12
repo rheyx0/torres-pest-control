@@ -21,6 +21,8 @@ import { useToast } from "../../context/ToastContext";
 import useInventory from "../../hooks/useInventory";
 import useServices from "../../hooks/useServices";
 import { LIMITS, DEFAULT_AREA_RATE } from "../../utils/constants";
+import { SERVICE_CATEGORIES, categoryLabel } from "../../utils/categories";
+import CategoryBadge from "../ui/CategoryBadge";
 import { validateDuration, validateMoney, validateQuantity } from "../../utils/validators";
 import { formatPeso } from "../../utils/formatters";
 import { card, colors } from "../../styles/theme";
@@ -122,6 +124,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
     minimumCharge: initial?.minimumCharge ?? "",
     depositPercent: initial?.depositPercent ?? 0,
     followUpPrice: initial?.followUpPrice ?? "",
+    category: initial?.category || "CHEMICAL",
     // 066: booked without a paid quote first (inspections, follow-ups).
     skipPaymentCheck: Boolean(initial?.skipPaymentCheck),
     materials: (initial?.materials || []).length
@@ -188,6 +191,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
       minimumCharge: area && form.minimumCharge !== "" ? Number(form.minimumCharge) : null,
       depositPercent: form.depositPercent === "" ? 0 : Number(form.depositPercent),
       followUpPrice: form.followUpPrice === "" ? null : Number(form.followUpPrice),
+      category: form.category,
       skipPaymentCheck: form.skipPaymentCheck,
       materials: form.materials
         .filter((row) => row.itemId)
@@ -231,6 +235,12 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
             maxLength={LIMITS.NOTES_MAX}
             rows={2}
           />
+        </Field>
+
+        <Field label="Category" hint="A visit with any chemical service counts as a chemical job.">
+          <Select aria-label="Category" value={form.category} onChange={(event) => set("category", event.target.value)}>
+            {SERVICE_CATEGORIES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+          </Select>
         </Field>
 
         {/* Pinned to the top, with one-line hints, so the two inputs sit on
@@ -432,6 +442,7 @@ function ServiceView({ service, itemsById, onEdit, onClose }) {
         {service.description && <p style={{ margin: 0, color: colors.body }}>{service.description}</p>}
         <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.45rem 1.25rem", fontSize: "0.9rem" }}>
           {row("Status", service.isActive ? "Active" : "Retired (hidden from the booking form)")}
+          {service.category && row("Category", categoryLabel(service.category))}
           {row("Price", describeServicePricing(service, formatPeso))}
           {row("Down payment", service.depositPercent > 0 ? `${service.depositPercent}% of the quotation` : "None")}
           {row("Follow-up price", followUp)}
@@ -576,6 +587,7 @@ export default function ServiceProfilesAdmin() {
                 {!service.isActive && (
                   <span style={{ fontSize: "0.68rem", fontWeight: 500, color: colors.muted, background: colors.sunken, borderRadius: "999px", padding: "0.15rem 0.5rem" }}>Retired</span>
                 )}
+                {service.category && <CategoryBadge category={service.category} />}
               </div>
               <div style={{ color: colors.muted, fontSize: "0.76rem", marginTop: "0.25rem", display: "flex", gap: "0.9rem", flexWrap: "wrap" }}>
                 <span>Price: {describeServicePricing(service, formatPeso)}</span>

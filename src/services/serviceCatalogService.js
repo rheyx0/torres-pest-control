@@ -92,9 +92,10 @@ export async function fetchServices() {
   // only drops that field.
   const exempt = await fetchPaymentCheckExemptions("services");
   const followUp = await fetchFollowUpPrices();
+  const categories = await fetchServiceCategories();
   return {
     error: null,
-    services: (data || []).map((row) => ({ ...mapServiceRow(row), skipPaymentCheck: exempt.has(row.id), followUpPrice: followUp.has(row.id) ? followUp.get(row.id) : null })),
+    services: (data || []).map((row) => ({ ...mapServiceRow(row), skipPaymentCheck: exempt.has(row.id), followUpPrice: followUp.has(row.id) ? followUp.get(row.id) : null, category: categories.get(row.id) || "" })),
   };
 }
 
@@ -151,6 +152,21 @@ export async function saveServiceMaterials(serviceId, materials) {
 }
 
 /** Admin only (066): a service booked without a paid quote first. */
+/** id -> CHEMICAL / NON_CHEMICAL (075). Empty before 075, so no category shows. */
+async function fetchServiceCategories() {
+  const { data, error } = await supabase.from("services").select("id, category");
+  return new Map(error ? [] : (data || []).map((row) => [row.id, row.category || ""]));
+}
+
+/** Chemical or Non-chemical (075), saved on its own like the follow-up price. */
+export async function setServiceCategory(serviceId, category) {
+  const { error } = await supabase.from("services").update({ category: category === "NON_CHEMICAL" ? "NON_CHEMICAL" : "CHEMICAL" }).eq("id", serviceId);
+  if (error) {
+    return { error: /category/.test(`${error.message} ${error.details || ""}`) ? "The category needs migration 075." : describeError(error) };
+  }
+  return { error: null };
+}
+
 /** id -> follow-up price, for the services that have one (068). Empty before 068. */
 async function fetchFollowUpPrices() {
   const { data, error } = await supabase.from("services").select("id, follow_up_price").not("follow_up_price", "is", null);
