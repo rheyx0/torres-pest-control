@@ -1884,7 +1884,7 @@ function AppointmentPanel({
   const [correcting, setCorrecting] = useState(false);
   useEffect(() => setCorrecting(false), [appointment.id]);
   const locked = appointment.status === "Completed" && !correcting;
-  const summary = <CompletedSummary appointment={appointment} accounts={activeAccounts} onCorrect={() => setCorrecting(true)} />;
+  const summary = <CompletedSummary appointment={appointment} accounts={activeAccounts} onCorrect={() => setCorrecting(true)} visitServices={servicesOf(appointment, serviceById, serviceByName)} services={services} />;
 
   const busyTechnicians = busyTechnicianIds(appointments, appointment);
   // Out on this visit's day (migration 057): cannot be added to it.

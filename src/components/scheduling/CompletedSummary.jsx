@@ -1,12 +1,18 @@
 // A completed visit, read only: what was done, by whom, with what, and what
 // comes next. Shown in the appointment detail in place of the edit forms once
 // a visit is Completed, so nothing is changed by accident. An admin can still
-// correct it ("Correct this visit" reopens the forms).
+// correct it ("Correct this visit" reopens the forms). A completed inspection
+// also shows its results and "Create quote from inspection", so making the
+// quote never needs the visit reopened.
 
-import { CheckCircle2, PencilLine } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { CheckCircle2, FileText, PencilLine } from "lucide-react";
 import Button from "../ui/Button";
 import { colors } from "../../styles/theme";
 import useAuth from "../../hooks/useAuth";
+import { useOptionalBilling } from "../../hooks/useBilling";
+import { SUBSYSTEMS } from "../../utils/permissions";
+import { isInspectionVisit } from "../../utils/sprint4";
 import { ACTIVITY_LEVELS } from "../../utils/constants";
 import { crewOf } from "../../utils/scheduling";
 import { formatDate, formatDateTime, formatPeso } from "../../utils/formatters";
@@ -18,8 +24,14 @@ const duration = (minutes) => {
   return [hours ? `${hours} h` : "", rest ? `${rest} min` : ""].filter(Boolean).join(" ");
 };
 
-function CompletedSummary({ appointment, accounts = [], onCorrect }) {
-  const { currentUser } = useAuth();
+function CompletedSummary({ appointment, accounts = [], onCorrect, visitServices = [], services = [] }) {
+  const navigate = useNavigate();
+  const { currentUser, can } = useAuth();
+  const billing = useOptionalBilling();
+  const inspection = isInspectionVisit(appointment, visitServices);
+  const recommended = (appointment.recommendedServiceIds || []).map((id) => services.find((service) => service.id === id)?.name).filter(Boolean);
+  const hasResults = Boolean(appointment.inspectionAreaSqm || recommended.length);
+  const canQuote = inspection && hasResults && Boolean(billing?.office && billing.available && can?.(SUBSYSTEMS.BILLING, "create"));
   const crew = crewOf(appointment).map((id) => accounts.find((account) => account.id === id)?.name).filter(Boolean);
   const activity = ACTIVITY_LEVELS.find((level) => level.value === appointment.activityLevel)?.label;
   const materials = (appointment.stockUsed || []).map((entry) => `${entry.name} ${entry.amount} ${entry.unit || ""}`.trim());
@@ -34,6 +46,10 @@ function CompletedSummary({ appointment, accounts = [], onCorrect }) {
     ["Price", appointment.price === "" || appointment.price === null || appointment.price === undefined ? "—" : formatPeso(appointment.price)],
     ["Findings", appointment.report || "—"],
     ["Recommendations", appointment.recommendations || "—"],
+    ...(inspection ? [
+      ["Area inspected", appointment.inspectionAreaSqm ? `${appointment.inspectionAreaSqm} sqm` : "Not recorded"],
+      ["Recommended treatment", recommended.join(", ") || "None ticked"],
+    ] : []),
     ["Pest activity", activity || "Not recorded"],
     ["Open issues", appointment.openIssues || "None"],
     ["Materials used", materials.join(", ") || "None recorded"],
@@ -48,9 +64,16 @@ function CompletedSummary({ appointment, accounts = [], onCorrect }) {
         <strong style={{ display: "inline-flex", alignItems: "center", gap: "0.45rem", color: "#2f6b3f", fontSize: "0.95rem", fontWeight: 600 }}>
           <CheckCircle2 size={17} aria-hidden="true" /> Completed{finishedAt ? ` · ${formatDateTime(finishedAt)}` : ""}
         </strong>
-        {(currentUser?.role === "ADMIN" || currentUser?.role === "STAFF") && onCorrect && (
-          <Button size="sm" variant="quiet" icon={<PencilLine size={14} />} onClick={onCorrect}>Correct this visit</Button>
-        )}
+        <span style={{ display: "inline-flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          {canQuote && (
+            <Button size="sm" variant="primary" icon={<FileText size={14} />} onClick={() => navigate(`/billing?new=1&client=${encodeURIComponent(appointment.clientId)}&inspection=${encodeURIComponent(appointment.id)}`)}>
+              Create quote from inspection
+            </Button>
+          )}
+          {(currentUser?.role === "ADMIN" || currentUser?.role === "STAFF") && onCorrect && (
+            <Button size="sm" variant="quiet" icon={<PencilLine size={14} />} onClick={onCorrect}>Correct this visit</Button>
+          )}
+        </span>
       </div>
       <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.4rem 1.25rem", fontSize: "0.86rem" }}>
         {rows.map(([label, value]) => (
