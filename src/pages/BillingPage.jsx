@@ -35,7 +35,7 @@ import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
 import { colors, pageShell } from "../styles/theme";
 import { CONTRACT_STATUS_LABELS, INVOICE_STATE_LABELS, QUOTE_STATUS_LABELS } from "../utils/constants";
-import { billingOverview, depositStatus, invoiceBalance, quoteStatus } from "../utils/billing";
+import { billingOverview, depositStatus, invoiceBalance, quoteStatus, contractDepositStatus } from "../utils/billing";
 import { StatTile, TileRow } from "../components/dashboard/DashboardParts";
 import { servicesOf } from "../utils/scheduling";
 import { includedMaterialsText } from "../utils/pricing";
@@ -76,7 +76,7 @@ function BillingPage() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null); // { quote } — quote null means new
   const [invoicing, setInvoicing] = useState(null); // { quoteId, clientId } or a contract's { contract, visitIds, lines }
-  const [paying, setPaying] = useState(null); // { quote } for a down payment, { invoice } for a payment
+  const [paying, setPaying] = useState(null); // { quote } or { contract } for a down payment, { invoice } for a payment
   const [printRequest, setPrintRequest] = useState(null);
 
   const canCreate = can(SUBSYSTEMS.BILLING, "create");
@@ -176,6 +176,13 @@ function BillingPage() {
     const contract = contractEditing?.contract || null;
     const result = await billing.saveContract(contract?.id || null, values);
     if (typeof result === "string") return result;
+    // The down payment (077) is set right after the terms.
+    if (values.depositType && result?.id && billing.setContractDeposit) {
+      const deposit = await billing.setContractDeposit(result, values.depositType, values.depositValue);
+      if (typeof deposit === "string" && !/set_contract_deposit|schema cache|does not exist/i.test(deposit)) {
+        showError(`The contract was saved, but its down payment was not: ${deposit}`);
+      }
+    }
     showSuccess(contract ? `${contract.reference} saved.` : `Contract ${result?.reference || ""} created as a draft.`);
     setContractEditing(null);
     setTab("contracts");
@@ -280,6 +287,7 @@ function BillingPage() {
     client: clientById.get(payment.clientId),
     quote: quoteById(payment.quoteId),
     invoice: invoiceById(payment.invoiceId),
+    contract: payment.contractId ? billing.contractById(payment.contractId) : null,
     payments: payment.invoiceId ? paymentsForInvoice(payment.invoiceId) : [],
   });
 
@@ -555,6 +563,11 @@ function BillingPage() {
               return true;
             }}
             onBook={() => navigate(`/scheduling?contract=${contract.id}`)}
+            deposit={contractDepositStatus(contract, billing.paymentsForContract ? billing.paymentsForContract(contract.id) : [])}
+            booking={billing.contractBookingCheck ? billing.contractBookingCheck(contract) : { ok: true, reason: "" }}
+            depositPayments={billing.paymentsForContract ? billing.paymentsForContract(contract.id) : []}
+            onRecordDeposit={() => setPaying({ contract })}
+            onReceipt={printReceipt}
             onClose={() => openContract(null)}
           />
         );
@@ -606,6 +619,28 @@ function BillingPage() {
               const result = await billing.recordPayment({ ...values, kind: "DEPOSIT", quoteId: quote.id }, `down payment on ${quote.reference}`);
               if (typeof result === "string") return result;
               showSuccess(`Down payment ${result?.reference || ""} recorded${currentUser?.name ? ` by ${currentUser.name}` : ""}.`);
+              setPaying(null);
+              return true;
+            }}
+            onClose={() => setPaying(null)}
+          />
+        );
+      })()}
+
+      {paying?.contract && (() => {
+        const contract = paying.contract;
+        const deposit = contractDepositStatus(contract, billing.paymentsForContract(contract.id));
+        return (
+          <PaymentForm
+            title="Record down payment"
+            subtitle={`${contract.reference} · ${clientName(contract.clientId)}`}
+            suggested={Math.max(0, deposit.remaining - deposit.pending)}
+            max={Math.max(0, deposit.remaining - deposit.pending)}
+            onSave={async (values) => {
+              if (!(await confirm({ title: "Record this down payment?", details: [["Contract", contract.reference], ["Client", clientName(contract.clientId)], ["Amount", formatPeso(values.amount)], ["Method", values.method]], message: "A receipt is made. A payment can't be deleted, only reversed by an admin.", confirmLabel: "Record payment" }))) return NOT_CONFIRMED;
+              const result = await billing.recordPayment({ ...values, kind: "DEPOSIT", contractId: contract.id }, `down payment on ${contract.reference}`);
+              if (typeof result === "string") return result;
+              showSuccess(`Down payment ${result?.reference || ""} recorded.`);
               setPaying(null);
               return true;
             }}

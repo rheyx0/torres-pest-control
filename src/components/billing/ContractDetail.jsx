@@ -22,7 +22,7 @@ export const CONTRACT_TONES = { DRAFT: "neutral", ACTIVE: "success", ENDED: "neu
 
 const labelOf = (list, value) => list.find((entry) => entry.value === value)?.label || value;
 
-function ContractDetail({ contract, client, signedDocument = null, visits = [], onEdit, onPrint, onEmail, onUploadSigned, onViewSigned, onActivate, onEnd, onCancel, onDelete, onBook, onClose }) {
+function ContractDetail({ contract, client, signedDocument = null, visits = [], onEdit, onPrint, onEmail, onUploadSigned, onViewSigned, onActivate, onEnd, onCancel, onDelete, onBook, onClose, deposit = null, booking = { ok: true, reason: "" }, depositPayments = [], onRecordDeposit, onReceipt }) {
   const fileRef = useRef(null);
   const [asking, setAsking] = useState(null); // "CANCEL" | "DELETE"
   const [reason, setReason] = useState("");
@@ -96,7 +96,8 @@ function ContractDetail({ contract, client, signedDocument = null, visits = [], 
       {!asking && status === "ACTIVE" && (
         <>
           <Button onClick={() => act(onEnd)} loading={busy}>Mark ended</Button>
-          {!contract.planId && <Button variant="primary" onClick={onBook}>Book visits</Button>}
+          {deposit && deposit.required > 0 && deposit.state !== "PAID" && onRecordDeposit && <Button onClick={onRecordDeposit}>Record down payment</Button>}
+          {!contract.planId && <Button variant="primary" disabled={!booking.ok} title={booking.reason || undefined} onClick={onBook}>Book visits</Button>}
         </>
       )}
     </>
@@ -125,12 +126,28 @@ function ContractDetail({ contract, client, signedDocument = null, visits = [], 
           {contract.areaSqm ? row("Area", `${contract.areaSqm} sqm`) : null}
           {row("Price per visit", formatPeso(contract.pricePerVisit))}
           {contract.visitCount ? row("Contract value", formatPeso(contract.visitCount * contract.pricePerVisit)) : null}
+          {deposit && deposit.required > 0 ? row("Down payment", `${formatPeso(deposit.required)} · ${deposit.state === "PAID" ? "paid" : deposit.state === "PENDING_CHECK" ? "check not cleared yet" : `${formatPeso(deposit.paid)} received`}`) : null}
           {row("Billed", labelOf(BILLING_SCHEDULES, contract.billingSchedule))}
           {row("Payment terms", labelOf(PAYMENT_TERMS, contract.paymentTerms))}
           {row("Included", contract.inclusions)}
           {row("Cancellation", contract.cancellationTerms)}
           {contract.notes ? row("Notes", contract.notes) : null}
         </dl>
+
+        {status === "ACTIVE" && !contract.planId && !booking.ok && (
+          <p role="status" style={{ margin: 0, color: colors.muted, fontSize: "0.85rem" }}>Book visits opens once {booking.reason.charAt(0).toLowerCase() + booking.reason.slice(1).replace(/ has not been received yet\.$/, " is received.").replace(/ has not cleared yet\.$/, " clears.")}</p>
+        )}
+        {depositPayments.length > 0 && (
+          <section aria-label="Down payment received" style={{ display: "grid", gap: "0.3rem", fontSize: "0.85rem" }}>
+            <strong style={{ color: colors.ink }}>Down payment received</strong>
+            {depositPayments.map((payment) => (
+              <span key={payment.id} style={{ display: "flex", gap: "0.6rem", alignItems: "center", color: payment.reversedAt ? colors.muted : colors.body }}>
+                {payment.reference} · {formatDate(payment.paidOn)} · {formatPeso(payment.amount)}{payment.reversedAt ? " · reversed" : payment.checkStatus === "PENDING" ? " · check pending" : ""}
+                {onReceipt && !payment.reversedAt && <Button size="sm" variant="ghost" onClick={() => onReceipt(payment)}>Receipt</Button>}
+              </span>
+            ))}
+          </section>
+        )}
 
         <section aria-label="Signed copy" style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap", padding: "0.7rem 0.8rem", border: `1px solid ${colors.line}`, borderRadius: "3.75px" }}>
           <span style={{ color: colors.body, fontSize: "0.88rem", marginRight: "auto" }}>

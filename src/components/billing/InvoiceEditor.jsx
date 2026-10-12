@@ -14,7 +14,7 @@ import { Plus, X } from "lucide-react";
 import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
 import { colors } from "../../styles/theme";
 import { LIMITS, PAYMENT_TERMS, VAT_MODES, VAT_RATE } from "../../utils/constants";
-import { depositToApply, draftInvoiceLines, dueDateFor, invoiceableVisits, lineAmount, quoteTotals } from "../../utils/billing";
+import { contractDepositToApply, depositToApply, draftInvoiceLines, dueDateFor, invoiceableVisits, lineAmount, quoteTotals } from "../../utils/billing";
 import { appointmentReference } from "../../utils/scheduling";
 import { formatDate, formatPeso } from "../../utils/formatters";
 import { todayISO, validateMoney } from "../../utils/validators";
@@ -107,7 +107,8 @@ function InvoiceEditor({
   }, [form.clientId, form.quoteId, visitIds.join(",")]);
 
   const totals = quoteTotals(lines, { ...form, vatRate: VAT_RATE });
-  const deposit = depositToApply(quote, payments, invoices, totals.total);
+  // A contract's first invoice deducts the contract's down payment (077).
+  const deposit = quote ? depositToApply(quote, payments, invoices, totals.total) : contract ? contractDepositToApply(contract, payments, invoices, totals.total) : 0;
   const amountDue = Math.max(0, Math.round((totals.total - deposit) * 100) / 100);
 
   const set = (field, value) => {

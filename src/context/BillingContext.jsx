@@ -107,6 +107,7 @@ export function BillingProvider({ children }) {
       () => billingService.saveContract(contractId, contract),
       (saved) => `${contractId ? "Updated" : "Created"} contract ${saved?.reference || ""}.`.replace(" .", ".")
     ),
+    setContractDeposit: (contract, type, value) => run(() => billingService.setContractDeposit(contract.id, type, value)),
     attachContractDocument: (contract, documentId) => run(() => billingService.attachContractDocument(contract.id, documentId), `Attached the signed copy of contract ${contract.reference}.`),
     setContractStatus: (contract, status) => run(
       () => billingService.setContractStatus(contract.id, status),

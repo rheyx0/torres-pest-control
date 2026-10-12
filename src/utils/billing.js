@@ -106,6 +106,44 @@ export function canBookFromQuote(quote, payments = [], now = new Date(), invoice
   return { ok: false, reason: "The down payment has not been received yet." };
 }
 
+/**
+ * A contract's down payment (077): what is required, received (cleared) and
+ * pending, and its state, the same shape as depositStatus() for a quote.
+ */
+export function contractDepositStatus(contract, payments = []) {
+  const required = round2(contract?.depositAmount);
+  const own = payments.filter((payment) => payment.contractId === contract?.id && payment.kind === "DEPOSIT" && !payment.reversedAt);
+  const paid = round2(own.filter(paymentCounts).reduce((sum, payment) => sum + payment.amount, 0));
+  const pending = round2(own.filter((payment) => payment.method === "CHECK" && payment.checkStatus === "PENDING").reduce((sum, payment) => sum + payment.amount, 0));
+  let state = "NONE";
+  if (required > 0) {
+    if (paid >= required) state = "PAID";
+    else if (paid + pending >= required) state = "PENDING_CHECK";
+    else if (paid > 0 || pending > 0) state = "PARTIAL";
+    else state = "DUE";
+  }
+  return { required, paid, pending, remaining: round2(Math.max(0, required - paid)), state };
+}
+
+/** Whether a contract's visits can be booked: Active, and its down payment in. */
+export function canBookContract(contract, payments = []) {
+  if (!contract || contract.status !== "ACTIVE") return { ok: false, reason: "Only an active contract can be booked." };
+  const deposit = contractDepositStatus(contract, payments);
+  if (deposit.state === "DUE" || deposit.state === "PARTIAL") return { ok: false, reason: "The contract's down payment has not been received yet." };
+  if (deposit.state === "PENDING_CHECK") return { ok: false, reason: "The down payment check has not cleared yet." };
+  return { ok: true, reason: "" };
+}
+
+/** What a contract's first invoice deducts (077): received, less what earlier invoices took. */
+export function contractDepositToApply(contract, payments = [], invoices = [], total = Infinity) {
+  if (!contract) return 0;
+  const received = contractDepositStatus(contract, payments).paid;
+  const applied = invoices
+    .filter((invoice) => invoice.contractId === contract.id && !invoice.quoteId && invoice.status !== "VOID")
+    .reduce((sum, invoice) => sum + (Number(invoice.depositApplied) || 0), 0);
+  return round2(Math.max(0, Math.min(received - applied, total)));
+}
+
 /** A validity date `days` from today, as "YYYY-MM-DD". */
 export function validUntilFrom(days = 30, now = new Date()) {
   const date = new Date(now);

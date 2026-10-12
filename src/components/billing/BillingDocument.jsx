@@ -168,9 +168,9 @@ function InvoiceBody({ invoice, client, quote, payments, visits }) {
   );
 }
 
-function ReceiptBody({ payment, client, quote, invoice, payments }) {
+function ReceiptBody({ payment, client, quote, invoice, payments, contract }) {
   const forWhat = payment.kind === "DEPOSIT"
-    ? `Down payment on quotation ${quote?.reference || ""}`
+    ? (payment.contractId ? `Down payment on contract ${contract?.reference || ""}` : `Down payment on quotation ${quote?.reference || ""}`)
     : `Payment on invoice ${invoice?.reference || ""}`;
   // As it stood when this payment was taken, so a reprint of an old receipt
   // doesn't show later payments.
@@ -383,7 +383,7 @@ function BillingDocument({ kind, client, quote = null, invoice = null, payment =
       <Letterhead kind={kind} reference={reference} />
       {kind === "QUOTE" && <QuoteBody quote={quote} client={client} payments={payments} includesFor={includesFor} inspection={inspection} />}
       {kind === "INVOICE" && <InvoiceBody invoice={invoice} client={client} quote={quote} payments={payments} visits={visits} />}
-      {kind === "RECEIPT" && <ReceiptBody payment={payment} client={client} quote={quote} invoice={invoice} payments={payments} />}
+      {kind === "RECEIPT" && <ReceiptBody contract={contract} payment={payment} client={client} quote={quote} invoice={invoice} payments={payments} />}
       {kind === "CONTRACT" && <ContractBody contract={contract} client={client} />}
       {kind === "MONITORING" && <MonitoringBody monitoring={monitoring} client={client} />}
       <footer className="sf-foot">

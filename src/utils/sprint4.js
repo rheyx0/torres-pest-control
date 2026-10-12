@@ -6,7 +6,7 @@
 //   contractInvoicesDue    what each contract's billing schedule says to bill
 //   prepaidPlanIds         plans whose contract was billed up front
 
-import { canBookFromQuote, invoiceBalance } from "./billing";
+import { canBookContract, canBookFromQuote, invoiceBalance } from "./billing";
 import { dayKey } from "./dashboardMetrics";
 import { appointmentReference } from "./scheduling";
 
@@ -49,7 +49,8 @@ export function paymentCheck({ client, services = [], source = null, quotes = []
       reason: `${client.name} has approved quotation ${quote.reference} with its down payment paid. Book this visit under it.`,
     };
   }
-  const contract = contracts.find((entry) => entry.clientId === client.id && entry.status === "ACTIVE" && !entry.planId);
+  // A contract is ready once its down payment is in (077).
+  const contract = contracts.find((entry) => entry.clientId === client.id && entry.status === "ACTIVE" && !entry.planId && canBookContract(entry, payments).ok);
   if (contract) {
     return {
       ok: false,

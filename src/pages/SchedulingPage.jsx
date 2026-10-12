@@ -248,7 +248,11 @@ function SchedulingPage() {
     const contractId = searchParams.get("contract");
     if (!contractId || isTechnician || !billing || billing.loading) return;
     const contract = billing.contractById(contractId);
-    if (contract?.status === "ACTIVE") {
+    const contractCheck = contract && billing.contractBookingCheck ? billing.contractBookingCheck(contract) : { ok: contract?.status === "ACTIVE", reason: "" };
+    if (contract && !contractCheck.ok && contract.status === "ACTIVE") {
+      showError(contractCheck.reason);
+      setMessage(contractCheck.reason);
+    } else if (contract?.status === "ACTIVE") {
       const today = localDateKey(new Date());
       setCreateClientId(contract.clientId);
       setCreateScheduledAt(contract.startsOn > today ? `${contract.startsOn}T09:00` : "");
@@ -887,7 +891,7 @@ function SchedulingPage() {
           };
         }),
       contracts: (billing.contracts || [])
-        .filter((contract) => contract.status === "ACTIVE" && !contract.planId)
+        .filter((contract) => contract.status === "ACTIVE" && !contract.planId && (!billing.contractBookingCheck || billing.contractBookingCheck(contract).ok))
         .map((contract) => ({
           id: contract.id, clientId: contract.clientId, label: `${contract.reference} · ${contract.title}`,
           serviceIds: contract.serviceIds, frequency: contract.frequency, visitCount: contract.visitCount, until: contract.endsOn, price: contract.pricePerVisit,

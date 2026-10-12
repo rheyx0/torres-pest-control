@@ -34,7 +34,15 @@ export function validateContract(values) {
     return "The end date must be after the start date.";
   }
   if (values.pricePerVisit === "") return "Enter the price per visit.";
-  return validateMoney(values.pricePerVisit, { max: LIMITS.MAX_PRICE, label: "The price per visit" });
+  const priceError = validateMoney(values.pricePerVisit, { max: LIMITS.MAX_PRICE, label: "The price per visit" });
+  if (priceError) return priceError;
+  if (values.depositType && values.depositType !== "NONE") {
+    const value = Number(values.depositValue);
+    if (!(value > 0)) return "Enter the down payment, or choose None.";
+    if (values.depositType === "PERCENT" && value > 100) return "A down payment cannot be more than 100%.";
+    if (values.depositType === "PERCENT" && values.lengthBy === "until") return "A contract with an end date takes the down payment as an amount (₱).";
+  }
+  return null;
 }
 
 function ContractEditor({ contract = null, clients = [], services = [], initialClientId = "", onSave, onClose }) {
@@ -54,6 +62,9 @@ function ContractEditor({ contract = null, clients = [], services = [], initialC
     inclusions: contract?.inclusions || "",
     cancellationTerms: contract ? contract.cancellationTerms : DEFAULT_CANCELLATION,
     notes: contract?.notes || "",
+    // 077: the down payment taken once it is signed.
+    depositType: contract?.depositType || "PERCENT",
+    depositValue: contract ? String(contract.depositValue || "") : "30",
   }));
   const [priceTouched, setPriceTouched] = useState(Boolean(contract));
   const [saving, setSaving] = useState(false);
@@ -194,6 +205,16 @@ function ContractEditor({ contract = null, clients = [], services = [], initialC
           )}
           <Field label="Price per visit (₱)" required>
             <Input aria-label="Price per visit" type="number" min="0" step="0.01" value={values.pricePerVisit} onChange={set("pricePerVisit")} />
+          </Field>
+          <Field label="Down payment" hint={values.lengthBy === "until" && values.depositType === "PERCENT" ? "A contract with an end date takes an amount." : "Taken once it is signed, before the visits are booked."}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: "0.5rem" }}>
+              <Input aria-label="Down payment value" type="number" min="0" step="0.01" value={values.depositType === "NONE" ? "" : values.depositValue} disabled={values.depositType === "NONE"} onChange={set("depositValue")} />
+              <Select aria-label="Down payment type" value={values.depositType} onChange={set("depositType")}>
+                <option value="PERCENT">%</option>
+                <option value="AMOUNT">₱</option>
+                <option value="NONE">None</option>
+              </Select>
+            </div>
           </Field>
           <Field label="Billed">
             <Select aria-label="Billing schedule" value={values.billingSchedule} onChange={set("billingSchedule")}>

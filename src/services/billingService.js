@@ -72,6 +72,7 @@ export function mapPaymentRow(row) {
     clientId: row.client_id,
     quoteId: row.quote_id || "",
     invoiceId: row.invoice_id || "",
+    contractId: row.contract_id || "", // 077: a contract's down payment
     kind: row.kind,
     amount: Number(row.amount),
     paidOn: String(row.paid_on).slice(0, 10),
@@ -230,8 +231,27 @@ export const linkQuoteAppointments = (quoteId, appointmentIds) =>
 // Payments
 // ---------------------------------------------------------------------------
 
+/** A contract's down payment (077), by its own function. */
+const recordContractDeposit = (payment) => call("record_contract_deposit", {
+  p_contract_id: payment.contractId,
+  p_payment: {
+    amount: Number(payment.amount),
+    paid_on: payment.paidOn,
+    method: payment.method,
+    reference_no: payment.referenceNo || null,
+    check_number: payment.checkNumber || null,
+    check_bank: payment.checkBank || null,
+    check_date: payment.checkDate || null,
+    notes: payment.notes || null,
+  },
+}, (row) => row && mapPaymentRow(row));
+
+/** None, a fixed amount or a percentage of the contract total (077). */
+export const setContractDeposit = (contractId, type, value) =>
+  call("set_contract_deposit", { p_contract_id: contractId, p_type: type, p_value: Number(value) || 0 }, (row) => row && mapContractRow(row));
+
 /** A down payment on a quote (kind DEPOSIT, quoteId) or a payment on an invoice (kind PAYMENT, invoiceId). */
-export const recordPayment = (payment) => call("record_payment", {
+export const recordPayment = (payment) => (payment.contractId ? recordContractDeposit(payment) : call("record_payment", {
   p_payment: {
     kind: payment.kind,
     quote_id: payment.quoteId || null,
@@ -245,7 +265,7 @@ export const recordPayment = (payment) => call("record_payment", {
     check_date: payment.checkDate || null,
     notes: payment.notes || null,
   },
-}, (row) => row && mapPaymentRow(row));
+}, (row) => row && mapPaymentRow(row)));
 
 export const reversePayment = (paymentId, reason) => call("reverse_payment", { p_payment_id: paymentId, p_reason: reason });
 export const setCheckStatus = (paymentId, status, on, note) =>
@@ -331,6 +351,10 @@ export function mapContractRow(row) {
     endedAt: row.ended_at || "",
     cancelledAt: row.cancelled_at || "",
     cancellationReason: row.cancellation_reason || "",
+    // 077: the down payment taken before the visits are booked.
+    depositType: row.deposit_type || "NONE",
+    depositValue: Number(row.deposit_value) || 0,
+    depositAmount: Number(row.deposit_amount) || 0,
     createdAt: row.created_at,
   };
 }
