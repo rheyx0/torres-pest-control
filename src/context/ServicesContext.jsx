@@ -3,6 +3,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import * as serviceCatalogService from "../services/serviceCatalogService";
+import * as settingsService from "../services/settingsService";
 import { useAuthContext } from "./AuthContext";
 
 const ServicesContext = createContext(null);
@@ -14,11 +15,16 @@ export function ServicesProvider({ children }) {
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // Transportation and labor default rates (076).
+  const [rates, setRates] = useState({ transportRatePerKm: null, laborDailyRate: null });
+  const [ratesAvailable, setRatesAvailable] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
-    const result = await serviceCatalogService.fetchServices();
+    const [result, rateResult] = await Promise.all([serviceCatalogService.fetchServices(), settingsService.fetchRates()]);
+    setRates(rateResult.rates);
+    setRatesAvailable(rateResult.available);
     if (result.error) setError(result.error);
     else setServices(result.services);
     setLoading(false);
@@ -124,9 +130,16 @@ export function ServicesProvider({ children }) {
     return true;
   }, []);
 
+  const saveRates = useCallback(async (next) => {
+    const result = await settingsService.saveRates(next);
+    if (result.error) return result.error;
+    setRates((current) => ({ ...current, ...Object.fromEntries(Object.entries(next).map(([key, value]) => [key, value === "" || value === null ? null : Number(value)])) }));
+    return true;
+  }, []);
+
   const value = useMemo(
-    () => ({ services, loading, error, refresh, saveService, setServiceActive, deleteService }),
-    [services, loading, error, refresh, saveService, setServiceActive, deleteService]
+    () => ({ services, loading, error, refresh, saveService, setServiceActive, deleteService, rates, ratesAvailable, saveRates }),
+    [services, loading, error, refresh, saveService, setServiceActive, deleteService, rates, ratesAvailable, saveRates]
   );
 
   return <ServicesContext.Provider value={value}>{children}</ServicesContext.Provider>;

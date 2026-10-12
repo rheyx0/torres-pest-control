@@ -12,7 +12,7 @@
 // Only a service no visit has used can be deleted (a trigger enforces it);
 // a used one is retired, which is reversible and keeps its visits intact.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { describeServicePricing } from "../../utils/pricing";
 import { Eye, EyeOff, Info, PackageCheck, Pencil, Plus, Trash2, X } from "lucide-react";
 import ConfirmDialog from "../common/ConfirmDialog";
@@ -482,9 +482,42 @@ function ServiceView({ service, itemsById, onEdit, onClose }) {
   );
 }
 
+/** The rates Transportation and Labor lines start from (076); editable per quote. */
+function DefaultRates({ rates, onSave }) {
+  const { showSuccess, showError } = useToast();
+  const [perKm, setPerKm] = useState(rates.transportRatePerKm ?? "");
+  const [daily, setDaily] = useState(rates.laborDailyRate ?? "");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setPerKm(rates.transportRatePerKm ?? ""); setDaily(rates.laborDailyRate ?? ""); }, [rates.transportRatePerKm, rates.laborDailyRate]);
+  const save = async () => {
+    const problem = (perKm !== "" && validateMoney(perKm, { label: "Rate per km" })) || (daily !== "" && validateMoney(daily, { label: "Labor per day" }));
+    if (problem) { showError(problem); return; }
+    setSaving(true);
+    const result = await onSave({ transportRatePerKm: perKm, laborDailyRate: daily });
+    setSaving(false);
+    if (result === true) showSuccess("Default rates saved.");
+    else showError(result);
+  };
+  return (
+    <section aria-label="Default rates" style={{ display: "flex", gap: "0.75rem", alignItems: "end", flexWrap: "wrap", padding: "0.9rem", marginBottom: "1.25rem", border: `1px solid ${colors.line}`, borderRadius: "3.75px", background: colors.canvas }}>
+      <div style={{ flex: "1 1 220px" }}>
+        <strong style={{ color: colors.ink, fontSize: "0.88rem" }}>Default rates</strong>
+        <p style={{ margin: "0.2rem 0 0", color: colors.muted, fontSize: "0.78rem" }}>What + Transportation and + Labor start from on a quotation or invoice. They can be changed on each one.</p>
+      </div>
+      <Field label="Transportation per km (₱)">
+        <Input aria-label="Transportation per km" type="number" min="0" step="0.01" value={perKm} onChange={(event) => setPerKm(event.target.value)} placeholder="e.g. 20" style={{ width: "10rem" }} />
+      </Field>
+      <Field label="Labor per technician per day (₱)">
+        <Input aria-label="Labor per technician per day" type="number" min="0" step="0.01" value={daily} onChange={(event) => setDaily(event.target.value)} placeholder="e.g. 1000" style={{ width: "10rem" }} />
+      </Field>
+      <Button onClick={save} loading={saving}>Save rates</Button>
+    </section>
+  );
+}
+
 export default function ServiceProfilesAdmin() {
   const { showSuccess, showError } = useToast();
-  const { services, loading, error, saveService, setServiceActive, deleteService } = useServices();
+  const { services, loading, error, saveService, setServiceActive, deleteService, rates = {}, ratesAvailable = false, saveRates } = useServices();
   const { inventory } = useInventory();
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(null); // null closed, {} new, service to edit
@@ -547,6 +580,8 @@ export default function ServiceProfilesAdmin() {
           <Plus size={16} /> Add service
         </Button>
       </div>
+
+      {ratesAvailable && saveRates && <DefaultRates rates={rates} onSave={saveRates} />}
 
       {loading && <Skeleton label="Loading…" lines={5} />}
       {!loading && error && (

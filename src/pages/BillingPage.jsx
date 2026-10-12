@@ -62,7 +62,7 @@ function BillingPage() {
   const billing = useBilling();
   const { quotes, invoices, payments, extras, available, invoicesAvailable, loading, error, quoteById, invoiceById, paymentsForQuote, paymentsForInvoice } = billing;
   const { clients, uploadDocumentRecord, getDocumentUrl } = useClients();
-  const { services: billingServices, activeServices, serviceById, serviceByName } = useServices();
+  const { services: billingServices, activeServices, serviceById, serviceByName, rates } = useServices();
   const { inventory } = useInventory();
   const { appointments } = useScheduling();
   const { showSuccess, showError } = useToast();
@@ -512,6 +512,7 @@ function BillingPage() {
           inventory={inventory}
           initialClientId={startNew ? searchParams.get("client") || "" : ""}
           inspection={editing?.quote ? null : inspectionVisit}
+          rates={rates}
           onSave={saveQuote}
           onClose={closeQuoteEditor}
         />
@@ -585,6 +586,7 @@ function BillingPage() {
           presetLines={invoicing.lines || []}
           contract={invoicing.contract || null}
           prepaid={prepaid}
+          rates={rates}
           onSave={issueInvoice}
           onClose={() => setInvoicing(null)}
         />

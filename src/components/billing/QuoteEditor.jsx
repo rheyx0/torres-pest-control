@@ -10,6 +10,8 @@
 // those lines re-price, unless their price was typed over by hand.
 
 import { useMemo, useState } from "react";
+import { ChargeButtons, LaborParts, TransportHint } from "./FieldCharges";
+import { CHARGE_LABELS, chargeKind, updateCharge } from "../../utils/fieldCharges";
 import { Plus, X } from "lucide-react";
 import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
 import { colors } from "../../styles/theme";
@@ -48,7 +50,7 @@ export function validateQuote(form, lines, today = todayISO()) {
   return null;
 }
 
-function QuoteEditor({ quote = null, clients = [], services = [], inventory = [], initialClientId = "", inspection = null, onSave, onClose }) {
+function QuoteEditor({ quote = null, clients = [], services = [], inventory = [], initialClientId = "", inspection = null, onSave, onClose, rates = {} }) {
   // Made from an inspection (Sprint 4): its area and recommended services.
   const fromInspection = !quote && inspection
     ? (inspection.recommendedServiceIds || []).map((id) => services.find((service) => service.id === id)).filter(Boolean)
@@ -242,7 +244,7 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
 
         <section aria-label="Quote lines" style={{ display: "grid", gap: "0.5rem", padding: "0.9rem", border: `1px solid ${colors.line}`, borderRadius: "3.75px", background: colors.canvas }}>
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-            <strong style={{ color: colors.ink, fontSize: "0.9rem", marginRight: "auto" }}>Services, materials and extra work</strong>
+            <strong style={{ color: colors.ink, fontSize: "0.9rem", marginRight: "auto" }}>Services, materials and charges</strong>
             <Select aria-label="Add a service" value={adding.service} onChange={(event) => addService(event.target.value)} style={{ width: "auto" }}>
               <option value="">+ Service</option>
               {services.filter((service) => service.isActive).map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
@@ -251,25 +253,28 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
               <option value="">+ Material</option>
               {inventory.filter((item) => item.status !== "DISABLED").map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </Select>
+            <ChargeButtons rates={rates} onAdd={(fields) => setLines((current) => [...current, newLine(fields)])} />
             <Button size="sm" onClick={() => setLines((current) => [...current, newLine({ kind: "EXTRA", unit: "job" })])}>
-              <Plus size={14} /> Extra work
+              <Plus size={14} /> Other charge
             </Button>
           </div>
 
-          {lines.length === 0 && <p style={{ margin: 0, color: colors.muted, fontSize: "0.85rem" }}>Add the services first, then any materials or extra work.</p>}
+          {lines.length === 0 && <p style={{ margin: 0, color: colors.muted, fontSize: "0.85rem" }}>Add the services first, then any materials, transportation and labor.</p>}
 
           {lines.map((line) => (
             <div key={line.key} style={{ display: "grid", gap: "0.2rem" }}>
             <div style={{ display: "grid", gridTemplateColumns: "92px minmax(0, 1fr) 90px 120px 110px auto", gap: "0.5rem", alignItems: "center" }}>
-              <span style={{ fontSize: "0.74rem", color: colors.muted }}>{KIND_LABELS[line.kind]}</span>
+              <span style={{ fontSize: "0.74rem", color: colors.muted }}>{CHARGE_LABELS[chargeKind(line)] || KIND_LABELS[line.kind]}</span>
               <Input aria-label="Line description" value={line.description} maxLength={300} onChange={(event) => updateLine(line.key, { description: event.target.value })} placeholder="Describe the work" />
-              <Input aria-label="Line quantity" type="number" min="0" step="any" value={line.quantity} onChange={(event) => updateLine(line.key, { quantity: event.target.value })} />
-              <Input aria-label="Line unit price" type="number" min="0" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(line.key, { unitPrice: event.target.value, autoPriced: false })} placeholder={pricePlaceholder(line)} />
+              <Input aria-label="Line quantity" type="number" min="0" step="any" value={line.quantity} readOnly={chargeKind(line) === "LABOR"} onChange={(event) => updateLine(line.key, updateCharge(line, { quantity: event.target.value }))} />
+              <Input aria-label="Line unit price" type="number" min="0" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(line.key, { unitPrice: event.target.value, autoPriced: false })} placeholder={chargeKind(line) === "TRANSPORT" ? "Per km" : chargeKind(line) === "LABOR" ? "Per day" : pricePlaceholder(line)} />
               <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", color: colors.ink }}>{formatPeso(lineAmount(line))}</span>
               <Button size="icon" variant="ghost" aria-label={`Remove ${line.description || "line"}`} onClick={() => setLines((current) => current.filter((entry) => entry.key !== line.key))}>
                 <X size={15} />
               </Button>
             </div>
+            {chargeKind(line) === "LABOR" && <LaborParts line={line} onChange={(patch) => updateLine(line.key, updateCharge(line, patch))} />}
+            {chargeKind(line) === "TRANSPORT" && <TransportHint />}
             {/* What the service's price covers: information, not a charge. */}
             {line.kind === "SERVICE" && includedMaterialsText(servicesById.get(line.serviceId), (id) => itemsById.get(id)) && (
               <span style={{ marginLeft: "calc(92px + 0.5rem)", fontSize: "0.75rem", color: colors.muted }}>

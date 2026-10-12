@@ -8,6 +8,8 @@
 // mistake is voided and issued again.
 
 import { useEffect, useMemo, useState } from "react";
+import { ChargeButtons, LaborParts, TransportHint } from "./FieldCharges";
+import { CHARGE_LABELS, chargeKind, updateCharge } from "../../utils/fieldCharges";
 import { Plus, X } from "lucide-react";
 import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
 import { colors } from "../../styles/theme";
@@ -69,6 +71,8 @@ function InvoiceEditor({
   presetLines = [],
   contract = null,
   prepaid = new Set(),
+  // Transportation and labor default rates (076).
+  rates = {},
   onSave,
   onClose,
 }) {
@@ -225,21 +229,26 @@ function InvoiceEditor({
         <section aria-label="Invoice lines" style={{ display: "grid", gap: "0.5rem", padding: "0.9rem", border: `1px solid ${colors.line}`, borderRadius: "3.75px", background: colors.canvas, overflowX: "auto" }}>
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             <strong style={{ color: colors.ink, fontSize: "0.9rem", marginRight: "auto" }}>Lines</strong>
+            <ChargeButtons rates={rates} onAdd={(fields) => setLines((current) => [...current, keyed(fields)])} />
             <Button size="sm" onClick={() => setLines((current) => [...current, keyed({ kind: "EXTRA", unit: "job", description: "" })])}>
               <Plus size={14} /> Line
             </Button>
           </div>
           {lines.length === 0 && <p style={{ margin: 0, color: colors.muted, fontSize: "0.85rem" }}>Choose a quote or visits, or add a line.</p>}
           {lines.map((line) => (
-            <div key={line.key} style={{ display: "grid", gridTemplateColumns: "82px minmax(180px, 1fr) 80px 110px 110px auto", gap: "0.5rem", alignItems: "center", minWidth: "620px" }}>
-              <span style={{ fontSize: "0.74rem", color: colors.muted }}>{line.extraId ? "Approved extra" : KIND_LABELS[line.kind]}</span>
+            <div key={line.key} style={{ display: "grid", gap: "0.2rem", minWidth: "620px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "82px minmax(180px, 1fr) 80px 110px 110px auto", gap: "0.5rem", alignItems: "center" }}>
+              <span style={{ fontSize: "0.74rem", color: colors.muted }}>{line.extraId ? "Approved extra" : CHARGE_LABELS[chargeKind(line)] || KIND_LABELS[line.kind]}</span>
               <Input aria-label="Line description" value={line.description} maxLength={300} onChange={(event) => updateLine(line.key, { description: event.target.value })} placeholder="Describe the work" />
-              <Input aria-label="Line quantity" type="number" min="0" step="any" value={line.quantity} onChange={(event) => updateLine(line.key, { quantity: event.target.value })} />
-              <Input aria-label="Line unit price" type="number" min="0" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(line.key, { unitPrice: event.target.value })} placeholder="Price" />
+              <Input aria-label="Line quantity" type="number" min="0" step="any" value={line.quantity} readOnly={chargeKind(line) === "LABOR"} onChange={(event) => updateLine(line.key, updateCharge(line, { quantity: event.target.value }))} />
+              <Input aria-label="Line unit price" type="number" min="0" step="0.01" value={line.unitPrice} onChange={(event) => updateLine(line.key, { unitPrice: event.target.value })} placeholder={chargeKind(line) === "TRANSPORT" ? "Per km" : chargeKind(line) === "LABOR" ? "Per day" : "Price"} />
               <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", color: colors.ink }}>{formatPeso(lineAmount(line))}</span>
               <Button size="icon" variant="ghost" aria-label={`Remove ${line.description || "line"}`} onClick={() => setLines((current) => current.filter((entry) => entry.key !== line.key))}>
                 <X size={15} />
               </Button>
+            </div>
+            {chargeKind(line) === "LABOR" && <LaborParts line={line} indent="82px" onChange={(patch) => updateLine(line.key, updateCharge(line, patch))} />}
+            {chargeKind(line) === "TRANSPORT" && <TransportHint indent="82px" />}
             </div>
           ))}
         </section>
