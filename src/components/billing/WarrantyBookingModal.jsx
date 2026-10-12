@@ -66,7 +66,13 @@ function WarrantyBookingModal({ kind, warranty, dates = [], technicians = [], on
               )}
             </div>
           ))}
-          {checkup && rows.length === 0 && <p style={{ margin: 0, color: colors.muted, fontSize: "0.85rem" }}>No checkups left to book in this warranty.</p>}
+          {checkup && rows.length === 0 && <p style={{ margin: 0, color: colors.muted, fontSize: "0.85rem" }}>No suggested dates left. Add your own below.</p>}
+          {checkup && (
+            <div>
+              <Button size="sm" variant="ghost" onClick={() => setRows((current) => [...current, { key: `extra-${current.length}-${Date.now()}`, day: "" }])}>+ Add date</Button>
+              <span style={{ marginLeft: "0.5rem", color: colors.muted, fontSize: "0.75rem" }}>Any day from {formatDate(warranty.start)} to {formatDate(warranty.end)}.</span>
+            </div>
+          )}
         </div>
         <Field label="Time" hint="The same time on every date. Each can be moved later on the Schedule.">
           <Input aria-label="Time" type="time" value={time} onChange={(event) => setTime(event.target.value)} style={{ width: "9rem" }} />

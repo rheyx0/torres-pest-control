@@ -2337,6 +2337,7 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
  * log lined up with the physical count.
  */
 function StockOutModal({ inventory, initialItemId = "", technicians, appointments = [], batches = [], services = [], onClose, onSubmit }) {
+  const { currentUser } = useAuth();
   // Several items out at once, like Receive delivery (migration 069): one
   // date, reason, technician and note, a line per item.
   const stockable = inventory.filter((item) => item.status !== INVENTORY_STATUS.DISABLED);
@@ -2555,17 +2556,17 @@ function StockOutModal({ inventory, initialItemId = "", technicians, appointment
         </div>
 
         {selectedReason.requiresTechnician && (
-          <section aria-label="Signatures" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))", gap: "0.75rem" }}>
-            <div style={{ display: "grid", gap: "0.35rem" }}>
-              <strong style={{ color: "#211b15", fontSize: "0.85rem" }}>Handed over by *</strong>
-              <SignaturePad ref={handoverPad} onChange={setHandoverInk} height={120} />
-              <span style={{ color: "#96897b", fontSize: "0.72rem" }}>The person giving out the stock signs here.</span>
-            </div>
-            <div style={{ display: "grid", gap: "0.35rem" }}>
-              <strong style={{ color: "#211b15", fontSize: "0.85rem" }}>Received by *</strong>
-              <SignaturePad ref={receiverPad} onChange={setReceiverInk} height={120} />
-              <span style={{ color: "#96897b", fontSize: "0.72rem" }}>{technicianId ? `${(activeTechnicians.find((account) => account.id === technicianId) || {}).name || "The technician"} signs here.` : "The technician taking the stock signs here."}</span>
-            </div>
+          <section aria-label="Signatures" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))", gap: "1rem", alignItems: "start", padding: "0.75rem", border: "1px solid #efe9e0", borderRadius: "3.75px", background: "#fcfaf1" }}>
+            {[
+              { title: "Handed over by", role: "Staff", name: currentUser?.name || currentUser?.username || "", pad: handoverPad, onInk: setHandoverInk, placeholder: "Staff signs here" },
+              { title: "Received by", role: "Technician", name: (activeTechnicians.find((account) => account.id === technicianId) || {}).name || "", pad: receiverPad, onInk: setReceiverInk, placeholder: "Technician signs here" },
+            ].map((signer) => (
+              <div key={signer.title} style={{ display: "grid", gap: "0.3rem", minWidth: 0 }}>
+                <strong style={{ color: "#211b15", fontSize: "0.85rem" }}>{signer.title} <span style={{ color: "#9a2d24" }}>*</span></strong>
+                <SignaturePad ref={signer.pad} onChange={signer.onInk} height={110} placeholder={signer.placeholder} />
+                <span style={{ color: "#50463c", fontSize: "0.75rem" }}>{signer.title}: {signer.name || (signer.role === "Technician" ? "choose the technician above" : "—")} ({signer.role})</span>
+              </div>
+            ))}
           </section>
         )}
 

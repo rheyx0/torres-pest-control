@@ -25,8 +25,8 @@ import useUsers from "../hooks/useUsers";
 import useServices from "../hooks/useServices";
 import { useOptionalBilling } from "../hooks/useBilling";
 import { findFollowUpService, followUpPriceFor, paymentCheck } from "../utils/sprint4";
-import { announceFollowUp } from "../utils/followUpBooking";
-import { coveringWarranty } from "../utils/warranty";
+import { announceFollowUp, earliestFollowUpDate, followUpDateProblem } from "../utils/followUpBooking";
+import { coveringWarranty, warrantyOf } from "../utils/warranty";
 import { SERVICE_CATEGORIES, visitCategory } from "../utils/categories";
 import CategoryBadge from "../components/ui/CategoryBadge";
 import { useScheduling } from "../context/SchedulingContext";
@@ -639,6 +639,11 @@ function SchedulingPage() {
       report.inspectionAreaSqm = form.get("inspectionArea") || "";
       report.recommendedServiceIds = form.getAll("recommendedServiceIds").filter(Boolean);
     }
+    const followUpProblem = followUpDateProblem(report.followUpDate, selected);
+    if (followUpProblem) {
+      showError(followUpProblem);
+      return;
+    }
     if (!report.findings) {
       showError("Inspection findings are required.");
       return;
@@ -713,6 +718,18 @@ function SchedulingPage() {
     showSuccess(message);
   };
 
+  // The warranty a visit is under or comes with (078), for the printed report.
+  const reportWarranty = (appointment) => {
+    if (!billing?.office) return null;
+    const records = { quotes: billing.quotes || [], contracts: billing.contracts || [], appointments };
+    const day = localDateKey(new Date(appointment.scheduledAt));
+    const covering = coveringWarranty(appointment, records, day);
+    if (covering) return covering;
+    const quote = (billing.quotes || []).find((entry) => entry.id === (appointment.quoteId || appointment.warrantyQuoteId));
+    const contract = (billing.contracts || []).find((entry) => entry.id === appointment.warrantyContractId || (appointment.planId && entry.planId === appointment.planId));
+    return (contract && warrantyOf("CONTRACT", contract, appointments)) || (quote && warrantyOf("QUOTE", quote, appointments)) || null;
+  };
+
   const printServiceForm = (appointment) => {
     const client = clients.find((entry) => entry.id === appointment.clientId);
     if (!client) {
@@ -721,7 +738,7 @@ function SchedulingPage() {
     }
     setPrintRequest({
       // A multi-day job prints as one report: every day's photos and materials.
-      appointment: { ...printableJob(appointment, appointments), jobCategory: categoryOf(appointment) },
+      appointment: { ...printableJob(appointment, appointments), jobCategory: categoryOf(appointment), warranty: reportWarranty(appointment) },
       client,
       technician: allAccounts.find((account) => account.id === appointment.technicianId) || null,
       technicians: crewOf(appointment)
@@ -2197,6 +2214,7 @@ function AppointmentPanel({
                             <input
                               name="followUpDate"
                               type="date"
+                              min={earliestFollowUpDate(appointment)}
                               defaultValue={appointment.followUpDate}
                               style={{ ...inputStyle, width: "100%" }}
                             />

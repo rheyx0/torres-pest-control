@@ -58,7 +58,7 @@ const newRow = (itemId = "", defaultAmount = "", billingMode = "INCLUDED") => ({
  * Pure validation for the service form, exported for tests. Returns
  * { field: message }; {} means the form can be saved.
  */
-export function validateServiceForm(form, services = [], editingId = null) {
+export function validateServiceForm(form, services = [], editingId = null, itemById = () => null) {
   const errors = {};
   const name = String(form.name || "").trim();
   if (!name) errors.name = "Service name is required.";
@@ -105,6 +105,10 @@ export function validateServiceForm(form, services = [], editingId = null) {
   const seen = new Set();
   filled.forEach((row) => {
     if (seen.has(row.itemId)) errors.materials = "List each inventory item once.";
+    // A non-chemical service uses no chemicals (Sprint 5).
+    if (form.category === "NON_CHEMICAL" && itemById(row.itemId)?.type === "CHEMICAL" && !errors.materials) {
+      errors.materials = `Remove ${itemById(row.itemId).name} first. A non-chemical service can't use chemicals.`;
+    }
     seen.add(row.itemId);
     const quantityError = validateQuantity(row.defaultAmount, { label: "Each material quantity" });
     if (quantityError && !errors.materials) errors.materials = quantityError;
@@ -139,8 +143,11 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
   // Disabled items stay selectable only if the service already lists them, so
   // editing an old service does not silently drop a row.
   const choosable = inventory.filter((item) => item.status !== "DISABLED" || form.materials.some((row) => row.itemId === item.id));
-  const groups = ["CHEMICAL", "MATERIAL", "EQUIPMENT"]
+  // A non-chemical service is offered no chemicals; one it already lists
+  // stays visible so the form can say to remove it.
+  const groups = (form.category === "NON_CHEMICAL" ? ["MATERIAL", "EQUIPMENT"] : ["CHEMICAL", "MATERIAL", "EQUIPMENT"])
     .map((type) => ({ type, items: choosable.filter((item) => item.type === type) }))
+    .concat(form.category === "NON_CHEMICAL" ? [{ type: "CHEMICAL", items: choosable.filter((item) => item.type === "CHEMICAL" && form.materials.some((row) => row.itemId === item.id)) }] : [])
     .filter((group) => group.items.length);
 
   const set = (field, value) => {
@@ -175,7 +182,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    const found = validateServiceForm(form, services, initial?.id || null);
+    const found = validateServiceForm(form, services, initial?.id || null, (id) => itemsById.get(id) || null);
     if (Object.keys(found).length) {
       setErrors(found);
       return;

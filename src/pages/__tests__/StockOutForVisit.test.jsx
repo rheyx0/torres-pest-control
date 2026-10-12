@@ -56,8 +56,9 @@ test("stock out to a technician needs both signatures", async () => {
   const dialog = screen.getByRole("dialog");
   await userEvent.selectOptions(within(dialog).getByLabelText("Technician"), "t1");
   await userEvent.selectOptions(within(dialog).getByLabelText("For visit"), "v1");
-  expect(within(dialog).getByText("Handed over by *")).toBeInTheDocument();
-  expect(within(dialog).getByText("Received by *")).toBeInTheDocument();
+  expect(within(dialog).getByText("Staff signs here")).toBeInTheDocument();
+  expect(within(dialog).getByText("Technician signs here")).toBeInTheDocument();
+  expect(within(dialog).getByText("Received by: pestTech (Technician)")).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole("button", { name: /Record stock out|Stock out|Save/ }));
   expect(within(dialog).getByRole("alert")).toHaveTextContent(/must sign/);
 });

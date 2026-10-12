@@ -53,6 +53,7 @@ import ClientCombobox from "./ClientCombobox";
 import PlanDates from "./PlanDates";
 import TechnicianPicker from "./TechnicianPicker";
 import { visitCategory } from "../../utils/categories";
+import { followUpStartProblem } from "../../utils/followUpBooking";
 import CategoryBadge from "../ui/CategoryBadge";
 
 /** The durations the office actually books. Custom reveals the raw fields. */
@@ -385,6 +386,15 @@ function NewAppointmentModal({
       setFormError("Choose the visit this follow-up checks on.");
       return;
     }
+    // A follow-up can only come after the visit it checks on.
+    if (followUpOf) {
+      const original = appointments.find((visit) => visit.id === followUpOf.id);
+      const startProblem = followUpStartProblem(scheduledAt, original);
+      if (startProblem) {
+        setFormError(startProblem);
+        return;
+      }
+    }
     if (overlong && !multiDay) {
       setFormError("This won't fit in one working day. Split it into a multi-day job, or shorten it.");
       return;
@@ -610,6 +620,18 @@ function NewAppointmentModal({
                 <span style={{ color: neutral.bark, fontSize: text.caption.fontSize }}>
                   Prefills {materialCount} material{materialCount === 1 ? "" : "s"} on the Stock-Out tab.
                 </span>
+              )}
+              {/* Right under the services, where Follow-up Visit is ticked. */}
+              {followUpChoices.length > 0 && (
+                <label style={{ display: "grid", gap: "6px", color: neutral.ink, ...text.small }}>
+                  <strong style={{ fontWeight: weight.medium }}>Follow-up of which visit? *</strong>
+                  <Select aria-label="Follow-up of which visit" value={followUpOf?.id || ""} onChange={(event) => chooseFollowUpOf(event.target.value)}>
+                    <option value="">Choose the visit it checks on</option>
+                    {followUpChoices.map((visit) => (
+                      <option key={visit.id} value={visit.id}>{visit.reference || "Visit"} · {new Date(visit.scheduledAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })} · {visit.serviceType || "Service"}</option>
+                    ))}
+                  </Select>
+                </label>
               )}
             </div>
             <Field label="Service location">
@@ -857,17 +879,6 @@ function NewAppointmentModal({
           </Section>
         )}
 
-        {followUpChoices.length > 0 && (
-          <label style={{ gridColumn: "1 / -1", display: "grid", gap: "6px", color: neutral.ink, ...text.small }}>
-            <strong style={{ fontWeight: weight.medium }}>Follow-up of which visit? *</strong>
-            <Select aria-label="Follow-up of which visit" value={followUpOf?.id || ""} onChange={(event) => chooseFollowUpOf(event.target.value)}>
-              <option value="">Choose the visit it checks on</option>
-              {followUpChoices.map((visit) => (
-                <option key={visit.id} value={visit.id}>{visit.reference || "Visit"} · {new Date(visit.scheduledAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })} · {visit.serviceType || "Service"}</option>
-              ))}
-            </Select>
-          </label>
-        )}
 
         {followUpOf && (initialFollowUpOf || followUpTicked) && (
           <p role="status" style={{ gridColumn: "1 / -1", margin: 0, padding: "9px 12px", background: surface.sunken, borderRadius: radius.control, color: neutral.ink, ...text.small }}>

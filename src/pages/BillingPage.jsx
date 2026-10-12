@@ -29,6 +29,7 @@ import useAuth from "../hooks/useAuth";
 import useBilling from "../hooks/useBilling";
 import useClients from "../hooks/useClients";
 import useServices from "../hooks/useServices";
+import { warrantyOf } from "../utils/warranty";
 import useInventory from "../hooks/useInventory";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
@@ -77,7 +78,15 @@ function BillingPage() {
   const [editing, setEditing] = useState(null); // { quote } — quote null means new
   const [invoicing, setInvoicing] = useState(null); // { quoteId, clientId } or a contract's { contract, visitIds, lines }
   const [paying, setPaying] = useState(null); // { quote } or { contract } for a down payment, { invoice } for a payment
-  const [printRequest, setPrintRequest] = useState(null);
+  const [printRequest, setRawPrintRequest] = useState(null);
+  // Each printout carries its warranty (078), with its dates once it runs.
+  const setPrintRequest = (request) => {
+    if (!request) { setRawPrintRequest(null); return; }
+    const contractOf = request.contract || (request.invoice?.contractId ? billing.contractById(request.invoice.contractId) : null);
+    const quoteOf = request.quote || (request.invoice?.quoteId ? quoteById(request.invoice.quoteId) : null);
+    const warranty = (contractOf && warrantyOf("CONTRACT", contractOf, appointments)) || (quoteOf && warrantyOf("QUOTE", quoteOf, appointments)) || null;
+    setRawPrintRequest({ ...request, warranty });
+  };
 
   const canCreate = can(SUBSYSTEMS.BILLING, "create");
   const canReverse = can(SUBSYSTEMS.BILLING, "delete");

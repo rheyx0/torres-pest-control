@@ -18,7 +18,8 @@ import { colors } from "../../styles/theme";
 
 const PAD_HEIGHT = 170;
 
-const SignaturePad = forwardRef(function SignaturePad({ onChange, disabled = false, height = PAD_HEIGHT }, ref) {
+// placeholder: who signs, shown on the empty pad ("Customer signs here" on a report).
+const SignaturePad = forwardRef(function SignaturePad({ onChange, disabled = false, height = PAD_HEIGHT, placeholder = "Customer signs here" }, ref) {
   const canvasRef = useRef(null);
   const drawingRef = useRef(false);
   const lastPointRef = useRef(null);
@@ -173,7 +174,7 @@ const SignaturePad = forwardRef(function SignaturePad({ onChange, disabled = fal
             }}
           >
             <PenLine size={18} />
-            <span>{disabled ? "Signature locked" : "Customer signs here"}</span>
+            <span>{disabled ? "Signature locked" : placeholder}</span>
           </div>
         )}
 

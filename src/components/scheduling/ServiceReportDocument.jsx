@@ -12,6 +12,7 @@ import { ACTIVITY_LEVELS, COMPANY } from "../../utils/constants";
 import { formatDate, formatDateTime, formatPeso } from "../../utils/formatters";
 import { appointmentReference } from "../../utils/scheduling";
 import { categoryLabel } from "../../utils/categories";
+import { warrantyLabel } from "../../utils/warranty";
 
 const activityLabel = (value) => ACTIVITY_LEVELS.find((level) => level.value === value)?.label || value;
 
@@ -80,10 +81,20 @@ function ServiceReportDocument({ appointment, client, technician, technicians = 
           )}
           <Row label={appointment.serviceType?.includes(", ") ? "Services performed" : "Service performed"} value={appointment.serviceType} />
           {appointment.jobCategory && <Row label="Job type" value={categoryLabel(appointment.jobCategory)} />}
+          {appointment.warrantyKind && <Row label="Visit type" value={appointment.warrantyKind === "CHECKUP" ? "Warranty checkup (no charge)" : "Warranty re-treatment (no charge)"} />}
           <Row label="Pest concern" value={appointment.pestConcern || client.pestConcern} />
           <Row label={crewNames.length > 1 ? "Technicians" : "Technician"} value={crewNames.join(", ") || technicianName} />
         </tbody>
       </table>
+
+      {appointment.warranty?.months ? (
+        <section style={{ margin: "10px 0", border: "2px solid #7f1111", borderRadius: "6px", padding: "8px 12px", background: "#fbf5ee" }}>
+          <div style={{ fontWeight: 700, fontSize: "12px", letterSpacing: "0.04em", textTransform: "uppercase", color: "#7f1111" }}>
+            Warranty: {warrantyLabel(appointment.warranty.months)}{appointment.warranty.start ? ` (${formatDate(appointment.warranty.start)} – ${formatDate(appointment.warranty.end)})` : " · starts when the work is completed"} · {appointment.warranty.reference}
+          </div>
+          <div style={{ fontSize: "11px", marginTop: "2px" }}>Free re-treatment if pests come back during this period.{appointment.warranty.frequency ? ` Includes ${appointment.warranty.frequency === "MONTHLY" ? "monthly" : "quarterly"} checkups at no extra charge.` : ""}</div>
+        </section>
+      ) : null}
 
       <Block title="Inspection findings">{appointment.report}</Block>
       {(appointment.activityLevel || appointment.openIssues) && (

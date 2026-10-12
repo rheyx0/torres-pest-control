@@ -18,3 +18,22 @@ test("announceFollowUp picks the toast", () => {
   expect(success).toHaveBeenCalledWith("Booked.");
   expect(info).toHaveBeenCalledWith("Follow-up not booked: Karl is out.");
 });
+
+describe("a follow-up comes after its visit", () => {
+  const { earliestFollowUpDate, followUpDateProblem, followUpStartProblem } = require("../followUpBooking");
+  const visit = { reference: "TPC-V-00019", scheduledAt: "2026-10-12T09:00:00", durationMinutes: 90 };
+
+  test("the report's follow-up date is the visit's day or later", () => {
+    expect(earliestFollowUpDate(visit)).toBe("2026-10-12");
+    expect(followUpDateProblem("2026-10-12", visit)).toBeNull();
+    expect(followUpDateProblem("2026-10-20", visit)).toBeNull();
+    expect(followUpDateProblem("2026-10-11", visit)).toMatch(/can't be before the visit/);
+    expect(followUpDateProblem("", visit)).toBeNull();
+  });
+
+  test("a booked follow-up starts once the visit has ended", () => {
+    expect(followUpStartProblem("2026-10-12T10:30", visit)).toBeNull();
+    expect(followUpStartProblem("2026-10-12T10:00", visit)).toMatch(/must be after TPC-V-00019/);
+    expect(followUpStartProblem("2026-10-10T09:00", visit)).toMatch(/must be after/);
+  });
+});

@@ -29,7 +29,7 @@ import SignaturePad from "../components/scheduling/SignaturePad";
 import Button from "../components/ui/Button";
 import StatusPill from "../components/ui/StatusPill";
 import { ACTIVITY_LEVELS, REPORT_UPLOAD_CATEGORIES, ROLES } from "../utils/constants";
-import { announceFollowUp } from "../utils/followUpBooking";
+import { announceFollowUp, earliestFollowUpDate, followUpDateProblem } from "../utils/followUpBooking";
 import { combineServices, crewOf, isAssignedTo, servicesOf } from "../utils/scheduling";
 import { heldBy, openCheckouts } from "../utils/custody";
 import BatchSelect from "../components/inventory/BatchSelect";
@@ -273,6 +273,7 @@ function VisitPage() {
 
   const stepProblem = (name) => {
     if (name === "Findings" && !draft.findings.trim()) return "Write what you found before moving on.";
+    if (name === "Findings" && followUpDateProblem(draft.followUpDate, appointment)) return followUpDateProblem(draft.followUpDate, appointment);
     // An earlier day of a multi-day job ticks no services: the report does.
     if (name === "Treatment" && !earlierDay && tickedIds.length === 0 && !legacyName) {
       return "Tick the services you performed.";
@@ -603,7 +604,7 @@ function VisitPage() {
               <input
                 aria-label="Follow-up date"
                 type="date"
-                min={todayISO()}
+                min={[todayISO(), earliestFollowUpDate(appointment)].sort().pop()}
                 value={draft.followUpDate || ""}
                 onChange={(event) => update({ followUpDate: event.target.value })}
                 style={field}

@@ -86,10 +86,22 @@ function Letterhead({ kind, reference, title = null }) {
   );
 }
 
-// "2 years from signing. Includes quarterly checkups at no extra charge during the warranty period."
-const warrantyText = (months, frequency, from) => `${warrantyLabel(months)} ${from}.${frequency ? ` Includes ${frequency === "MONTHLY" ? "monthly" : "quarterly"} checkups at no extra charge during the warranty period.` : ""}`;
+// The warranty, boxed so it stands out (Sprint 5): its length and dates once
+// it has started, or when it starts, and what it gives the client.
+function WarrantyBox({ months, frequency, start = "", end = "", startsWhen }) {
+  if (!months) return null;
+  const dates = start && end ? ` (${formatDate(start)} – ${formatDate(end)})` : ` · starts ${startsWhen}`;
+  return (
+    <section className="sf-block" style={{ border: "2px solid #7f1111", borderRadius: "6px", padding: "10px 14px", background: "#fbf5ee" }}>
+      <div style={{ fontWeight: 700, fontSize: "13px", letterSpacing: "0.04em", textTransform: "uppercase", color: "#7f1111" }}>Warranty: {warrantyLabel(months)}{dates}</div>
+      <div className="sf-prose" style={{ marginTop: "4px" }}>
+        Free re-treatment if pests come back during this period.{frequency ? ` Includes ${frequency === "MONTHLY" ? "monthly" : "quarterly"} checkups at no extra charge.` : ""}
+      </div>
+    </section>
+  );
+}
 
-function QuoteBody({ quote, client, payments, includesFor, inspection }) {
+function QuoteBody({ quote, client, payments, includesFor, inspection, warranty }) {
   const deposit = depositStatus(quote, payments);
   return (
     <>
@@ -103,7 +115,6 @@ function QuoteBody({ quote, client, payments, includesFor, inspection }) {
           <Row label="Payment terms" value={termsLabel(quote.paymentTerms)} />
           <Row label="Service" value="One-time service" />
           {quote.areaSqm && <Row label="Area" value={`${quote.areaSqm} sqm`} />}
-          {quote.warrantyMonths ? <Row label="Warranty" value={warrantyText(quote.warrantyMonths, quote.checkupFrequency, "from the day the work is completed")} /> : null}
           {inspection && <Row label="Site inspection" value={`${inspectionIncludedText(inspection).replace(/^Includes free site inspection /, "Included at no charge ")}`} />}
         </tbody>
       </table>
@@ -111,6 +122,7 @@ function QuoteBody({ quote, client, payments, includesFor, inspection }) {
       <Totals record={quote}>
         {deposit.required > 0 && <tr className="bd-strong"><th>Down payment to book</th><td>{formatPeso(deposit.required)}</td></tr>}
       </Totals>
+      <WarrantyBox months={quote.warrantyMonths} frequency={quote.checkupFrequency} start={warranty?.start} end={warranty?.end} startsWhen="when the work is completed" />
       {quote.notes && <section className="sf-block"><h2 className="sf-h2">Notes</h2><div className="sf-prose">{quote.notes}</div></section>}
       <section className="sf-block">
         <div className="sf-prose">
@@ -219,7 +231,7 @@ function ReceiptBody({ payment, client, quote, invoice, payments, contract }) {
  * kind INVOICE: { invoice, client, quote?, payments, visits }
  * kind RECEIPT: { payment, client, quote?, invoice?, payments }
  */
-function ContractBody({ contract, client }) {
+function ContractBody({ contract, client, warranty }) {
   const schedule = BILLING_SCHEDULES.find((entry) => entry.value === contract.billingSchedule)?.label || "";
   const length = contract.visitCount
     ? `${contract.visitCount} visits`
@@ -238,7 +250,6 @@ function ContractBody({ contract, client }) {
           {contract.areaSqm ? <Row label="Area" value={`${contract.areaSqm} sqm`} /> : null}
           <Row label="Starts" value={formatDate(contract.startsOn)} />
           <Row label="Length" value={length} />
-          {contract.warrantyMonths ? <Row label="Warranty" value={warrantyText(contract.warrantyMonths, contract.checkupFrequency, "from signing")} /> : null}
         </tbody>
       </table>
 
@@ -258,6 +269,7 @@ function ContractBody({ contract, client }) {
         </table>
       </section>
 
+      <WarrantyBox months={contract.warrantyMonths} frequency={contract.checkupFrequency} start={warranty?.start} end={warranty?.end} startsWhen="when the contract is signed" />
       {contract.inclusions && <section className="sf-block"><h2 className="sf-h2">What is included</h2><div className="sf-prose">{contract.inclusions}</div></section>}
       {contract.cancellationTerms && <section className="sf-block"><h2 className="sf-h2">Cancellation</h2><div className="sf-prose">{contract.cancellationTerms}</div></section>}
       {contract.notes && <section className="sf-block"><h2 className="sf-h2">Notes</h2><div className="sf-prose">{contract.notes}</div></section>}
@@ -406,7 +418,7 @@ function CheckoutBody({ checkout }) {
   );
 }
 
-function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, monitoring = null, report = null, payments = [], visits = [], includesFor, inspection = null, checkout = null }) {
+function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, monitoring = null, report = null, payments = [], visits = [], includesFor, inspection = null, checkout = null, warranty = null }) {
   if (kind === "CHECKOUT") {
     if (!checkout) return null;
     return (
@@ -433,10 +445,11 @@ function BillingDocument({ kind, client, quote = null, invoice = null, payment =
   return (
     <div className="service-form billing-document">
       <Letterhead kind={kind} reference={reference} />
-      {kind === "QUOTE" && <QuoteBody quote={quote} client={client} payments={payments} includesFor={includesFor} inspection={inspection} />}
+      {kind === "QUOTE" && <QuoteBody quote={quote} client={client} payments={payments} includesFor={includesFor} inspection={inspection} warranty={warranty} />}
       {kind === "INVOICE" && <InvoiceBody invoice={invoice} client={client} quote={quote} payments={payments} visits={visits} />}
+      {kind === "INVOICE" && warranty && <WarrantyBox months={warranty.months} frequency={warranty.frequency} start={warranty.start} end={warranty.end} startsWhen={warranty.type === "CONTRACT" ? "when the contract is signed" : "when the work is completed"} />}
       {kind === "RECEIPT" && <ReceiptBody contract={contract} payment={payment} client={client} quote={quote} invoice={invoice} payments={payments} />}
-      {kind === "CONTRACT" && <ContractBody contract={contract} client={client} />}
+      {kind === "CONTRACT" && <ContractBody contract={contract} client={client} warranty={warranty} />}
       {kind === "MONITORING" && <MonitoringBody monitoring={monitoring} client={client} />}
       <footer className="sf-foot">
         {COMPANY.name} · {TITLES[kind]} {reference} · Printed {formatDateTime(new Date().toISOString())}

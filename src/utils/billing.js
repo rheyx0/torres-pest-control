@@ -19,7 +19,7 @@ import {
 } from "./constants";
 import { formatPeso } from "./formatters";
 import { customerPrice, materialCharge, PRICING_MODES, servicePrice } from "./pricing";
-import { appointmentReference } from "./scheduling";
+import { appointmentReference, crewOf } from "./scheduling";
 
 const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
@@ -267,6 +267,19 @@ export function inspectionIncludedText(inspection) {
   return `Includes free site inspection (${[appointmentReference(inspection), when].filter(Boolean).join(", ")})`;
 }
 
+/**
+ * Technician-days the ticked visits actually took: each visit's crew size, in
+ * date order (follow-ups and warranty visits are not part of the job).
+ */
+export function actualTechnicianDays(visits = []) {
+  const perVisit = visits
+    .filter((visit) => visit.status !== "Cancelled" && !visit.warrantyKind && !visit.followUpOf)
+    .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
+    .map((visit) => crewOf(visit).length)
+    .filter((count) => count > 0);
+  return { perVisit, total: perVisit.reduce((sum, count) => sum + count, 0) };
+}
+
 export function draftInvoiceLines({ quote = null, quoteInvoiced = false, visits = [], extras = [], servicesFor = () => [], itemById = () => null, inspection = null }) {
   const lines = [];
   // The inspection was part of the service: shown at no charge.
@@ -274,15 +287,37 @@ export function draftInvoiceLines({ quote = null, quoteInvoiced = false, visits 
     lines.push({ kind: "SERVICE", serviceId: "", itemId: "", appointmentId: "", description: `Site inspection (${appointmentReference(inspection)}): included`, quantity: 1, unit: "visit", unitPrice: 0 });
   }
   if (quote && !quoteInvoiced) {
-    quote.lines.forEach((line) => lines.push({
-      kind: line.kind,
-      serviceId: line.serviceId || "",
-      itemId: line.itemId || "",
-      description: line.description,
-      quantity: line.quantity,
-      unit: line.unit || "",
-      unitPrice: line.unitPrice,
-    }));
+    // Labor is billed on what actually happened (Sprint 5): the technicians on
+    // each ticked visit's crew, added up, with the quoted figure kept beside it.
+    const actual = actualTechnicianDays(visits);
+    quote.lines.forEach((line) => {
+      const labor = line.kind === "EXTRA" && line.unit === "technician-day";
+      if (labor && actual.total > 0) {
+        const quoted = (/\(([^)]*)\)/.exec(line.description || "")?.[1] || `${line.quantity} technician-days`)
+          .replace(/ technicians? × /, " × ")
+          .replace(/ days?$/, "");
+        const breakdown = actual.perVisit.length > 1 ? `: ${actual.perVisit.join(" + ")}` : "";
+        lines.push({
+          kind: line.kind,
+          serviceId: "",
+          itemId: "",
+          description: `Labor (${actual.total} technician-day${actual.total === 1 ? "" : "s"}${breakdown}) · quoted ${quoted}`,
+          quantity: actual.total,
+          unit: line.unit,
+          unitPrice: line.unitPrice,
+        });
+        return;
+      }
+      lines.push({
+        kind: line.kind,
+        serviceId: line.serviceId || "",
+        itemId: line.itemId || "",
+        description: line.description,
+        quantity: line.quantity,
+        unit: line.unit || "",
+        unitPrice: line.unitPrice,
+      });
+    });
   }
   // Without a quote every visit is a line; with one, the quote's lines stand
   // for the job, and only a follow-up (068) is charged on top of them: one
