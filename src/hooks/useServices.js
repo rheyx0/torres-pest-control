@@ -1,5 +1,10 @@
 import { useMemo } from "react";
-import { useServicesContext } from "../context/ServicesContext";
+import { useOptionalServicesContext, useServicesContext } from "../context/ServicesContext";
+
+/** The catalog's services, or [] where no ServicesProvider is mounted. */
+export function useOptionalServiceList() {
+  return useOptionalServicesContext()?.services || [];
+}
 
 // Adds the lookups every consumer needs: the booking form lists only active
 // services, while an existing appointment must still resolve a retired one.

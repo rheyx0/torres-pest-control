@@ -120,6 +120,11 @@ export function ServicesProvider({ children }) {
   return <ServicesContext.Provider value={value}>{children}</ServicesContext.Provider>;
 }
 
+/** The context, or null outside the provider (pages that can run without it). */
+export function useOptionalServicesContext() {
+  return useContext(ServicesContext);
+}
+
 export function useServicesContext() {
   const context = useContext(ServicesContext);
   if (!context) throw new Error("useServicesContext must be used inside ServicesProvider");

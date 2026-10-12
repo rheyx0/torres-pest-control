@@ -18,6 +18,7 @@ import { useSearchParams } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import useInventory from "../hooks/useInventory";
 import useNow from "../hooks/useNow";
+import { useOptionalServiceList } from "../hooks/useServices";
 import Button from "../components/ui/Button";
 import SegmentedControl from "../components/ui/SegmentedControl";
 import StatusPill from "../components/ui/StatusPill";
@@ -26,7 +27,7 @@ import { inventoryAlerts, isBelowReorder, isExpiringSoon, isMaintenanceOverdue, 
 import useUsers from "../hooks/useUsers";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
-import { appointmentReference } from "../utils/scheduling";
+import { appointmentReference, combineServices, servicesOf } from "../utils/scheduling";
 import { INVENTORY_STATUS } from "../services/inventoryService";
 import { ACCOUNT_STATUS, LIMITS, RETURN_REASONS, RETURN_REASON_LABELS, STOCK_OUT_REASONS, STOCK_OUT_REASON_LABELS } from "../utils/constants";
 import { checkoutOf, heldByItem, openCheckouts } from "../utils/custody";
@@ -400,6 +401,7 @@ function InventoryPage() {
   } = useInventory();
   const { technicians } = useUsers();
   const { appointments } = useScheduling();
+  const serviceCatalog = useOptionalServiceList();
   const { showSuccess, showError } = useToast();
 
   const [tab, setTab] = useState("items"); // "items" | "custody" | "history"
@@ -1485,6 +1487,7 @@ function InventoryPage() {
           technicians={technicians}
           appointments={appointments}
           batches={batches}
+          services={serviceCatalog}
           onClose={() => setStockOutSeed(null)}
           onSubmit={async (values) => {
             const label = (line) => {
@@ -2306,7 +2309,7 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
  * found days after it happened, and backdating it is what keeps the movement
  * log lined up with the physical count.
  */
-function StockOutModal({ inventory, initialItemId = "", technicians, appointments = [], batches = [], onClose, onSubmit }) {
+function StockOutModal({ inventory, initialItemId = "", technicians, appointments = [], batches = [], services = [], onClose, onSubmit }) {
   // Several items out at once, like Receive delivery (migration 069): one
   // date, reason, technician and note, a line per item.
   const stockable = inventory.filter((item) => item.status !== INVENTORY_STATUS.DISABLED);
@@ -2319,6 +2322,7 @@ function StockOutModal({ inventory, initialItemId = "", technicians, appointment
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState("");
+  const [filledFrom, setFilledFrom] = useState("");
 
   const selectedReason = STOCK_OUT_REASONS.find((entry) => entry.value === reason) || STOCK_OUT_REASONS[0];
   const activeTechnicians = technicians.filter((account) => account.status !== ACCOUNT_STATUS.INACTIVE);
@@ -2347,6 +2351,29 @@ function StockOutModal({ inventory, initialItemId = "", technicians, appointment
       .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt))
       .slice(0, 30);
   }, [appointments, technicianId]);
+
+  // Choosing the visit fills in its services' materials at the amounts they
+  // include, so the technician takes what the job needs. Lines already filled
+  // stay; an item already on a line is not added twice. All stay editable.
+  const chooseVisit = (visitId) => {
+    setForAppointmentId(visitId);
+    setFilledFrom("");
+    const visit = appointments.find((entry) => entry.id === visitId);
+    if (!visit) return;
+    const byId = (id) => services.find((service) => service.id === id) || null;
+    const byName = (name) => services.find((service) => service.name.trim().toLowerCase() === String(name || "").trim().toLowerCase()) || null;
+    const combined = combineServices(servicesOf(visit, byId, byName));
+    const materials = (combined?.materials || []).filter((material) => findItem(material.itemId));
+    if (!materials.length) return;
+    setLines((current) => {
+      const kept = current.filter((line) => line.itemId);
+      const added = materials
+        .filter((material) => !kept.some((line) => line.itemId === material.itemId))
+        .map((material) => ({ ...newLine(material.itemId), amount: material.defaultAmount ? String(material.defaultAmount) : "" }));
+      return kept.length || added.length ? [...kept, ...added] : current;
+    });
+    setFilledFrom(`${appointmentReference(visit)} · ${combined.name}`);
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -2406,7 +2433,7 @@ function StockOutModal({ inventory, initialItemId = "", technicians, appointment
           </Field>
           {selectedReason.requiresTechnician && (
             <Field label="Technician *">
-              <select aria-label="Technician" value={technicianId} onChange={(event) => { setValidationError(""); setTechnicianId(event.target.value); setForAppointmentId(""); }} style={inputStyle} required>
+              <select aria-label="Technician" value={technicianId} onChange={(event) => { setValidationError(""); setTechnicianId(event.target.value); setForAppointmentId(""); setFilledFrom(""); }} style={inputStyle} required>
                 <option value="">Select a technician</option>
                 {activeTechnicians.map((account) => (
                   <option key={account.id} value={account.id}>{account.reference ? `${account.reference} — ` : ""}{account.name || account.username}</option>
@@ -2421,12 +2448,13 @@ function StockOutModal({ inventory, initialItemId = "", technicians, appointment
 
         {selectedReason.requiresTechnician && technicianId && (
           <Field label="For visit" hint="Optional. The stock stays with the technician either way; their next visit's materials are taken from it before the shelf.">
-            <select aria-label="For visit" value={forAppointmentId} onChange={(event) => setForAppointmentId(event.target.value)} style={inputStyle}>
+            <select aria-label="For visit" value={forAppointmentId} onChange={(event) => chooseVisit(event.target.value)} style={inputStyle}>
               <option value="">Not for a particular visit</option>
               {upcomingVisits.map((visit) => (
                 <option key={visit.id} value={visit.id}>{appointmentReference(visit)} · {new Date(visit.scheduledAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</option>
               ))}
             </select>
+            {filledFrom && <span style={{ color: "#2f6b3f", fontSize: "0.75rem" }}>Items filled in from {filledFrom}. Change or remove any line before saving.</span>}
           </Field>
         )}
 
