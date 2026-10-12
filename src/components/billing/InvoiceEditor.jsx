@@ -23,6 +23,18 @@ const keyed = (line) => ({ key: `invoice-line-${(lineCounter += 1)}`, serviceId:
 const KIND_LABELS = { SERVICE: "Service", MATERIAL: "Material", EXTRA: "Extra work" };
 
 /** Pure validation, exported for tests. Returns an error string or null. */
+/**
+ * A visit booked under a quote must be invoiced under that quote: its price is
+ * the quote's total with VAT, and the quote holds the down payment. An error
+ * message, or "" when every ticked visit agrees with the chosen quote.
+ */
+export function quoteMismatch(chosenVisits = [], quoteId = "", quotes = []) {
+  const stray = chosenVisits.find((visit) => visit.quoteId && visit.quoteId !== quoteId);
+  if (!stray) return "";
+  const reference = quotes.find((quote) => quote.id === stray.quoteId)?.reference || "its quotation";
+  return `${appointmentReference(stray)} was booked under ${reference}. Choose that quotation so its VAT and down payment are counted.`;
+}
+
 export function validateInvoice(form, lines, today = todayISO()) {
   if (!form.clientId) return "Choose the client to invoice.";
   if (!form.issuedOn) return "Enter the invoice date.";
@@ -114,7 +126,20 @@ function InvoiceEditor({
     }));
   };
 
-  const toggleVisit = (id) => setVisitIds((current) => (current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]));
+  // A visit booked under a quote is priced at the quote's total, VAT included.
+  // Billed without its quote, VAT was added again and the down payment never
+  // deducted, so ticking one brings its quote in with it.
+  const toggleVisit = (id) => {
+    setError("");
+    const visit = visits.find((entry) => entry.id === id);
+    const adding = !visitIds.includes(id);
+    if (adding && visit?.quoteId && !form.quoteId && quotes.some((entry) => entry.id === visit.quoteId)) {
+      chooseQuote(visit.quoteId);
+      setVisitIds((current) => Array.from(new Set([...current, ...visits.filter((entry) => entry.quoteId === visit.quoteId).map((entry) => entry.id), id])));
+      return;
+    }
+    setVisitIds((current) => (current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id]));
+  };
   const updateLine = (key, patch) => {
     setError("");
     setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
@@ -122,7 +147,7 @@ function InvoiceEditor({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const problem = validateInvoice(form, lines);
+    const problem = quoteMismatch(chosenVisits, form.quoteId, quotes) || validateInvoice(form, lines);
     if (problem) {
       setError(problem);
       return;

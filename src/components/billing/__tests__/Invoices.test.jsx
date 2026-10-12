@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import InvoiceDetail from "../InvoiceDetail";
-import InvoiceEditor, { validateInvoice } from "../InvoiceEditor";
+import InvoiceEditor, { quoteMismatch, validateInvoice } from "../InvoiceEditor";
 import { validateExtra } from "../VisitExtras";
 
 describe("validateInvoice", () => {
@@ -133,4 +133,22 @@ describe("InvoiceEditor", () => {
     await userEvent.click(screen.getByRole("checkbox", { name: /TPC-V-00007/ }));
     expect(screen.getAllByLabelText("Line description").map((input) => input.value)).toEqual(["Termite treatment"]);
   });
+  test("ticking a visit booked under a quote brings the quote in: VAT once, down payment deducted", async () => {
+    render(<InvoiceEditor clients={clients} quotes={[quote]} payments={[deposit]} appointments={[{ ...visit, price: 2800 }]} extras={[]} initialClientId="c1" onSave={jest.fn()} onClose={jest.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: /TPC-V-00007/ }));
+    expect(screen.getByLabelText("Quote")).toHaveValue("q1");
+    expect(screen.getAllByLabelText("Line description").map((input) => input.value)).toEqual(["Termite treatment"]);
+    const totals = within(screen.getByLabelText("Invoice totals"));
+    // 2500 + 12% VAT = 2800, less the 1400 down payment.
+    expect(totals.getByText("Amount due").nextElementSibling).toHaveTextContent("₱1,400.00");
+  });
 });
+
+test("quoteMismatch: a visit booked under a quote needs that quote", () => {
+  const quotes = [{ id: "q1", reference: "TPC-Q-00001" }];
+  const visit = { id: "a1", reference: "TPC-V-00007", quoteId: "q1" };
+  expect(quoteMismatch([visit], "q1", quotes)).toBe("");
+  expect(quoteMismatch([{ ...visit, quoteId: "" }], "", quotes)).toBe("");
+  expect(quoteMismatch([visit], "", quotes)).toMatch(/TPC-V-00007 was booked under TPC-Q-00001/);
+});
+
