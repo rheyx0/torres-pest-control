@@ -164,9 +164,11 @@ const SignaturePad = forwardRef(function SignaturePad({ onChange, disabled = fal
           <div
             style={{
               position: "absolute",
-              inset: 0,
+              // Centred in the space above the signing line, so the two never meet.
+              inset: "0 0 2.2rem 0",
               display: "grid",
               placeItems: "center",
+              alignContent: "center",
               pointerEvents: "none",
               color: colors.muted,
               fontSize: "0.8rem",
@@ -185,7 +187,7 @@ const SignaturePad = forwardRef(function SignaturePad({ onChange, disabled = fal
             position: "absolute",
             left: "12%",
             right: "12%",
-            bottom: "1.9rem",
+            bottom: "1.4rem",
             borderBottom: "1px dashed #cbd5e1",
             pointerEvents: "none",
           }}
