@@ -45,7 +45,9 @@ const MOVEMENT_COLUMNS = `
 // (055). Each is dropped from the select if the database does not have it yet,
 // so the history still loads ahead of a migration.
 const CUSTODY_COLUMNS = ["checkout_id", "for_appointment_id", "return_reason", "custody_closed_at"];
-const OPTIONAL_MOVEMENT_COLUMNS = [...CUSTODY_COLUMNS, "batch_id"];
+// The handover signatures (079).
+const HANDOVER_COLUMNS = ["handover_signature_path", "receiver_signature_path", "handover_group", "handed_over_by_name"];
+const OPTIONAL_MOVEMENT_COLUMNS = [...CUSTODY_COLUMNS, "batch_id", ...HANDOVER_COLUMNS];
 
 const BATCH_COLUMNS = `
   id, reference, item_id, lot_number, expiration_date, received_date, quantity_received, quantity,
@@ -401,6 +403,47 @@ export async function stockOutLines(lines, { date, reason, technicianId, note, f
   return { error: null, rows: Array.isArray(data) ? data : [] };
 }
 
+const HANDOVER_BUCKET = "report-attachments";
+
+/** A handover signature image, uploaded before the checkout (079). */
+export async function uploadHandoverSignature(file, who) {
+  const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const path = `checkouts/${id}/${who}.png`;
+  const { error } = await supabase.storage.from(HANDOVER_BUCKET).upload(path, file, { contentType: "image/png", upsert: false });
+  if (error) return { error: describeError(error) };
+  return { path };
+}
+
+/** A short-lived link to a handover signature, for the checkout slip. */
+export async function getHandoverSignatureUrl(path) {
+  if (!path) return { url: "" };
+  const { data, error } = await supabase.storage.from(HANDOVER_BUCKET).createSignedUrl(path, 300);
+  if (error) return { error: describeError(error), url: "" };
+  return { url: data.signedUrl };
+}
+
+/**
+ * Stock out to a technician, signed for by the person handing it over and by
+ * the technician (079). Before 079 the plain stock_out_lines is used.
+ */
+export async function stockOutLinesSigned(lines, { date, technicianId, note, forAppointmentId, handoverPath, receiverPath }) {
+  const { data, error } = await supabase.rpc("stock_out_lines_signed", {
+    p_lines: lines.map((line) => ({ item_id: line.itemId, amount: Number(line.amount), batch_id: line.batchId || null })),
+    p_movement_date: date,
+    p_technician_id: technicianId || null,
+    p_note: nullIfBlank(note),
+    p_for_appointment_id: forAppointmentId || null,
+    p_handover_path: handoverPath,
+    p_receiver_path: receiverPath,
+  });
+  if (error && /stock_out_lines_signed|schema cache|does not exist/i.test(`${error.message || ""} ${error.details || ""}`)) {
+    return stockOutLines(lines, { date, reason: "TECHNICIAN_CHECKOUT", technicianId, note, forAppointmentId });
+  }
+  if (error) return { error: describeError(error) };
+  const rows = Array.isArray(data) ? data : [];
+  return { error: null, rows, handoverGroup: rows[0]?.handover_group || "" };
+}
+
 /**
  * Stock a technician was holding that was lost, stolen or damaged
  * (report_checkout_loss, migration 069): it closes that much of the checkout
@@ -490,6 +533,11 @@ function mapMovementRow(row) {
     forAppointmentId: row.for_appointment_id || "",
     returnReason: row.return_reason || "",
     custodyClosedAt: row.custody_closed_at || "",
+    // Signed for by both (079): one handover_group per handover.
+    handoverSignaturePath: row.handover_signature_path || "",
+    receiverSignaturePath: row.receiver_signature_path || "",
+    handoverGroup: row.handover_group || "",
+    handedOverByName: row.handed_over_by_name || "",
     actor: row.actor || "—",
     unitCost,
     totalCost,

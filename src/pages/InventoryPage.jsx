@@ -35,6 +35,8 @@ import { usableBatches } from "../utils/batches";
 import { customerPrice, itemMargin } from "../utils/pricing";
 import BatchSelect from "../components/inventory/BatchSelect";
 import BatchList from "../components/inventory/BatchList";
+import SignaturePad from "../components/scheduling/SignaturePad";
+import BillingPrinter from "../components/billing/BillingPrinter";
 import { crewOf } from "../utils/scheduling";
 import { todayISO, validateMoney, validateMovementDate, validateQuantity } from "../utils/validators";
 import { LOSS_REASONS, REASON_FILTERS, countByReason, describeLosses, filterByReason, reasonOf, recentLossesByItem, summarizeLosses } from "../utils/stockMovements";
@@ -398,6 +400,7 @@ function InventoryPage() {
     writeOffBatch,
     updateBatch,
     splitBatch,
+    getHandoverSignatureUrl,
   } = useInventory();
   const { technicians } = useUsers();
   const { appointments } = useScheduling();
@@ -480,6 +483,27 @@ function InventoryPage() {
     (id) => appointmentReference(appointments.find((entry) => entry.id === id) || { id }),
     [appointments]
   );
+
+  // The checkout slip (079): every line handed over together, both signatures.
+  const [slipRequest, setSlipRequest] = useState(null);
+  const printSlip = useCallback(async (checkout) => {
+    const lines = movements.filter((movement) => movement.handoverGroup && movement.handoverGroup === checkout.handoverGroup && movement.stockOutReason === "TECHNICIAN_CHECKOUT");
+    const signed = (path) => (getHandoverSignatureUrl ? getHandoverSignatureUrl(path) : Promise.resolve({ url: "" }));
+    const [handover, receiver] = await Promise.all([signed(checkout.handoverSignaturePath), signed(checkout.receiverSignaturePath)]);
+    setSlipRequest({
+      kind: "CHECKOUT",
+      checkout: {
+        reference: `CHK-${checkout.handoverGroup.slice(0, 8).toUpperCase()}`,
+        date: checkout.movementDate,
+        technicianName: technicianName(checkout.technicianId),
+        handedOverBy: checkout.handedOverByName || checkout.actor,
+        forVisit: checkout.forAppointmentId ? appointmentLabel(checkout.forAppointmentId) : "",
+        lines: (lines.length ? lines : [checkout]).map((line) => ({ name: line.itemName, amount: line.amount, unit: line.itemUnit, batch: line.batchNumber })),
+        handoverUrl: handover.url || "",
+        receiverUrl: receiver.url || "",
+      },
+    });
+  }, [movements, technicianName, appointmentLabel, getHandoverSignatureUrl]);
 
   // Missing/damaged per item over the last 30 days, for the list badge.
   const recentLosses = useMemo(() => recentLossesByItem(movements), [movements]);
@@ -1149,6 +1173,7 @@ function InventoryPage() {
           error={movementsError}
           onReturn={setReturnTarget}
           onReportLoss={setLossTarget}
+          onPrintSlip={printSlip}
         />
       )}
 
@@ -1515,6 +1540,8 @@ function InventoryPage() {
           }}
         />
       )}
+
+      <BillingPrinter request={slipRequest} onDone={() => setSlipRequest(null)} />
 
       {lossTarget && (
         <LossModal
@@ -2323,6 +2350,11 @@ function StockOutModal({ inventory, initialItemId = "", technicians, appointment
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState("");
   const [filledFrom, setFilledFrom] = useState("");
+  // Both sign for stock going to a technician (079).
+  const handoverPad = useRef(null);
+  const receiverPad = useRef(null);
+  const [handoverInk, setHandoverInk] = useState(false);
+  const [receiverInk, setReceiverInk] = useState(false);
 
   const selectedReason = STOCK_OUT_REASONS.find((entry) => entry.value === reason) || STOCK_OUT_REASONS[0];
   const activeTechnicians = technicians.filter((account) => account.status !== ACCOUNT_STATUS.INACTIVE);
@@ -2408,8 +2440,24 @@ function StockOutModal({ inventory, initialItemId = "", technicians, appointment
       setValidationError("Select the technician the stock is going to.");
       return;
     }
+    let handoverFile = null;
+    let receiverFile = null;
+    if (selectedReason.requiresTechnician) {
+      if (!handoverInk || !receiverInk) {
+        setValidationError("Both the person handing the stock over and the technician must sign.");
+        return;
+      }
+      handoverFile = await handoverPad.current?.toFile();
+      receiverFile = await receiverPad.current?.toFile();
+      if (!handoverFile || !receiverFile) {
+        setValidationError("A signature could not be read from the pad. Please sign again.");
+        return;
+      }
+    }
     setSaving(true);
     await onSubmit({
+      handoverFile,
+      receiverFile,
       date,
       reason,
       technicianId,
@@ -2506,6 +2554,21 @@ function StockOutModal({ inventory, initialItemId = "", technicians, appointment
           })}
         </div>
 
+        {selectedReason.requiresTechnician && (
+          <section aria-label="Signatures" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(14rem, 1fr))", gap: "0.75rem" }}>
+            <div style={{ display: "grid", gap: "0.35rem" }}>
+              <strong style={{ color: "#211b15", fontSize: "0.85rem" }}>Handed over by *</strong>
+              <SignaturePad ref={handoverPad} onChange={setHandoverInk} height={120} />
+              <span style={{ color: "#96897b", fontSize: "0.72rem" }}>The person giving out the stock signs here.</span>
+            </div>
+            <div style={{ display: "grid", gap: "0.35rem" }}>
+              <strong style={{ color: "#211b15", fontSize: "0.85rem" }}>Received by *</strong>
+              <SignaturePad ref={receiverPad} onChange={setReceiverInk} height={120} />
+              <span style={{ color: "#96897b", fontSize: "0.72rem" }}>{technicianId ? `${(activeTechnicians.find((account) => account.id === technicianId) || {}).name || "The technician"} signs here.` : "The technician taking the stock signs here."}</span>
+            </div>
+          </section>
+        )}
+
         <Field label="Note">
           <textarea aria-label="Stock out note" value={note} onChange={(event) => setNote(event.target.value)} style={{ ...inputStyle, minHeight: "70px", resize: "vertical" }} placeholder="Anything worth recording — where it went, how it was damaged" maxLength={LIMITS.NOTES_MAX} />
         </Field>
@@ -2589,7 +2652,7 @@ function LossModal({ entry, technicianName, onClose, onSubmit }) {
  * (migration 054). A visit's materials come out of these first, so what is
  * listed here is what is physically in someone's van right now.
  */
-function CustodyList({ entries, technicianName, appointmentLabel, canManage, loading, error, onReturn, onReportLoss }) {
+function CustodyList({ entries, technicianName, appointmentLabel, canManage, loading, error, onReturn, onReportLoss, onPrintSlip }) {
   const template = "1.1fr 1.3fr 110px 1fr 120px 1.2fr 220px";
   const cell = { color: "#50463c" };
   return (
@@ -2617,6 +2680,7 @@ function CustodyList({ entries, technicianName, appointmentLabel, canManage, loa
               <span style={{ fontWeight: 600, color: "#211b15", fontVariantNumeric: "tabular-nums" }}>{remaining} {checkout.itemUnit}</span>
               <span style={{ ...cell, fontSize: "0.8rem" }}>of {checkout.amount} · {used} used · {returned} returned{lost ? ` · ${lost} lost` : ""}</span>
               <span style={{ textAlign: "right", display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}>
+                {onPrintSlip && checkout.handoverGroup && <Button size="sm" variant="quiet" onClick={() => onPrintSlip(checkout)}>Slip</Button>}
                 {canManage && <Button size="sm" variant="secondary" onClick={() => onReturn(entry)}>Return</Button>}
                 {canManage && onReportLoss && <Button size="sm" variant="quiet" onClick={() => onReportLoss(entry)}>Report lost / damaged</Button>}
               </span>

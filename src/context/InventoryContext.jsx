@@ -257,7 +257,7 @@ export function InventoryProvider({ children }) {
 
   // Several items out at once (Stock out on the Inventory page, 069).
   const stockOutLines = useCallback(
-    async (lines, { date, reason, technicianId, note, forAppointmentId }) => {
+    async (lines, { date, reason, technicianId, note, forAppointmentId, handoverFile, receiverFile }) => {
       if (!lines.length) return "Add at least one item to stock out.";
       const dateError = validateMovementDate(date);
       if (dateError) return dateError;
@@ -269,7 +269,18 @@ export function InventoryProvider({ children }) {
         if (Number(line.amount) > Number(item.quantity)) return `Only ${item.quantity} ${item.unit} of ${item.name} is in stock.`;
       }
       if (reason === "TECHNICIAN_CHECKOUT" && !technicianId) return "Select the technician the stock was checked out to.";
-      const result = await inventoryService.stockOutLines(lines, { date, reason, technicianId, note, forAppointmentId });
+      let result;
+      if (reason === "TECHNICIAN_CHECKOUT") {
+        // Both sign for it (079): the images go up first, then the checkout.
+        if (!handoverFile || !receiverFile) return "Both the person handing the stock over and the technician must sign.";
+        const handover = await inventoryService.uploadHandoverSignature(handoverFile, "handed-over");
+        if (handover.error) return handover.error;
+        const receiver = await inventoryService.uploadHandoverSignature(receiverFile, "received");
+        if (receiver.error) return receiver.error;
+        result = await inventoryService.stockOutLinesSigned(lines, { date, technicianId, note, forAppointmentId, handoverPath: handover.path, receiverPath: receiver.path });
+      } else {
+        result = await inventoryService.stockOutLines(lines, { date, reason, technicianId, note, forAppointmentId });
+      }
       if (result.error) return result.error;
       await reloadStock();
       const summary = lines.map((line) => {
@@ -355,6 +366,7 @@ export function InventoryProvider({ children }) {
       stockOutManual,
       stockOutMany,
       stockOutLines,
+      getHandoverSignatureUrl: inventoryService.getHandoverSignatureUrl,
       reportCheckoutLoss,
       returnCheckout,
       stockCorrection,

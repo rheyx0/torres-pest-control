@@ -16,7 +16,7 @@ import { depositStatus, invoiceBalance, inspectionIncludedText } from "../../uti
 import { appointmentReference } from "../../utils/scheduling";
 import { formatDate, formatDateTime, formatPeso } from "../../utils/formatters";
 
-const TITLES = { QUOTE: "Quotation", INVOICE: "Invoice", RECEIPT: "Acknowledgement Receipt", CONTRACT: "Service Contract", MONITORING: "Site Monitoring Report" };
+const TITLES = { CHECKOUT: "Checkout Slip", QUOTE: "Quotation", INVOICE: "Invoice", RECEIPT: "Acknowledgement Receipt", CONTRACT: "Service Contract", MONITORING: "Site Monitoring Report" };
 
 function Row({ label, value }) {
   return (
@@ -371,7 +371,52 @@ function ReportBody({ report }) {
   );
 }
 
-function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, monitoring = null, report = null, payments = [], visits = [], includesFor, inspection = null }) {
+// Stock handed to a technician, signed for by both (079).
+function CheckoutBody({ checkout }) {
+  return (
+    <>
+      <table className="sf-meta">
+        <tbody>
+          <Row label="Date" value={formatDate(checkout.date)} />
+          <Row label="Technician" value={checkout.technicianName} />
+          <Row label="Handed over by" value={checkout.handedOverBy} />
+          {checkout.forVisit && <Row label="For visit" value={checkout.forVisit} />}
+        </tbody>
+      </table>
+      <section className="sf-block">
+        <h2 className="sf-h2">Items</h2>
+        <table className="bd-lines">
+          <thead><tr><th>Item</th><th>Quantity</th><th>Batch / lot</th></tr></thead>
+          <tbody>
+            {checkout.lines.map((line, index) => (
+              <tr key={`${line.name}-${index}`}><td>{line.name}</td><td>{line.amount} {line.unit}</td><td>{line.batch || "—"}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section className="sf-block" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+        {[["Handed over by", checkout.handedOverBy, checkout.handoverUrl], ["Received by", checkout.technicianName, checkout.receiverUrl]].map(([label, name, url]) => (
+          <div key={label}>
+            {url ? <img src={url} alt={`${label} signature`} style={{ maxWidth: "100%", height: "90px", objectFit: "contain", display: "block" }} /> : <div style={{ height: "90px" }} />}
+            <div style={{ borderTop: "1px solid #211b15", paddingTop: "4px", fontSize: "11px" }}>{label}: {name || "—"}</div>
+          </div>
+        ))}
+      </section>
+    </>
+  );
+}
+
+function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, monitoring = null, report = null, payments = [], visits = [], includesFor, inspection = null, checkout = null }) {
+  if (kind === "CHECKOUT") {
+    if (!checkout) return null;
+    return (
+      <div className="service-form billing-document">
+        <Letterhead kind={kind} reference={checkout.reference} />
+        <CheckoutBody checkout={checkout} />
+        <footer className="sf-foot">{COMPANY.name} · Checkout slip {checkout.reference} · Printed {formatDateTime(new Date().toISOString())}</footer>
+      </div>
+    );
+  }
   if (kind === "REPORT") {
     if (!report) return null;
     return (

@@ -21,6 +21,7 @@ const slug = (value) => (value || "")
 export function billingFileName(request) {
   const reference = { QUOTE: request.quote, INVOICE: request.invoice, RECEIPT: request.payment, CONTRACT: request.contract, MONITORING: request.monitoring, REPORT: request.report }[request.kind]?.reference;
   if (request.kind === "REPORT") return slug(reference) || "report";
+  if (request.kind === "CHECKOUT") return slug(request.checkout?.reference) || "checkout-slip";
   return [slug(request.client?.reference), slug(request.client?.name) || "client", reference].filter(Boolean).join("_");
 }
 

@@ -49,3 +49,15 @@ test("choosing the visit fills in its materials at the included amounts", async 
   expect(within(dialog).getAllByLabelText("Stock out quantity").map((input) => input.value)).toEqual(["1", "1"]);
   expect(within(dialog).getByText(/Items filled in from TPC-V-00040/)).toBeInTheDocument();
 });
+
+test("stock out to a technician needs both signatures", async () => {
+  render(<MemoryRouter><InventoryPage /></MemoryRouter>);
+  await userEvent.click(screen.getByRole("button", { name: "Stock out" }));
+  const dialog = screen.getByRole("dialog");
+  await userEvent.selectOptions(within(dialog).getByLabelText("Technician"), "t1");
+  await userEvent.selectOptions(within(dialog).getByLabelText("For visit"), "v1");
+  expect(within(dialog).getByText("Handed over by *")).toBeInTheDocument();
+  expect(within(dialog).getByText("Received by *")).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole("button", { name: /Record stock out|Stock out|Save/ }));
+  expect(within(dialog).getByRole("alert")).toHaveTextContent(/must sign/);
+});
