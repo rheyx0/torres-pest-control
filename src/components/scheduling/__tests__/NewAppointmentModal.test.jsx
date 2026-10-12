@@ -775,3 +775,28 @@ describe("NewAppointmentModal confirm step", () => {
     expect(onCreate).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("Follow-up Visit ticked by hand", () => {
+  const followUpServices = [...services, { id: "s3", name: "Follow-up Visit", defaultPrice: 1500, defaultDurationMinutes: 60, isActive: true, materials: [] }];
+  const done = { id: "done", reference: "TPC-V-00018", clientId: "c1", technicianId: "t1", scheduledAt: `${YESTERDAY}T09:00:00`, durationMinutes: 60, status: "Completed", serviceType: "Termite Control" };
+  const serviceBox = (name) => within(screen.getByRole("group", { name: "Services" })).getByRole("checkbox", { name });
+
+  it("asks which visit it follows, fills in its price, and links it", async () => {
+    const followUpDetails = jest.fn(() => ({ followUpOf: { id: "done", reference: "TPC-V-00018" }, price: 2000, quoteId: "" }));
+    const { onCreate } = renderModal({ services: followUpServices, appointments: [...existing, done], followUpDetails, initialScheduledAt: `${TODAY}T08:00` });
+    await userEvent.click(clientSearch());
+    await userEvent.click(screen.getByRole("option", { name: /Rhey Garcia/ }));
+    await userEvent.click(serviceBox("Follow-up Visit"));
+
+    await userEvent.click(screen.getByRole("button", { name: /Create appointment/ }));
+    expect(screen.getByRole("alert")).toHaveTextContent(/Choose the visit this follow-up checks on/);
+
+    await userEvent.selectOptions(screen.getByLabelText("Follow-up of which visit"), "done");
+    expect(followUpDetails).toHaveBeenCalledWith("done");
+    expect(screen.getByLabelText(/Price/)).toHaveValue(2000);
+    expect(screen.getByText(/Follow-up of TPC-V-00018/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: /Karl Hameed/ }));
+    await submitBooking();
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ followUpOf: "done" }));
+  });
+});

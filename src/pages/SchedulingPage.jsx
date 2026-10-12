@@ -1295,6 +1295,10 @@ function SchedulingPage() {
           initialPestConcern={createPrefill?.pestConcern || ""}
           initialPrice={createPrefill?.price ?? ""}
           initialFollowUpOf={createPrefill?.followUpOf || null}
+          followUpDetails={(originalId) => {
+            const original = appointments.find((entry) => entry.id === originalId);
+            return original ? followUpPrefill(original) : null;
+          }}
           initialVisitCount={createPrefill?.visitCount || null}
           initialUntil={createPrefill?.until || ""}
           billingSources={billingSources}

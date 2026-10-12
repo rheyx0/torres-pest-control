@@ -117,6 +117,9 @@ function NewAppointmentModal({
   initialPrice = "",
   // A follow-up (068): { id, reference } of the visit it checks on.
   initialFollowUpOf = null,
+  // Picking the Follow-up Visit service by hand asks which visit it follows:
+  // (originalId) => { followUpOf: { id, reference }, price, quoteId }.
+  followUpDetails = null,
   // Booking a contract's visits (063): its length, as a number of visits or an end date.
   initialVisitCount = null,
   initialUntil = "",
@@ -171,6 +174,7 @@ function NewAppointmentModal({
 
   const selectedClient = clients.find((client) => client.id === clientId) || null;
   const [source, setSource] = useState(initialSource);
+  const [followUpOf, setFollowUpOf] = useState(initialFollowUpOf);
   // "Still make appointment without an approved quotation", with its reason.
   const [override, setOverride] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
@@ -342,10 +346,37 @@ function NewAppointmentModal({
 
   const check = paymentCheckFor && clientId ? paymentCheckFor(clientId, serviceIds, source) : { ok: true, reason: "" };
 
+  // The Follow-up Visit service ticked by hand (not from Book follow-up): the
+  // visit it checks on is asked for, and choosing it fills in the follow-up
+  // price and the quotation, the same as Book follow-up does.
+  const followUpTicked = serviceIds.some((id) => /follow[\s-]?up/i.test(services.find((service) => service.id === id)?.name || ""));
+  const followUpChoices = followUpTicked && !initialFollowUpOf && clientId
+    ? appointments
+      .filter((visit) => visit.clientId === clientId && visit.status === "Completed")
+      .sort((a, b) => new Date(b.scheduledAt) - new Date(a.scheduledAt))
+      .slice(0, 20)
+    : [];
+  const chooseFollowUpOf = (originalId) => {
+    setFormError("");
+    if (!originalId) { setFollowUpOf(null); return; }
+    const details = followUpDetails?.(originalId);
+    const original = appointments.find((visit) => visit.id === originalId);
+    setFollowUpOf(details?.followUpOf || { id: originalId, reference: original?.reference || "" });
+    if (details?.price !== undefined && details.price !== "" && details.price !== null) {
+      setPrice(String(details.price));
+      setPriceTouched(true);
+    }
+    if (details?.quoteId) setSource(`quote:${details.quoteId}`);
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!clientId) {
       setFormError("Select a client from the list.");
+      return;
+    }
+    if (followUpChoices.length && !followUpOf) {
+      setFormError("Choose the visit this follow-up checks on.");
       return;
     }
     if (overlong && !multiDay) {
@@ -412,7 +443,7 @@ function NewAppointmentModal({
       // Booked past the payment check: the reason goes in the activity log.
       ...(!check.ok ? { paymentOverride: overrideReason.trim() } : {}),
       // A follow-up: linked to the visit it checks on once booked.
-      ...(initialFollowUpOf ? { followUpOf: initialFollowUpOf.id } : {}),
+      ...(followUpOf && (initialFollowUpOf || followUpTicked) ? { followUpOf: followUpOf.id } : {}),
     };
     // A plan, or one visit carrying several services, is booked in one go
     // (book_appointments, 052). A plain single visit keeps the older path,
@@ -814,9 +845,21 @@ function NewAppointmentModal({
           </Section>
         )}
 
-        {initialFollowUpOf && (
+        {followUpChoices.length > 0 && (
+          <label style={{ gridColumn: "1 / -1", display: "grid", gap: "6px", color: neutral.ink, ...text.small }}>
+            <strong style={{ fontWeight: weight.medium }}>Follow-up of which visit? *</strong>
+            <Select aria-label="Follow-up of which visit" value={followUpOf?.id || ""} onChange={(event) => chooseFollowUpOf(event.target.value)}>
+              <option value="">Choose the visit it checks on</option>
+              {followUpChoices.map((visit) => (
+                <option key={visit.id} value={visit.id}>{visit.reference || "Visit"} · {new Date(visit.scheduledAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })} · {visit.serviceType || "Service"}</option>
+              ))}
+            </Select>
+          </label>
+        )}
+
+        {followUpOf && (initialFollowUpOf || followUpTicked) && (
           <p role="status" style={{ gridColumn: "1 / -1", margin: 0, padding: "9px 12px", background: surface.sunken, borderRadius: radius.control, color: neutral.ink, ...text.small }}>
-            <strong style={{ fontWeight: weight.medium }}>Follow-up of {initialFollowUpOf.reference}.</strong>{" "}
+            <strong style={{ fontWeight: weight.medium }}>Follow-up of {followUpOf.reference}.</strong>{" "}
             Priced at the follow-up price of that visit's services, and booked under its quotation.
           </p>
         )}
