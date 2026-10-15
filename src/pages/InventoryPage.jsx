@@ -1085,7 +1085,8 @@ function InventoryPage() {
                     </span>
                   </div>
 
-                  <div style={{ minWidth: 0 }}>
+                  {/* Never narrower than its label, so it cannot spill into Location. */}
+                  <div style={{ minWidth: "max-content" }}>
                     {watch.pill ? <StatusPill tone={watch.tone}>{watch.label}</StatusPill> : <span style={{ color: "#8a7d70", fontSize: "13px" }}>{watch.label}</span>}
                   </div>
 

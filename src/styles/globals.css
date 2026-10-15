@@ -328,13 +328,16 @@ a[href] {
   position: relative;
 }
 
-@media (max-width: 900px) {
+/* Below this width the columns would squeeze into each other (two windows
+   side by side, a laptop with the sidebar open), so the list keeps its width
+   and scrolls sideways instead. */
+@media (max-width: 1360px) {
   .inventory-scroll {
     overflow-x: auto;
   }
 
   .inventory-row {
-    min-width: 900px;
+    min-width: 1000px;
   }
 }
 
