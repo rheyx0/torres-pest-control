@@ -411,6 +411,14 @@ function NewAppointmentModal({
   const coveredBy = warrantyFor && onWarrantyBook && clientId && !followUpWarranty && !warrantyMode
     ? warrantyFor(clientId, serviceIds, bookingDay)
     : null;
+  // A follow-up of a job still under warranty is free: it can only be booked
+  // as its Warranty re-treatment, never as a paid visit.
+  const followUpWarrantyKey = followUpOf && (initialFollowUpOf || followUpTicked)
+    ? followUpDetails?.(followUpOf.id)?.warrantyKey || ""
+    : "";
+  const followUpUnderWarranty = followUpWarrantyKey
+    ? runningWarranties.find((warranty) => keyOf(warranty) === followUpWarrantyKey) || null
+    : null;
   const chooseFollowUpOf = (originalId) => {
     setFormError("");
     if (!originalId) { setFollowUpOf(null); setFollowUpWarranty(null); return; }
@@ -472,6 +480,10 @@ function NewAppointmentModal({
       return;
     }
     const [sourceType, sourceId] = source ? source.split(":") : ["", ""];
+    if (followUpUnderWarranty) {
+      setFormError(`${followUpOf.reference || "This job"} is under warranty until ${untilText(followUpUnderWarranty.end)}, so its follow-up is free. Choose 🛡 Warranty re-treatment.`);
+      return;
+    }
     if (!check.ok && coveredBy) {
       setFormError(`This service is under warranty until ${untilText(coveredBy.end)}. Book it as a free Warranty re-treatment, or make a new quotation for paid work.`);
       return;
@@ -997,7 +1009,20 @@ function NewAppointmentModal({
           </p>
         )}
 
-        {coveredBy && (
+        {followUpUnderWarranty && (
+          <div
+            role="group"
+            aria-label="Follow-up under warranty"
+            style={{ gridColumn: "1 / -1", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", padding: "10px 12px", background: status.dangerSurface, color: status.danger, borderRadius: radius.control, ...text.small }}
+          >
+            <span style={{ flex: "1 1 260px" }}>
+              <strong style={{ fontWeight: weight.medium }}>{followUpOf.reference || "This job"} is under warranty until {untilText(followUpUnderWarranty.end)}.</strong> Its follow-up is free and cannot be booked as a paid visit.
+            </span>
+            <Button size="sm" variant="primary" onClick={() => switchToWarranty("RETREATMENT", followUpUnderWarranty)}>Book as warranty re-treatment</Button>
+          </div>
+        )}
+
+        {coveredBy && !followUpUnderWarranty && (
           <div
             role="group"
             aria-label="Under warranty"
