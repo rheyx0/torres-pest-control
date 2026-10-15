@@ -1,5 +1,5 @@
 // Migration 078: warranty, checkups and warranty re-treatment.
-import { addMonths, checkupDatesToBook, checkupReminders, clientWarranties, coveringWarranty, plannedCheckupCount, runningWarrantyFor, warrantyKindLabel, warrantyLabel, warrantyOf, warrantyServiceIds, warrantyState, withWarranty } from "../warranty";
+import { addMonths, checkupDatesToBook, checkupPeriodOf, checkupPeriods, checkupProblem, checkupReminders, clientWarranties, coveringWarranty, plannedCheckupCount, runningWarrantyFor, warrantyKindLabel, warrantyLabel, warrantyOf, warrantyServiceIds, warrantyState, withWarranty } from "../warranty";
 import { invoiceableVisits } from "../billing";
 
 const now = new Date("2026-10-12T10:00:00");
@@ -31,8 +31,11 @@ test("checkups: the dates still to book, and how many it gives", () => {
   const dates = checkupDatesToBook(warranty, [], now);
   expect(dates[0]).toBe("2027-01-01"); // Oct 1 has passed
   expect(dates).toHaveLength(7); // 8 in two years, the first already past
-  const booked = { id: "c1v", warrantyKind: "CHECKUP", warrantyContractId: "k1", status: "Pending", scheduledAt: "2027-01-05T09:00:00" };
+  // Oct 2 – Jan 1 is taken by a checkup on Dec 20, so the next is due Apr 1.
+  const booked = { id: "c1v", warrantyKind: "CHECKUP", warrantyContractId: "k1", status: "Pending", scheduledAt: "2026-12-20T09:00:00" };
   expect(checkupDatesToBook(warranty, [booked], now)[0]).toBe("2027-04-01");
+  // A cancelled checkup frees its period.
+  expect(checkupDatesToBook(warranty, [{ ...booked, status: "Cancelled" }], now)[0]).toBe("2027-01-01");
 });
 
 test("a follow-up is covered while the warranty runs", () => {
@@ -76,4 +79,26 @@ test("a job finished early starts its warranty that day, not on the day it was b
   expect(warrantyOf("QUOTE", quote, [early])).toMatchObject({ start: "2026-10-15", end: "2027-10-15" });
   expect(warrantyOf("QUOTE", quote, [{ ...early, signedAt: "2026-10-16T09:00:00" }])).toMatchObject({ start: "2026-10-16" });
   expect(warrantyOf("QUOTE", quote, [{ ...early, reportSubmittedAt: "" }])).toMatchObject({ start: "2026-10-19" });
+});
+
+test("checkups follow the frequency: one per period, as many as fit (086)", () => {
+  const yearly = { type: "QUOTE", id: "q9", months: 12, frequency: "QUARTERLY", start: "2026-10-15", end: "2027-10-15" };
+  expect(checkupPeriods(yearly)).toEqual([
+    { index: 0, from: "2026-10-16", to: "2027-01-15" },
+    { index: 1, from: "2027-01-16", to: "2027-04-15" },
+    { index: 2, from: "2027-04-16", to: "2027-07-15" },
+    { index: 3, from: "2027-07-16", to: "2027-10-15" },
+  ]);
+  expect(checkupPeriods({ ...yearly, frequency: "MONTHLY" })).toHaveLength(12);
+  expect(checkupPeriods({ ...yearly, months: 7 })).toHaveLength(2);
+  expect(checkupPeriodOf(yearly, "2026-10-15")).toBeNull(); // the day the warranty starts
+  expect(checkupPeriodOf(yearly, "2027-01-15").index).toBe(0);
+
+  const monthly = { ...yearly, frequency: "MONTHLY" };
+  expect(checkupProblem(monthly, [], ["2026-10-20", "2026-11-10"])).toMatch(/both in Oct 16, 2026 – Nov 15, 2026/);
+  expect(checkupProblem(monthly, [], ["2026-11-10", "2026-11-20"])).toBe("");
+  const taken = { id: "t", warrantyKind: "CHECKUP", warrantyQuoteId: "q9", status: "Pending", scheduledAt: "2026-11-01T09:00:00" };
+  expect(checkupProblem(monthly, [taken], ["2026-11-14"])).toMatch(/already has its checkup/);
+  expect(checkupProblem(monthly, [{ ...taken, status: "Cancelled" }], ["2026-11-14"])).toBe("");
+  expect(checkupProblem(yearly, [], ["2027-12-01"])).toMatch(/not inside/);
 });

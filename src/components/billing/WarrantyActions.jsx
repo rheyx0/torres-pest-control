@@ -37,6 +37,7 @@ function WarrantyActions({ warranty, appointments = [], technicians = [], onBook
           kind={booking.kind}
           warranty={warranty}
           dates={booking.dates}
+          appointments={appointments}
           technicians={technicians}
           onClose={() => setBooking(null)}
           onBook={async (request) => {

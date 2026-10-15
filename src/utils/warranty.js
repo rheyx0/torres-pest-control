@@ -15,6 +15,15 @@ const localDay = (value) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
+const addDays = (day, count) => {
+  const [y, m, d] = day.split("-").map(Number);
+  return localDay(new Date(y, m - 1, d + count));
+};
+const shortDay = (day) => {
+  const [y, m, d] = dayOf(day).split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+};
+
 /** "YYYY-MM-DD" plus whole months, clamped to the month's last day. */
 export function addMonths(day, months) {
   const [y, m, d] = day.split("-").map(Number);
@@ -102,24 +111,72 @@ export function plannedCheckupCount(warranty) {
 }
 
 /**
- * The checkup dates still to book: every step from the start, inside the
- * warranty, from today on, skipping any that already has a checkup within
- * 10 days. "YYYY-MM-DD", soonest first.
+ * The warranty's checkup periods (migration 086): one per step (1 month for
+ * Monthly, 3 for Quarterly) counted from the day it started, as many as fit
+ * whole in it. A period runs from the day after one step to the next step
+ * day, both included: a 1-year Quarterly warranty from Oct 15 has Oct 16 –
+ * Jan 15, Jan 16 – Apr 15, Apr 16 – Jul 15 and Jul 16 – Oct 15. Each period
+ * takes one checkup, on any day inside it. [{ index, from, to }]
  */
-export function checkupDatesToBook(warranty, appointments = [], now = new Date()) {
+export function checkupPeriods(warranty) {
   const step = CHECKUP_STEP_MONTHS[warranty?.frequency];
   if (!step || !warranty?.start) return [];
-  const today = localDay(now);
-  const booked = warrantyVisits(warranty, appointments, now).checkups.map((visit) => new Date(localDay(visit.scheduledAt)).getTime());
-  const near = (day) => booked.some((time) => Math.abs(time - new Date(day).getTime()) <= 10 * 86400000);
-  const dates = [];
-  for (let n = 1; n <= 120; n += 1) {
-    const day = addMonths(warranty.start, n * step);
-    if (day > warranty.end) break;
-    if (day < today || near(day)) continue;
-    dates.push(day);
+  const periods = [];
+  for (let index = 0; index < plannedCheckupCount(warranty); index += 1) {
+    const opens = addMonths(warranty.start, index * step);
+    periods.push({ index, from: addDays(opens, 1), to: addMonths(warranty.start, (index + 1) * step) });
   }
-  return dates;
+  return periods;
+}
+
+/** The period "YYYY-MM-DD" falls in, or null (outside every period). */
+export function checkupPeriodOf(warranty, day) {
+  const key = dayOf(day);
+  return checkupPeriods(warranty).find((period) => key >= period.from && key <= period.to) || null;
+}
+
+/** The live checkup already in each period: index -> visit. */
+function checkupsByPeriod(warranty, appointments = [], now = new Date(), exceptId = null) {
+  const taken = new Map();
+  warrantyVisits(warranty, appointments, now).checkups
+    .filter((visit) => visit.id !== exceptId)
+    .forEach((visit) => {
+      const period = checkupPeriodOf(warranty, localDay(visit.scheduledAt));
+      if (period && !taken.has(period.index)) taken.set(period.index, visit);
+    });
+  return taken;
+}
+
+/**
+ * The checkup dates still to book: one per period with no checkup yet that
+ * has not ended, on the period's last day (its due date). "YYYY-MM-DD",
+ * soonest first.
+ */
+export function checkupDatesToBook(warranty, appointments = [], now = new Date()) {
+  const today = localDay(now);
+  const taken = checkupsByPeriod(warranty, appointments, now);
+  return checkupPeriods(warranty)
+    .filter((period) => period.to >= today && !taken.has(period.index))
+    .map((period) => period.to);
+}
+
+/**
+ * What is wrong with booking checkups on `days`, or "": a day outside every
+ * period, two days in one period, or a period that already has its checkup.
+ * The server says the same (086).
+ */
+export function checkupProblem(warranty, appointments = [], days = [], now = new Date()) {
+  const taken = checkupsByPeriod(warranty, appointments, now);
+  const chosen = new Map();
+  for (const day of days) {
+    const period = checkupPeriodOf(warranty, day);
+    if (!period) return `${shortDay(day)} is not inside one of this warranty's checkup periods.`;
+    const range = `${shortDay(period.from)} – ${shortDay(period.to)}`;
+    if (taken.has(period.index)) return `This warranty already has its checkup for ${range}. One checkup per period.`;
+    if (chosen.has(period.index)) return `${shortDay(chosen.get(period.index))} and ${shortDay(day)} are both in ${range}. One checkup per period.`;
+    chosen.set(period.index, day);
+  }
+  return "";
 }
 
 /** Every warranty a client has, newest first. */
@@ -157,18 +214,12 @@ export function checkupReminders({ quotes = [], contracts = [], appointments = [
   ].filter((warranty) => warranty && warranty.frequency && warrantyState(warranty, now) === "ACTIVE");
   const due = [];
   warranties.forEach((warranty) => {
-    const step = CHECKUP_STEP_MONTHS[warranty.frequency];
-    const booked = warrantyVisits(warranty, appointments, now).checkups.map((visit) => new Date(localDay(visit.scheduledAt)).getTime());
-    for (let n = 1; n <= 120; n += 1) {
-      const day = addMonths(warranty.start, n * step);
-      if (day > warranty.end) break;
-      const days = Math.round((new Date(day).getTime() - today) / 86400000);
-      if (days > withinDays) break;
-      if (days < -14) continue;
-      if (booked.some((time) => Math.abs(time - new Date(day).getTime()) <= 10 * 86400000)) continue;
-      due.push({ warranty, dueOn: day, days });
-      break;
-    }
+    const taken = checkupsByPeriod(warranty, appointments, now);
+    const next = checkupPeriods(warranty)
+      .filter((period) => !taken.has(period.index))
+      .map((period) => ({ period, days: Math.round((new Date(period.to).getTime() - today) / 86400000) }))
+      .find(({ days }) => days >= -14);
+    if (next && next.days <= withinDays) due.push({ warranty, dueOn: next.period.to, days: next.days });
   });
   return due.sort((a, b) => a.dueOn.localeCompare(b.dueOn));
 }

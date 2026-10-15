@@ -8,7 +8,7 @@ import { formatDate } from "../../utils/formatters";
 import { warrantyLabel } from "../../utils/warranty";
 import WarrantyBookingForm from "./WarrantyBookingForm";
 
-function WarrantyBookingModal({ kind, warranty, dates = [], technicians = [], serviceNames = [], onBook, onClose }) {
+function WarrantyBookingModal({ kind, warranty, dates = [], appointments = [], technicians = [], serviceNames = [], onBook, onClose }) {
   const checkup = kind === "CHECKUP";
   const [saving, setSaving] = useState(false);
 
@@ -30,6 +30,7 @@ function WarrantyBookingModal({ kind, warranty, dates = [], technicians = [], se
         kind={kind}
         warranty={warranty}
         dates={dates}
+        appointments={appointments}
         technicians={technicians}
         serviceNames={serviceNames}
         onBook={onBook}

@@ -1123,6 +1123,7 @@ function NewAppointmentModal({
           kind={visitType}
           warranty={chosenWarranty}
           dates={visitType === "CHECKUP" ? checkupDatesToBook(chosenWarranty, appointments, new Date()) : [retreatmentDay(chosenWarranty, bookingDay)]}
+          appointments={appointments}
           technicians={activeAccounts}
           serviceNames={warrantyServiceIds(chosenWarranty).map((id) => services.find((service) => service.id === id)?.name).filter(Boolean)}
           onSavingChange={setWarrantySaving}
