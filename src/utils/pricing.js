@@ -87,7 +87,7 @@ export function describeServicePricing(service, formatPeso) {
  * "Charge extra", use above that amount is billed on the invoice, so it says
  * so. Empty when the service lists no materials.
  */
-export function includedMaterialsText(service, itemById = () => null) {
+export function includedMaterialsText(service, itemById = () => null, { omitPerUse = false } = {}) {
   const materials = (service?.materials || [])
     .map((material) => ({ material, item: itemById(material.itemId) }))
     .filter(({ item, material }) => item && Number(material.defaultAmount) > 0);
@@ -99,7 +99,7 @@ export function includedMaterialsText(service, itemById = () => null) {
   const extra = covered.some(({ material }) => material.billingMode === BILLING_MODES.EXTRA_CHARGED);
   const parts = [];
   if (covered.length) parts.push(`includes ${covered.map(name).join(", ")}${extra ? " · extra use charged" : ""}`);
-  if (perUse.length) parts.push(`${perUse.map(({ item }) => item.name).join(", ")} charged per use`);
+  if (perUse.length && !omitPerUse) parts.push(`${perUse.map(({ item }) => item.name).join(", ")} charged per use`);
   return parts.join(" · ");
 }
 
@@ -126,11 +126,11 @@ export function chargeAllEstimate(service, itemById = () => null, quantity = 1) 
 
 const pesoText = (value) => `₱${(Number(value) || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-/** "Estimate: Termidor SC about 8 L × ₱1,200.00 = ₱9,600.00, charged by actual use", or "". */
+/** "Termidor SC charged per use: about 8 L × ₱1,200.00 = ₱9,600.00 (estimate)", or "". */
 export function chargeAllEstimateText(service, itemById = () => null, quantity = 1) {
   const list = chargeAllEstimate(service, itemById, quantity);
   if (!list.length) return "";
-  return `Estimate: ${list.map((entry) => `${entry.name} about ${entry.amount} ${entry.unit} × ${pesoText(entry.unitPrice)} = ${pesoText(entry.total)}`.replace(/\s+/g, " ")).join("; ")}, charged by actual use`;
+  return list.map((entry) => `${entry.name} charged per use: about ${entry.amount} ${entry.unit} × ${pesoText(entry.unitPrice)} = ${pesoText(entry.total)} (estimate)`.replace(/\s+/g, " ")).join(" · ");
 }
 
 /** The estimate for every service line of a quote, before VAT. */

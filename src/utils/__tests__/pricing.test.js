@@ -98,7 +98,7 @@ describe("charge all estimate", () => {
 
   test("the service's usual amount at the customer price", () => {
     expect(chargeAllEstimate(service, byId)).toEqual([{ itemId: "i1", name: "Termidor SC", unit: "L", amount: 8, unitPrice: 1200, total: 9600 }]);
-    expect(chargeAllEstimateText(service, byId)).toBe("Estimate: Termidor SC about 8 L × ₱1,200.00 = ₱9,600.00, charged by actual use");
+    expect(chargeAllEstimateText(service, byId)).toBe("Termidor SC charged per use: about 8 L × ₱1,200.00 = ₱9,600.00 (estimate)");
     expect(chargeAllEstimateText({ materials: [{ itemId: "i1", defaultAmount: 8, billingMode: "EXTRA_CHARGED" }] }, byId)).toBe("");
   });
 

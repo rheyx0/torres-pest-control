@@ -296,7 +296,7 @@ function BillingPage() {
   // Quotes, invoices and receipts print through BillingPrinter ("Save as PDF").
   // What a quote's service line covers, on screen and on the printout.
   const includesFor = (line) => (line.kind === "SERVICE"
-    ? [includedMaterialsText(serviceById(line.serviceId), itemById), chargeAllEstimateText(serviceById(line.serviceId), itemById, line.quantity)].filter(Boolean).join(" · ")
+    ? [includedMaterialsText(serviceById(line.serviceId), itemById, { omitPerUse: Boolean(chargeAllEstimateText(serviceById(line.serviceId), itemById, line.quantity)) }), chargeAllEstimateText(serviceById(line.serviceId), itemById, line.quantity)].filter(Boolean).join(" · ")
     : "");
   // Charge all materials, estimated: shown with the total, never charged from here.
   const estimateFor = (quote) => quoteMaterialEstimate(quote?.lines || [], serviceById, itemById);

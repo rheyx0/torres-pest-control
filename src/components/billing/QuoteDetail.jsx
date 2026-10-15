@@ -151,19 +151,31 @@ function QuoteDetail({
     </>
   );
 
+  // The totals come in groups: the quote, the estimate, the down payment.
+  const groupStart = { borderTop: `1px solid ${colors.line}`, paddingTop: "0.4rem", marginTop: "0.2rem" };
+
   return (
     <Modal title={`${quote.reference} · ${client?.name || "Client"}`} eyebrow="Quote" size="lg" onClose={onClose} footer={footer}>
       <div style={{ display: "grid", gap: "1rem" }}>
-        <div style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap", color: colors.body, fontSize: "0.88rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
           <StatusPill status={QUOTE_STATUS_LABELS[status]} />
           {deposit.required > 0 && <StatusPill status={depositWords} />}
-          <span>One-time service</span>
-          {quote.warrantyMonths ? <span>· Warranty {warrantyLabel(quote.warrantyMonths)} from completion{quote.checkupFrequency ? `, ${quote.checkupFrequency === "MONTHLY" ? "monthly" : "quarterly"} checkups` : ""}</span> : null}
-          <span>· Valid until {formatDate(quote.validUntil)}</span>
-          {terms && <span>· Payment {terms.toLowerCase()}</span>}
-          {quote.areaSqm && <span>· {quote.areaSqm} sqm</span>}
-          {inspection && <span>· {inspectionIncludedText(inspection)}</span>}
         </div>
+        <dl aria-label="Quote details" style={{ margin: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: "0.6rem 1.2rem", fontSize: "0.85rem" }}>
+          {[
+            ["Service", "One-time service"],
+            ["Valid until", formatDate(quote.validUntil)],
+            ["Payment", terms || "—"],
+            quote.areaSqm ? ["Area", `${quote.areaSqm} sqm`] : null,
+            ["Warranty", quote.warrantyMonths ? `${warrantyLabel(quote.warrantyMonths)} from completion${quote.checkupFrequency ? `, ${quote.checkupFrequency === "MONTHLY" ? "monthly" : "quarterly"} checkups` : ""}` : "None"],
+            inspection ? ["Inspection", inspectionIncludedText(inspection)] : null,
+          ].filter(Boolean).map(([label, value]) => (
+            <div key={label} style={{ display: "grid", gap: "0.1rem", minWidth: 0 }}>
+              <dt style={{ fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em", color: colors.muted }}>{label}</dt>
+              <dd style={{ margin: 0, color: colors.ink }}>{value}</dd>
+            </div>
+          ))}
+        </dl>
 
         {warrantySlot}
 
@@ -172,39 +184,42 @@ function QuoteDetail({
             <thead>
               <tr style={{ color: colors.muted, textAlign: "left" }}>
                 <th style={{ padding: "0.4rem 0", fontWeight: 500 }}>Description</th>
-                <th style={{ padding: "0.4rem 0", fontWeight: 500, textAlign: "right" }}>Qty</th>
-                <th style={{ padding: "0.4rem 0", fontWeight: 500, textAlign: "right" }}>Price</th>
-                <th style={{ padding: "0.4rem 0", fontWeight: 500, textAlign: "right" }}>Amount</th>
+                <th style={{ padding: "0.4rem 0 0.4rem 1rem", fontWeight: 500, textAlign: "right", whiteSpace: "nowrap" }}>Qty</th>
+                <th style={{ padding: "0.4rem 0 0.4rem 1rem", fontWeight: 500, textAlign: "right", whiteSpace: "nowrap" }}>Unit price</th>
+                <th style={{ padding: "0.4rem 0 0.4rem 1rem", fontWeight: 500, textAlign: "right", whiteSpace: "nowrap" }}>Amount</th>
               </tr>
             </thead>
             <tbody>
               {quote.lines.map((line) => (
                 <tr key={line.id} style={{ borderTop: `1px solid ${colors.line}` }}>
-                  <td style={{ padding: "0.45rem 0", color: colors.ink }}>
+                  <td style={{ padding: "0.5rem 0", color: colors.ink, verticalAlign: "top" }}>
                     {line.description}
-                    {includesFor(line) && <div style={{ fontSize: "0.75rem", color: colors.muted }}>{includesFor(line)}</div>}
+                    {includesFor(line) && <div style={{ fontSize: "0.75rem", color: colors.muted, marginTop: "0.15rem", maxWidth: "48ch" }}>{includesFor(line)}</div>}
                   </td>
-                  <td style={{ padding: "0.45rem 0", textAlign: "right" }}>{line.quantity} {line.unit}</td>
-                  <td style={{ padding: "0.45rem 0", textAlign: "right" }}>{formatPeso(line.unitPrice)}</td>
-                  <td style={{ padding: "0.45rem 0", textAlign: "right", color: colors.ink }}>{formatPeso(line.amount)}</td>
+                  <td style={{ padding: "0.5rem 0 0.5rem 1rem", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>
+                    {line.quantity}
+                    {line.unit && <div style={{ fontSize: "0.72rem", color: colors.muted }}>{line.unit}</div>}
+                  </td>
+                  <td style={{ padding: "0.5rem 0 0.5rem 1rem", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{formatPeso(line.unitPrice)}</td>
+                  <td style={{ padding: "0.5rem 0 0.5rem 1rem", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", color: colors.ink }}>{formatPeso(line.amount)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
-        <dl aria-label="Quote totals" style={{ margin: "0 0 0 auto", minWidth: "260px", display: "grid", gridTemplateColumns: "1fr auto", gap: "0.3rem 1.5rem", fontSize: "0.88rem" }}>
+        <dl aria-label="Quote totals" style={{ margin: "0 0 0 auto", width: "min(100%, 360px)", display: "grid", gridTemplateColumns: "1fr auto", gap: "0.3rem 1.5rem", fontSize: "0.88rem", fontVariantNumeric: "tabular-nums", padding: "0.75rem 0.9rem", border: `1px solid ${colors.line}`, borderRadius: "6px", background: colors.canvas }}>
           <dt>Subtotal</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(quote.subtotal)}</dd>
           {quote.discountAmount > 0 && (<><dt>Discount</dt><dd style={{ margin: 0, textAlign: "right" }}>−{formatPeso(quote.discountAmount)}</dd></>)}
           {quote.vatMode !== "NONE" && (<><dt>{quote.vatMode === "INCLUSIVE" ? `VAT included (${quote.vatRate}%)` : `VAT (${quote.vatRate}%)`}</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(quote.vatAmount)}</dd></>)}
           <dt style={{ fontWeight: 600, color: colors.ink }}>Total</dt><dd style={{ margin: 0, textAlign: "right", fontWeight: 600, color: colors.ink }}>{formatPeso(quote.total)}</dd>
           {materialEstimate > 0 && (<>
-            <dt>Materials charged by use (estimate)</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(materialEstimate)}</dd>
+            <dt style={groupStart}>Materials charged by use (estimate)</dt><dd style={{ ...groupStart, margin: 0, textAlign: "right" }}>{formatPeso(materialEstimate)}</dd>
             <dt style={{ fontWeight: 600, color: colors.ink }}>Estimated total</dt><dd style={{ margin: 0, textAlign: "right", fontWeight: 600, color: colors.ink }}>{formatPeso(estimatedTotal(quote, materialEstimate))}</dd>
           </>)}
           {deposit.required > 0 && (
             <>
-              <dt>Down payment</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(deposit.required)}</dd>
+              <dt style={groupStart}>Down payment</dt><dd style={{ ...groupStart, margin: 0, textAlign: "right" }}>{formatPeso(deposit.required)}</dd>
               <dt>Received</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(deposit.paid)}{deposit.pending > 0 ? ` (+${formatPeso(deposit.pending)} pending)` : ""}</dd>
             </>
           )}

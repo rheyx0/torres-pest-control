@@ -285,9 +285,9 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
             {chargeKind(line) === "LABOR" && <LaborParts line={line} onChange={(patch) => updateLine(line.key, updateCharge(line, patch))} />}
             {chargeKind(line) === "TRANSPORT" && <TransportHint />}
             {/* What the service's price covers: information, not a charge. */}
-            {line.kind === "SERVICE" && includedMaterialsText(servicesById.get(line.serviceId), (id) => itemsById.get(id)) && (
+            {line.kind === "SERVICE" && includedMaterialsText(servicesById.get(line.serviceId), (id) => itemsById.get(id), { omitPerUse: true }) && (
               <span style={{ marginLeft: "calc(92px + 0.5rem)", fontSize: "0.75rem", color: colors.muted }}>
-                {includedMaterialsText(servicesById.get(line.serviceId), (id) => itemsById.get(id))}
+                {includedMaterialsText(servicesById.get(line.serviceId), (id) => itemsById.get(id), { omitPerUse: true })}
               </span>
             )}
             {line.kind === "SERVICE" && chargeAllEstimateText(servicesById.get(line.serviceId), (id) => itemsById.get(id), line.quantity) && (
