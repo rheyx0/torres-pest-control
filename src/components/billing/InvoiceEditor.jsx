@@ -228,10 +228,10 @@ function InvoiceEditor({
         )}
 
         <section aria-label="Invoice lines" style={{ display: "grid", gap: "0.5rem", padding: "0.9rem", border: `1px solid ${colors.line}`, borderRadius: "3.75px", background: colors.canvas, overflowX: "auto" }}>
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
             <strong style={{ color: colors.ink, fontSize: "0.9rem", marginRight: "auto" }}>Lines</strong>
-            <ChargeButtons rates={rates} onAdd={(fields) => setLines((current) => [...current, keyed(fields)])} />
-            <Button size="sm" onClick={() => setLines((current) => [...current, keyed({ kind: "EXTRA", unit: "job", description: "" })])}>
+            <ChargeButtons size="md" rates={rates} onAdd={(fields) => setLines((current) => [...current, keyed(fields)])} />
+            <Button size="md" onClick={() => setLines((current) => [...current, keyed({ kind: "EXTRA", unit: "job", description: "" })])}>
               <Plus size={14} /> Line
             </Button>
           </div>

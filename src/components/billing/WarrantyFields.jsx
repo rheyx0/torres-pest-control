@@ -31,9 +31,9 @@ function WarrantyFields({ months, frequency, onChange, startsWhen = "when the jo
     ? "No warranty. Choose one for free re-treatment if pests come back while it runs."
     : `Starts ${startsWhen} · free re-treatment if pests come back${frequency ? ` · ${checkups} free checkup${checkups === 1 ? "" : "s"}` : " · no checkups"}.`;
   return (
-    <section aria-label="Warranty and checkups" style={{ display: "grid", gap: "0.6rem", padding: "0.8rem 0.9rem", border: "1px solid #bcd4ef", borderRadius: "6px", background: "#f3f8fd" }}>
-      <strong style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", color: "#1d4f8a", fontSize: "0.9rem" }}>
-        <ShieldCheck size={15} aria-hidden="true" /> Warranty
+    <section aria-label="Warranty and checkups" style={{ display: "grid", gap: "0.6rem", padding: "0.9rem", border: `1px solid ${colors.line}`, borderRadius: "3.75px", background: colors.canvas }}>
+      <strong style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", color: colors.ink, fontSize: "0.9rem" }}>
+        <ShieldCheck size={15} aria-hidden="true" style={{ color: colors.muted }} /> Warranty
       </strong>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", alignItems: "start" }}>
       <Field label="Warranty">
@@ -55,7 +55,7 @@ function WarrantyFields({ months, frequency, onChange, startsWhen = "when the jo
         </Select>
       </Field>
       </div>
-      <span style={{ color: colors.body, fontSize: "0.8rem" }}>{summary}</span>
+      <span style={{ color: colors.muted, fontSize: "0.8rem" }}>{summary}</span>
     </section>
   );
 }

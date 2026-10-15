@@ -8,13 +8,13 @@ import Input from "../ui/Input";
 import { colors } from "../../styles/theme";
 import { laborLine, laborParts, transportLine } from "../../utils/fieldCharges";
 
-export function ChargeButtons({ rates = {}, onAdd }) {
+export function ChargeButtons({ rates = {}, onAdd, size = "sm" }) {
   return (
     <>
-      <Button size="sm" onClick={() => onAdd(transportLine("", rates.transportRatePerKm ?? ""))}>
+      <Button size={size} onClick={() => onAdd(transportLine("", rates.transportRatePerKm ?? ""))}>
         <Plus size={14} /> Transportation
       </Button>
-      <Button size="sm" onClick={() => onAdd(laborLine(1, 1, rates.laborDailyRate ?? ""))}>
+      <Button size={size} onClick={() => onAdd(laborLine(1, 1, rates.laborDailyRate ?? ""))}>
         <Plus size={14} /> Labor
       </Button>
     </>

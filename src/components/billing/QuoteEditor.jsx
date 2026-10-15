@@ -249,18 +249,18 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
         </div>
 
         <section aria-label="Quote lines" style={{ display: "grid", gap: "0.5rem", padding: "0.9rem", border: `1px solid ${colors.line}`, borderRadius: "3.75px", background: colors.canvas }}>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
-            <strong style={{ color: colors.ink, fontSize: "0.9rem", marginRight: "auto" }}>Services, materials and charges</strong>
-            <Select aria-label="Add a service" value={adding.service} onChange={(event) => addService(event.target.value)} style={{ width: "auto" }}>
+          <strong style={{ color: colors.ink, fontSize: "0.9rem" }}>Services, materials and charges</strong>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0.5rem", alignItems: "stretch" }}>
+            <Select aria-label="Add a service" value={adding.service} onChange={(event) => addService(event.target.value)}>
               <option value="">+ Service</option>
               {services.filter((service) => service.isActive).map((service) => <option key={service.id} value={service.id}>{service.name}</option>)}
             </Select>
-            <Select aria-label="Add a material" value={adding.item} onChange={(event) => addItem(event.target.value)} style={{ width: "auto" }}>
+            <Select aria-label="Add a material" value={adding.item} onChange={(event) => addItem(event.target.value)}>
               <option value="">+ Material</option>
               {inventory.filter((item) => item.status !== "DISABLED").map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </Select>
-            <ChargeButtons rates={rates} onAdd={(fields) => setLines((current) => [...current, newLine(fields)])} />
-            <Button size="sm" onClick={() => setLines((current) => [...current, newLine({ kind: "EXTRA", unit: "job" })])}>
+            <ChargeButtons size="md" rates={rates} onAdd={(fields) => setLines((current) => [...current, newLine(fields)])} />
+            <Button size="md" onClick={() => setLines((current) => [...current, newLine({ kind: "EXTRA", unit: "job" })])}>
               <Plus size={14} /> Other charge
             </Button>
           </div>
