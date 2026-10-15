@@ -800,3 +800,37 @@ describe("Follow-up Visit ticked by hand", () => {
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ followUpOf: "done" }));
   });
 });
+
+// Sprint 5: a client under warranty is asked what kind of visit this is.
+describe("NewAppointmentModal under a warranty", () => {
+  const start = localDateKey(new Date(Date.now() - 30 * 86400000));
+  const end = localDateKey(new Date(Date.now() + 300 * 86400000));
+  const warranty = { type: "QUOTE", id: "q1", reference: "TPC-Q-00006", months: 12, frequency: "QUARTERLY", start, end, source: { lines: [{ serviceId: "s1" }] } };
+
+  it("books a free re-treatment instead of a paid visit, covering the warranty's services", async () => {
+    const onWarrantyBook = jest.fn(async () => true);
+    const { onCreate } = renderModal({ services, initialClientId: "c1", warrantiesFor: () => [warranty], onWarrantyBook });
+    expect(screen.getByRole("group", { name: "What kind of visit" })).toHaveTextContent("TPC-Q-00006");
+    await userEvent.click(screen.getByRole("radio", { name: /Warranty re-treatment/ }));
+    expect(screen.getByText(/Termite Control/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("What came back"), "Termites back");
+    await userEvent.click(screen.getByRole("button", { name: "Book re-treatment" }));
+    expect(onWarrantyBook).toHaveBeenCalledWith(expect.objectContaining({ kind: "RETREATMENT", source: { type: "QUOTE", id: "q1" }, reason: "Termites back" }), { followUpOf: null });
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it("offers the checkups still to book", async () => {
+    renderModal({ services, initialClientId: "c1", warrantiesFor: () => [warranty], onWarrantyBook: jest.fn() });
+    await userEvent.click(screen.getByRole("radio", { name: /Warranty checkup/ }));
+    expect(screen.getAllByLabelText(/Checkup \d date/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Book checkups" })).toBeInTheDocument();
+  });
+
+  it("ticking a covered service offers the re-treatment; a paid visit stays the default", async () => {
+    renderModal({ services, initialClientId: "c1", warrantiesFor: () => [warranty], warrantyFor: () => warranty, onWarrantyBook: jest.fn() });
+    expect(screen.getByRole("radio", { name: "Paid visit" })).toBeChecked();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Termite Control" }));
+    await userEvent.click(screen.getByRole("button", { name: "Book as warranty re-treatment" }));
+    expect(screen.getByRole("radio", { name: /Warranty re-treatment/ })).toBeChecked();
+  });
+});

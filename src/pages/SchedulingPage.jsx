@@ -26,9 +26,8 @@ import useServices from "../hooks/useServices";
 import { useOptionalBilling } from "../hooks/useBilling";
 import { findFollowUpService, followUpPriceFor, paymentCheck } from "../utils/sprint4";
 import { announceFollowUp, earliestFollowUpDate, followUpDateProblem } from "../utils/followUpBooking";
-import { coveringWarranty, runningWarrantyFor, warrantyKindLabel, warrantyOf } from "../utils/warranty";
+import { clientWarranties, coveringWarranty, runningWarrantyFor, warrantyKindLabel, warrantyOf, warrantyState } from "../utils/warranty";
 import WarrantyActions from "../components/billing/WarrantyActions";
-import WarrantyBookingModal from "../components/billing/WarrantyBookingModal";
 import WarrantyBadge from "../components/ui/WarrantyBadge";
 import { SERVICE_CATEGORIES, visitCategory } from "../utils/categories";
 import CategoryBadge from "../components/ui/CategoryBadge";
@@ -125,8 +124,6 @@ function SchedulingPage() {
   const [createScheduledAt, setCreateScheduledAt] = useState("");
   // Service, frequency and pest concern carried over when booking a re-service.
   const [createPrefill, setCreatePrefill] = useState(null);
-  // A warranty re-treatment offered from New appointment: { warranty, day }.
-  const [warrantyRetreat, setWarrantyRetreat] = useState(null);
   // A re-service card being dragged from the side panel (not an appointment).
   const [reserviceDrag, setReserviceDrag] = useState(null);
   const [overflowGroup, setOverflowGroup] = useState(null);
@@ -188,8 +185,10 @@ function SchedulingPage() {
     return {
       followUpOf: { id: original.id, reference: appointmentReference(original) },
       serviceIds: followUpService ? [followUpService.id] : [],
-      price: covered ? 0 : price ?? "",
-      warranty: covered ? { type: covered.type, id: covered.id, reference: covered.reference, end: covered.end } : null,
+      price: price ?? "",
+      // Still under warranty: the form opens on Warranty re-treatment.
+      visitType: covered ? "RETREATMENT" : "",
+      warrantyKey: covered ? `${covered.type}:${covered.id}` : "",
       frequency: "One-time",
       pestConcern: original.pestConcern || "",
       quoteId: original.quoteId || undefined,
@@ -1395,7 +1394,8 @@ function SchedulingPage() {
           initialPestConcern={createPrefill?.pestConcern || ""}
           initialPrice={createPrefill?.price ?? ""}
           initialFollowUpOf={createPrefill?.followUpOf || null}
-          initialFollowUpWarranty={createPrefill?.warranty || null}
+          initialVisitType={createPrefill?.visitType || ""}
+          initialWarrantyKey={createPrefill?.warrantyKey || ""}
           followUpDetails={(originalId) => {
             const original = appointments.find((entry) => entry.id === originalId);
             return original ? followUpPrefill(original) : null;
@@ -1405,12 +1405,16 @@ function SchedulingPage() {
           billingSources={billingSources}
           paymentCheckFor={paymentCheckFor}
           warrantyFor={warrantyRecords ? (clientId, serviceIds, day) => runningWarrantyFor(clientId, serviceIds, warrantyRecords, day || undefined) : null}
-          onWarrantyRetreatment={(warranty, day) => {
-            setCreateOpen(false);
-            setCreateClientId("");
-            setCreateScheduledAt("");
-            setCreatePrefill(null);
-            setWarrantyRetreat({ warranty, day });
+          warrantiesFor={warrantyRecords ? (clientId) => clientWarranties(clientId, warrantyRecords).filter((warranty) => warrantyState(warranty) === "ACTIVE") : null}
+          onWarrantyBook={async (request, { followUpOf } = {}) => {
+            const result = await bookWarrantyVisits(request);
+            if (typeof result === "string") return result;
+            const booked = Array.isArray(result) ? result : [];
+            await linkToOriginal(followUpOf, booked.map((visit) => visit.id));
+            showBooked(booked[0], request.kind === "CHECKUP"
+              ? `${booked.length} warranty checkup${booked.length === 1 ? "" : "s"} booked, at no charge.`
+              : "Warranty re-treatment booked, at no charge.");
+            return true;
           }}
           initialSource={createPrefill?.quoteId ? `quote:${createPrefill.quoteId}` : createPrefill?.contractId ? `contract:${createPrefill.contractId}` : ""}
           onClose={() => {
@@ -1421,22 +1425,6 @@ function SchedulingPage() {
           }}
           onCreate={handleCreate}
           onBook={handleBook}
-        />
-      )}
-      {warrantyRetreat && (
-        <WarrantyBookingModal
-          kind="RETREATMENT"
-          warranty={warrantyRetreat.warranty}
-          dates={[warrantyRetreat.day]}
-          technicians={activeTechnicians}
-          onClose={() => setWarrantyRetreat(null)}
-          onBook={async (request) => {
-            const result = await bookWarrantyVisits(request);
-            if (typeof result === "string") return result;
-            setWarrantyRetreat(null);
-            showSuccess("Warranty re-treatment booked, at no charge.");
-            return true;
-          }}
         />
       )}
       {/* The "+N more" tile's contents. Cards carry the same technician

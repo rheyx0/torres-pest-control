@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { describeServicePricing } from "../../utils/pricing";
-import { Eye, EyeOff, Info, PackageCheck, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Eye, EyeOff, Info, Lock, PackageCheck, Pencil, Plus, Trash2, X } from "lucide-react";
 import ConfirmDialog from "../common/ConfirmDialog";
 import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
 import { useToast } from "../../context/ToastContext";
@@ -28,7 +28,20 @@ import { formatPeso } from "../../utils/formatters";
 import { card, colors } from "../../styles/theme";
 import Skeleton from "../ui/Skeleton";
 import InfoTip from "../ui/InfoTip";
+import { SYSTEM_SERVICE_LABELS } from "../../utils/systemServices";
+
 import { useConfirm } from "../../context/ConfirmContext";
+
+// The 🔒 Built-in tag on Checkup, Follow-up Visit and Inspection (084).
+function BuiltInBadge({ systemKey }) {
+  if (!systemKey) return null;
+  return (
+    <span title={`${SYSTEM_SERVICE_LABELS[systemKey] || "Used by the system"}. It cannot be renamed, retired or deleted.`} style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", fontSize: "0.68rem", fontWeight: 500, color: "#1d4f8a", background: "#e8f1fb", border: "1px solid #bcd4ef", borderRadius: "999px", padding: "0.1rem 0.5rem" }}>
+      <Lock size={11} aria-hidden="true" /> Built-in
+    </span>
+  );
+}
+
 
 const peso = (value) => formatPeso(value);
 
@@ -118,6 +131,10 @@ export function validateServiceForm(form, services = [], editingId = null, itemB
 
 function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
   const isEdit = Boolean(initial?.id);
+  // A built-in service (084): name, description, category and the payment
+  // setting are fixed, and the Checkup is always free.
+  const builtIn = initial?.systemKey || "";
+  const freeCheckup = builtIn === "CHECKUP";
   const [form, setForm] = useState(() => ({
     name: initial?.name || "",
     description: initial?.description || "",
@@ -224,8 +241,18 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
       }
     >
       <form id="service-form" onSubmit={handleSubmit} noValidate style={{ display: "grid", gap: "1rem" }}>
+        {builtIn && (
+          <p role="note" style={{ margin: 0, display: "flex", gap: "0.5rem", alignItems: "flex-start", padding: "0.6rem 0.75rem", borderRadius: "6px", background: "#e8f1fb", border: "1px solid #bcd4ef", color: "#1d4f8a", fontSize: "0.85rem" }}>
+            <Lock size={14} aria-hidden="true" style={{ flex: "none", marginTop: "0.15rem" }} />
+            <span>
+              <strong style={{ fontWeight: 600 }}>Built-in service.</strong> {SYSTEM_SERVICE_LABELS[builtIn]}, so its name, description, category and payment setting are fixed.
+              {freeCheckup ? " A warranty checkup is always free, so its price stays ₱0." : " The price, duration and materials can still be changed."}
+            </span>
+          </p>
+        )}
         <Field label="Service name" required error={errors.name}>
           <Input
+            disabled={Boolean(builtIn)}
             value={form.name}
             onChange={(event) => set("name", event.target.value)}
             maxLength={LIMITS.SHORT_TEXT_MAX}
@@ -237,6 +264,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
 
         <Field label="Description" hint="Optional. What the visit covers, shown to the office only.">
           <Textarea
+            disabled={Boolean(builtIn)}
             value={form.description}
             onChange={(event) => set("description", event.target.value)}
             maxLength={LIMITS.NOTES_MAX}
@@ -245,7 +273,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
         </Field>
 
         <Field label="Category" hint="A visit with any chemical service counts as a chemical job.">
-          <Select aria-label="Category" value={form.category} onChange={(event) => set("category", event.target.value)}>
+          <Select aria-label="Category" disabled={Boolean(builtIn)} value={form.category} onChange={(event) => set("category", event.target.value)}>
             {SERVICE_CATEGORIES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
           </Select>
         </Field>
@@ -254,7 +282,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
             the same line: a stretched Field hands the extra height to its rows
             and pushes one input down whenever the hints wrap differently. */}
         <Field label="How is it priced?" hint="A flat price per visit, or by the size of the area treated.">
-          <Select aria-label="Pricing" value={form.pricingMode} onChange={(event) => {
+          <Select aria-label="Pricing" disabled={freeCheckup} value={form.pricingMode} onChange={(event) => {
             const mode = event.target.value;
             set("pricingMode", mode);
             // Per sqm starts at the business's usual rate; it stays editable.
@@ -302,6 +330,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
                 min="0"
                 max={LIMITS.MAX_PRICE}
                 step="0.01"
+                disabled={freeCheckup}
                 value={form.defaultPrice}
                 onChange={(event) => set("defaultPrice", event.target.value)}
                 placeholder="0.00"
@@ -336,7 +365,7 @@ function ServiceModal({ initial, services, inventory, busy, onSave, onClose }) {
           </Field>
           <div style={{ display: "flex", gap: "0.2rem", alignItems: "center", gridColumn: "1 / -1" }}>
             <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.88rem", color: colors.body, cursor: "pointer" }}>
-              <input type="checkbox" checked={form.skipPaymentCheck} onChange={(event) => set("skipPaymentCheck", event.target.checked)} />
+              <input type="checkbox" disabled={Boolean(builtIn)} checked={form.skipPaymentCheck} onChange={(event) => set("skipPaymentCheck", event.target.checked)} />
               <strong style={{ fontWeight: 500, color: colors.ink }}>Can be booked without payment</strong>
             </label>
             <InfoTip text="For inspections: booking skips the check for a paid quote or contract. A follow-up is linked to its job's quotation instead." />
@@ -449,6 +478,7 @@ function ServiceView({ service, itemsById, onEdit, onClose }) {
         {service.description && <p style={{ margin: 0, color: colors.body }}>{service.description}</p>}
         <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.45rem 1.25rem", fontSize: "0.9rem" }}>
           {row("Status", service.isActive ? "Active" : "Retired (hidden from the booking form)")}
+          {service.systemKey && row("Built-in", `${SYSTEM_SERVICE_LABELS[service.systemKey]}. Cannot be renamed, retired or deleted.`)}
           {service.category && row("Category", categoryLabel(service.category))}
           {row("Price", describeServicePricing(service, formatPeso))}
           {row("Down payment", service.depositPercent > 0 ? `${service.depositPercent}% of the quotation` : "None")}
@@ -630,6 +660,7 @@ export default function ServiceProfilesAdmin() {
                   <span style={{ fontSize: "0.68rem", fontWeight: 500, color: colors.muted, background: colors.sunken, borderRadius: "999px", padding: "0.15rem 0.5rem" }}>Retired</span>
                 )}
                 {service.category && <CategoryBadge category={service.category} />}
+                <BuiltInBadge systemKey={service.systemKey} />
               </div>
               <div style={{ color: colors.muted, fontSize: "0.76rem", marginTop: "0.25rem", display: "flex", gap: "0.9rem", flexWrap: "wrap" }}>
                 <span>Price: {describeServicePricing(service, formatPeso)}</span>
@@ -662,6 +693,7 @@ export default function ServiceProfilesAdmin() {
               <Button size="icon" variant="ghost" aria-label={`Edit ${service.name}`} title="Edit" onClick={() => setEditing(service)}>
                 <Pencil size={15} />
               </Button>
+              {!service.systemKey && (<>
               <Button
                 size="icon"
                 variant="ghost"
@@ -675,6 +707,7 @@ export default function ServiceProfilesAdmin() {
               <Button size="icon" variant="ghost" aria-label={`Delete ${service.name}`} title="Delete" onClick={() => setDeleteTarget(service)}>
                 <Trash2 size={15} color={colors.danger} />
               </Button>
+              </>)}
             </div>
           </article>
         ))}

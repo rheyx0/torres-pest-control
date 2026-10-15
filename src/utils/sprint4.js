@@ -7,6 +7,7 @@
 //   prepaidPlanIds         plans whose contract was billed up front
 
 import { canBookContract, canBookFromQuote, invoiceBalance } from "./billing";
+import { findSystemService, SYSTEM_SERVICE_KEYS } from "./systemServices";
 import { dayKey } from "./dashboardMetrics";
 import { appointmentReference } from "./scheduling";
 
@@ -220,8 +221,7 @@ export function followUpPriceFor(original, originalServices = [], followUpServic
 }
 
 /** The catalog's Follow-up Visit service, by name; null when there is none. */
-export const findFollowUpService = (services = []) =>
-  services.find((service) => service.isActive !== false && /follow[\s-]?up/i.test(service.name || "")) || null;
+export const findFollowUpService = (services = []) => findSystemService(services, SYSTEM_SERVICE_KEYS.FOLLOW_UP);
 
 // ---------------------------------------------------------------------------
 // Inspection to quote.
@@ -234,6 +234,8 @@ export const findFollowUpService = (services = []) =>
 export function isInspectionVisit(visit, visitServices = []) {
   if (!visit) return false;
   if (visit.inspectionAreaSqm || (visit.recommendedServiceIds || []).length) return true;
+  // The built-in Inspection service (084).
+  if (visitServices.some((service) => service?.systemKey === SYSTEM_SERVICE_KEYS.INSPECTION)) return true;
   const names = [...visitServices.map((service) => service?.name), visit.serviceType].filter(Boolean);
   return names.some((name) => /inspect/i.test(name));
 }

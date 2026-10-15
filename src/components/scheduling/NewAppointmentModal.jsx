@@ -55,6 +55,21 @@ import TechnicianPicker from "./TechnicianPicker";
 import { visitCategory } from "../../utils/categories";
 import { followUpStartProblem } from "../../utils/followUpBooking";
 import CategoryBadge from "../ui/CategoryBadge";
+import { servicePlays, SYSTEM_SERVICE_KEYS } from "../../utils/systemServices";
+import WarrantyBookingForm from "../billing/WarrantyBookingForm";
+import { checkupDatesToBook, warrantyServiceIds } from "../../utils/warranty";
+
+const untilText = (day) => new Date(`${day}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+// The re-treatment's first suggested day: the form's date when it falls
+// inside the warranty and is not past, else tomorrow (within the warranty).
+const retreatmentDay = (warranty, day) => {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const next = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+  const today = toDateTimeLocal(new Date()).slice(0, 10);
+  if (day && day >= today && day >= warranty.start && day <= warranty.end) return day;
+  return next <= warranty.end ? next : warranty.end;
+};
 
 /** The durations the office actually books. Custom reveals the raw fields. */
 const DURATION_PRESETS = [30, 60, 90, 120];
@@ -143,7 +158,16 @@ function NewAppointmentModal({
   // (clientId, serviceIds, day) => warranty | null, and booking it instead as
   // a free re-treatment: (warranty, day) => void.
   warrantyFor = null,
-  onWarrantyRetreatment = null,
+  // Every warranty running for a client (Sprint 5): (clientId) => [warranty].
+  // With any, the form asks "What kind of visit?": a paid visit, or a free
+  // warranty checkup / re-treatment booked through onWarrantyBook(request,
+  // { followUpOf }) => true | error message.
+  warrantiesFor = null,
+  onWarrantyBook = null,
+  // "PAID" (default), "CHECKUP" or "RETREATMENT", and "<TYPE>:<id>" of the
+  // warranty: a follow-up under warranty opens as its re-treatment.
+  initialVisitType = "",
+  initialWarrantyKey = "",
   onClose,
   onCreate,
   onBook,
@@ -186,6 +210,19 @@ function NewAppointmentModal({
   const [source, setSource] = useState(initialSource);
   const [followUpOf, setFollowUpOf] = useState(initialFollowUpOf);
   const [followUpWarranty, setFollowUpWarranty] = useState(initialFollowUpWarranty);
+  // What kind of visit (Sprint 5): paid, or free under a running warranty.
+  const [visitType, setVisitType] = useState(initialVisitType || "PAID");
+  const [warrantyKey, setWarrantyKey] = useState(initialWarrantyKey);
+  const [warrantySaving, setWarrantySaving] = useState(false);
+  const runningWarranties = warrantiesFor && onWarrantyBook && clientId ? warrantiesFor(clientId) : [];
+  const keyOf = (warranty) => `${warranty.type}:${warranty.id}`;
+  const chosenWarranty = runningWarranties.find((warranty) => keyOf(warranty) === warrantyKey) || runningWarranties[0] || null;
+  const warrantyMode = visitType !== "PAID" && Boolean(chosenWarranty) && (visitType !== "CHECKUP" || Boolean(chosenWarranty.frequency));
+  const switchToWarranty = (type, warranty) => {
+    setFormError("");
+    setVisitType(type);
+    if (warranty) setWarrantyKey(keyOf(warranty));
+  };
   // "Still make appointment without an approved quotation", with its reason.
   const [override, setOverride] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
@@ -358,7 +395,7 @@ function NewAppointmentModal({
   // The Follow-up Visit service ticked by hand (not from Book follow-up): the
   // visit it checks on is asked for, and choosing it fills in the follow-up
   // price and the quotation, the same as Book follow-up does.
-  const followUpTicked = serviceIds.some((id) => /follow[\s-]?up/i.test(services.find((service) => service.id === id)?.name || ""));
+  const followUpTicked = serviceIds.some((id) => servicePlays(services.find((service) => service.id === id), SYSTEM_SERVICE_KEYS.FOLLOW_UP, services));
   const followUpChoices = followUpTicked && !initialFollowUpOf && clientId
     ? appointments
       .filter((visit) => visit.clientId === clientId && visit.status === "Completed")
@@ -368,10 +405,10 @@ function NewAppointmentModal({
   // Which visit a follow-up checks on is asked first: that visit's quotation
   // is what covers the payment check, so the check waits for the answer.
   const awaitingFollowUpOf = followUpChoices.length > 0 && !followUpOf;
-  const check = paymentCheckFor && clientId && !awaitingFollowUpOf ? paymentCheckFor(clientId, serviceIds, source) : { ok: true, reason: "" };
+  const check = paymentCheckFor && clientId && !awaitingFollowUpOf && !warrantyMode ? paymentCheckFor(clientId, serviceIds, source) : { ok: true, reason: "" };
   // The same service under a running warranty: offer the free re-treatment.
   const bookingDay = String(scheduledAt || "").slice(0, 10);
-  const coveredBy = warrantyFor && onWarrantyRetreatment && clientId && !initialFollowUpOf && !followUpWarranty
+  const coveredBy = warrantyFor && onWarrantyBook && clientId && !followUpWarranty && !warrantyMode
     ? warrantyFor(clientId, serviceIds, bookingDay)
     : null;
   const chooseFollowUpOf = (originalId) => {
@@ -385,11 +422,17 @@ function NewAppointmentModal({
       setPriceTouched(true);
     }
     if (details?.quoteId) setSource(`quote:${details.quoteId}`);
-    setFollowUpWarranty(details?.warranty || null);
+    setFollowUpWarranty(null);
+    // The job is still under warranty: the follow-up is its free re-treatment.
+    if (details?.warrantyKey) {
+      setVisitType("RETREATMENT");
+      setWarrantyKey(details.warrantyKey);
+    }
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (warrantyMode) return;
     if (!clientId) {
       setFormError("Select a client from the list.");
       return;
@@ -540,12 +583,12 @@ function NewAppointmentModal({
           <Button onClick={onClose}>Cancel</Button>
           <Button
             type="submit"
-            form="new-appointment-form"
+            form={warrantyMode ? "new-warranty-form" : "new-appointment-form"}
             variant="primary"
-            loading={saving}
-            disabled={clients.length === 0 || (Boolean(kind) && planProblems > 0)}
+            loading={warrantyMode ? warrantySaving : saving}
+            disabled={clients.length === 0 || (!warrantyMode && Boolean(kind) && planProblems > 0)}
           >
-            {submitLabel}
+            {warrantyMode ? (visitType === "CHECKUP" ? "Book checkups" : "Book re-treatment") : submitLabel}
           </Button>
         </>
       }
@@ -570,6 +613,8 @@ function NewAppointmentModal({
                 setServiceLocation(client?.address || "");
                 // A quote or contract belongs to one client.
                 if (id !== clientId) {
+                  setVisitType("PAID");
+                  setWarrantyKey("");
                   setSource("");
                   setOverride(false);
                   setOverrideReason("");
@@ -609,6 +654,38 @@ function NewAppointmentModal({
           {/* The service comes first: it sets the duration and the price, so
               picking it before the time means both are right when the time
               is chosen. */}
+          {runningWarranties.length > 0 && chosenWarranty && (
+            <div role="group" aria-label="What kind of visit" style={{ display: "grid", gap: "8px", padding: "10px 12px", background: "#f3f8fd", border: "1px solid #bcd4ef", borderRadius: radius.control, ...text.small }}>
+              <span style={{ color: "#1d4f8a" }}>
+                🛡 <strong style={{ fontWeight: weight.medium }}>Under warranty until {untilText(chosenWarranty.end)}</strong> ({chosenWarranty.type === "CONTRACT" ? "contract" : "quotation"} {chosenWarranty.reference})
+              </span>
+              {runningWarranties.length > 1 && (
+                <Select aria-label="Which warranty" value={keyOf(chosenWarranty)} onChange={(event) => setWarrantyKey(event.target.value)}>
+                  {runningWarranties.map((warranty) => (
+                    <option key={keyOf(warranty)} value={keyOf(warranty)}>
+                      {warranty.type === "CONTRACT" ? "Contract" : "Quotation"} {warranty.reference} · until {untilText(warranty.end)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+              <strong style={{ fontWeight: weight.medium, color: neutral.ink }}>What kind of visit?</strong>
+              <div role="radiogroup" aria-label="Visit kind" style={{ display: "flex", gap: "6px 18px", flexWrap: "wrap" }}>
+                {[
+                  ["PAID", "Paid visit", ""],
+                  ...(chosenWarranty.frequency ? [["CHECKUP", "🛡 Warranty checkup", "free, routine check"]] : []),
+                  ["RETREATMENT", "🛡 Warranty re-treatment", "free, pests came back"],
+                ].map(([value, label, note]) => (
+                  <label key={value} style={{ display: "inline-flex", gap: "6px", alignItems: "center", color: neutral.ink, cursor: "pointer" }}>
+                    <input type="radio" name="visit-kind" value={value} checked={(warrantyMode ? visitType : "PAID") === value} onChange={() => switchToWarranty(value, chosenWarranty)} />
+                    {label}{note && <span style={{ color: neutral.bark }}>({note})</span>}
+                  </label>
+                ))}
+              </div>
+              {!chosenWarranty.frequency && <span style={{ color: neutral.bark, fontSize: text.caption.fontSize }}>This warranty has no checkups.</span>}
+            </div>
+          )}
+
+          {!warrantyMode && (<>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", alignItems: "start" }}>
             {/* Not a Field: a checkbox group, labelled through role="group"
                 (a <label> would name only its first checkbox). */}
@@ -678,8 +755,23 @@ function NewAppointmentModal({
               </Select>
             </Field>
           )}
+          {/* A quotation or contract under warranty: a paid visit under it is
+              charged, so the free kinds are offered right here. */}
+          {(() => {
+            const sourced = runningWarranties.find((warranty) => source === `${warranty.type === "CONTRACT" ? "contract" : "quote"}:${warranty.id}`);
+            if (!sourced) return null;
+            return (
+              <div role="note" style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", padding: "9px 12px", background: "#e8f1fb", border: "1px solid #bcd4ef", color: "#1d4f8a", borderRadius: radius.control, ...text.small }}>
+                <span style={{ flex: "1 1 240px" }}>🛡 {sourced.reference} is under warranty until {untilText(sourced.end)}. A paid visit under it is charged; for a free visit choose:</span>
+                {sourced.frequency && <Button size="sm" onClick={() => switchToWarranty("CHECKUP", sourced)}>Warranty checkup</Button>}
+                <Button size="sm" variant="primary" onClick={() => switchToWarranty("RETREATMENT", sourced)}>Warranty re-treatment</Button>
+              </div>
+            );
+          })()}
+          </>)}
         </Section>
 
+        {!warrantyMode && (<>
         <Section legend="When">
           <Field label="Date and time" required>
             <Input
@@ -911,7 +1003,7 @@ function NewAppointmentModal({
               🛡 <strong style={{ fontWeight: weight.medium }}>Under warranty until {new Date(`${coveredBy.end}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</strong>{" "}
               ({coveredBy.type === "CONTRACT" ? "contract" : "quotation"} {coveredBy.reference}). This service is covered: book it as a free Warranty re-treatment?
             </span>
-            <Button size="sm" variant="primary" onClick={() => onWarrantyRetreatment(coveredBy, bookingDay)}>Book as warranty re-treatment</Button>
+            <Button size="sm" variant="primary" onClick={() => switchToWarranty("RETREATMENT", coveredBy)}>Book as warranty re-treatment</Button>
           </div>
         )}
 
@@ -1014,7 +1106,21 @@ function NewAppointmentModal({
             {formError}
           </p>
         )}
+        </>)}
       </form>
+      {warrantyMode && (
+        <WarrantyBookingForm
+          key={`${visitType}-${keyOf(chosenWarranty)}`}
+          formId="new-warranty-form"
+          kind={visitType}
+          warranty={chosenWarranty}
+          dates={visitType === "CHECKUP" ? checkupDatesToBook(chosenWarranty, appointments, new Date()) : [retreatmentDay(chosenWarranty, bookingDay)]}
+          technicians={activeAccounts}
+          serviceNames={warrantyServiceIds(chosenWarranty).map((id) => services.find((service) => service.id === id)?.name).filter(Boolean)}
+          onSavingChange={setWarrantySaving}
+          onBook={(request) => onWarrantyBook(request, { followUpOf: followUpOf && (initialFollowUpOf || followUpTicked) ? followUpOf.id : null })}
+        />
+      )}
       {pending && (
         <Modal
           open

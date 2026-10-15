@@ -49,6 +49,8 @@ export function ServicesProvider({ children }) {
         ...service,
         skipPaymentCheck: service.skipPaymentCheck ?? Boolean(previous?.skipPaymentCheck),
         followUpPrice: service.followUpPrice !== undefined ? service.followUpPrice : previous?.followUpPrice ?? null,
+        // The built-in tag (084) is read on its own and never changes here.
+        systemKey: service.systemKey || previous?.systemKey || "",
         category: service.category !== undefined ? service.category : previous?.category || "",
       };
       return [...current.filter((entry) => entry.id !== service.id), merged].sort(byOrder);

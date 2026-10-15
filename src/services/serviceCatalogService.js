@@ -93,9 +93,10 @@ export async function fetchServices() {
   const exempt = await fetchPaymentCheckExemptions("services");
   const followUp = await fetchFollowUpPrices();
   const categories = await fetchServiceCategories();
+  const systemKeys = await fetchSystemKeys();
   return {
     error: null,
-    services: (data || []).map((row) => ({ ...mapServiceRow(row), skipPaymentCheck: exempt.has(row.id), followUpPrice: followUp.has(row.id) ? followUp.get(row.id) : null, category: categories.get(row.id) || "" })),
+    services: (data || []).map((row) => ({ ...mapServiceRow(row), skipPaymentCheck: exempt.has(row.id), followUpPrice: followUp.has(row.id) ? followUp.get(row.id) : null, category: categories.get(row.id) || "", systemKey: systemKeys.get(row.id) || "" })),
   };
 }
 
@@ -152,6 +153,12 @@ export async function saveServiceMaterials(serviceId, materials) {
 }
 
 /** Admin only (066): a service booked without a paid quote first. */
+/** id -> CHECKUP / FOLLOW_UP / INSPECTION for the built-in services (084). Empty before 084. */
+async function fetchSystemKeys() {
+  const { data, error } = await supabase.from("services").select("id, system_key").not("system_key", "is", null);
+  return new Map(error ? [] : (data || []).map((row) => [row.id, row.system_key]));
+}
+
 /** id -> CHEMICAL / NON_CHEMICAL (075). Empty before 075, so no category shows. */
 async function fetchServiceCategories() {
   const { data, error } = await supabase.from("services").select("id, category");
