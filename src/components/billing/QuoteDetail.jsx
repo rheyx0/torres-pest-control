@@ -10,6 +10,7 @@
 // the same rule the server enforces when it links the visit to the quote.
 
 import { useState } from "react";
+import { estimatedTotal } from "../../utils/pricing";
 import { warrantyLabel } from "../../utils/warranty";
 import { Copy, Mail, Printer, Trash2 } from "lucide-react";
 import { Button, Input, Modal, MoreMenu, StatusPill } from "../ui";
@@ -61,6 +62,8 @@ function QuoteDetail({
   onReceipt,
   // What a service line's price covers ("includes 1 L …"); "" for none.
   includesFor = () => "",
+  // Charge all materials, estimated (pricing.js), shown under the total.
+  materialEstimate = 0,
   onClose,
 }) {
   const [rejecting, setRejecting] = useState(false);
@@ -195,6 +198,10 @@ function QuoteDetail({
           {quote.discountAmount > 0 && (<><dt>Discount</dt><dd style={{ margin: 0, textAlign: "right" }}>−{formatPeso(quote.discountAmount)}</dd></>)}
           {quote.vatMode !== "NONE" && (<><dt>{quote.vatMode === "INCLUSIVE" ? `VAT included (${quote.vatRate}%)` : `VAT (${quote.vatRate}%)`}</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(quote.vatAmount)}</dd></>)}
           <dt style={{ fontWeight: 600, color: colors.ink }}>Total</dt><dd style={{ margin: 0, textAlign: "right", fontWeight: 600, color: colors.ink }}>{formatPeso(quote.total)}</dd>
+          {materialEstimate > 0 && (<>
+            <dt>Materials charged by use (estimate)</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(materialEstimate)}</dd>
+            <dt style={{ fontWeight: 600, color: colors.ink }}>Estimated total</dt><dd style={{ margin: 0, textAlign: "right", fontWeight: 600, color: colors.ink }}>{formatPeso(estimatedTotal(quote, materialEstimate))}</dd>
+          </>)}
           {deposit.required > 0 && (
             <>
               <dt>Down payment</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(deposit.required)}</dd>

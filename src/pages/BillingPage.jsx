@@ -41,7 +41,7 @@ import { CONTRACT_STATUS_LABELS, INVOICE_STATE_LABELS, QUOTE_STATUS_LABELS } fro
 import { billingOverview, depositStatus, invoiceBalance, quoteStatus, contractDepositStatus } from "../utils/billing";
 import { StatTile, TileRow } from "../components/dashboard/DashboardParts";
 import { servicesOf } from "../utils/scheduling";
-import { includedMaterialsText } from "../utils/pricing";
+import { chargeAllEstimateText, includedMaterialsText, quoteMaterialEstimate } from "../utils/pricing";
 import { contractInvoicesDue, prepaidPlanIds } from "../utils/sprint4";
 import { documentEmail, gmailComposeUrl } from "../utils/gmail";
 import { formatDate, formatPeso } from "../utils/formatters";
@@ -295,8 +295,12 @@ function BillingPage() {
 
   // Quotes, invoices and receipts print through BillingPrinter ("Save as PDF").
   // What a quote's service line covers, on screen and on the printout.
-  const includesFor = (line) => (line.kind === "SERVICE" ? includedMaterialsText(serviceById(line.serviceId), itemById) : "");
-  const printQuote = (quote) => setPrintRequest({ kind: "QUOTE", quote, client: clientById.get(quote.clientId), payments: paymentsForQuote(quote.id), includesFor, inspection: quote.inspectionId ? appointments.find((visit) => visit.id === quote.inspectionId) || null : null });
+  const includesFor = (line) => (line.kind === "SERVICE"
+    ? [includedMaterialsText(serviceById(line.serviceId), itemById), chargeAllEstimateText(serviceById(line.serviceId), itemById, line.quantity)].filter(Boolean).join(" · ")
+    : "");
+  // Charge all materials, estimated: shown with the total, never charged from here.
+  const estimateFor = (quote) => quoteMaterialEstimate(quote?.lines || [], serviceById, itemById);
+  const printQuote = (quote) => setPrintRequest({ kind: "QUOTE", quote, client: clientById.get(quote.clientId), payments: paymentsForQuote(quote.id), includesFor, materialEstimate: estimateFor(quote), inspection: quote.inspectionId ? appointments.find((visit) => visit.id === quote.inspectionId) || null : null });
   const printInvoice = (invoice) => {
     const lineVisits = new Set(invoice.lines.map((line) => line.appointmentId).filter(Boolean));
     setPrintRequest({
@@ -496,10 +500,11 @@ function BillingPage() {
           onInvoice={invoicesAvailable && canCreate ? () => setInvoicing({ quoteId: openQuoteRecord.id, clientId: openQuoteRecord.clientId }) : undefined}
           onOpenInvoice={(id) => { setTab("invoices"); openInvoice(id); }}
           onPrint={() => printQuote(openQuoteRecord)}
-          onEmail={() => sendDocument("QUOTE", openQuoteRecord, { kind: "QUOTE", quote: openQuoteRecord, client: clientById.get(openQuoteRecord.clientId), payments: paymentsForQuote(openQuoteRecord.id), includesFor })}
+          onEmail={() => sendDocument("QUOTE", openQuoteRecord, { kind: "QUOTE", quote: openQuoteRecord, client: clientById.get(openQuoteRecord.clientId), payments: paymentsForQuote(openQuoteRecord.id), includesFor, materialEstimate: estimateFor(openQuoteRecord) })}
           onSendReceipt={sendReceipt}
           inspection={openQuoteRecord.inspectionId ? appointments.find((visit) => visit.id === openQuoteRecord.inspectionId) || null : null}
           includesFor={includesFor}
+          materialEstimate={estimateFor(openQuoteRecord)}
           onReceipt={printReceipt}
           onCheck={checkStatus}
           onReverse={reverse}

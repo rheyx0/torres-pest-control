@@ -102,3 +102,47 @@ export function includedMaterialsText(service, itemById = () => null) {
   if (perUse.length) parts.push(`${perUse.map(({ item }) => item.name).join(", ")} charged per use`);
   return parts.join(" · ");
 }
+
+// ---------------------------------------------------------------------------
+// Charge all materials on a quotation: an estimate, never a quote line. The
+// service's usual amount at the customer price, so the client sees a
+// realistic total; the invoice still charges what the visit actually used
+// (visitMaterialLines), so nothing is charged twice.
+// ---------------------------------------------------------------------------
+
+/** [{ itemId, name, unit, amount, unitPrice, total }] for one service line. */
+export function chargeAllEstimate(service, itemById = () => null, quantity = 1) {
+  const times = Number(quantity) > 0 ? Number(quantity) : 1;
+  return (service?.materials || [])
+    .filter((material) => material.billingMode === BILLING_MODES.CHARGE_ALL && Number(material.defaultAmount) > 0)
+    .map((material) => ({ material, item: itemById(material.itemId) }))
+    .filter(({ item }) => item)
+    .map(({ material, item }) => {
+      const amount = round2(Number(material.defaultAmount) * times);
+      const unitPrice = customerPrice(item);
+      return { itemId: item.id, name: item.name, unit: item.unit || "", amount, unitPrice, total: round2(amount * unitPrice) };
+    });
+}
+
+const pesoText = (value) => `₱${(Number(value) || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** "Estimate: Termidor SC about 8 L × ₱1,200.00 = ₱9,600.00, charged by actual use", or "". */
+export function chargeAllEstimateText(service, itemById = () => null, quantity = 1) {
+  const list = chargeAllEstimate(service, itemById, quantity);
+  if (!list.length) return "";
+  return `Estimate: ${list.map((entry) => `${entry.name} about ${entry.amount} ${entry.unit} × ${pesoText(entry.unitPrice)} = ${pesoText(entry.total)}`.replace(/\s+/g, " ")).join("; ")}, charged by actual use`;
+}
+
+/** The estimate for every service line of a quote, before VAT. */
+export function quoteMaterialEstimate(lines = [], serviceById = () => null, itemById = () => null) {
+  return round2(lines
+    .filter((line) => line.kind === "SERVICE" && line.serviceId)
+    .reduce((sum, line) => sum + chargeAllEstimate(serviceById(line.serviceId), itemById, line.quantity)
+      .reduce((inner, entry) => inner + entry.total, 0), 0));
+}
+
+/** The quote's total with the estimate added (with VAT when VAT is added on top). */
+export function estimatedTotal(record, estimate) {
+  const vat = record?.vatMode === "ADDED" ? 1 + (Number(record.vatRate) || 0) / 100 : 1;
+  return round2((Number(record?.total) || 0) + (Number(estimate) || 0) * vat);
+}

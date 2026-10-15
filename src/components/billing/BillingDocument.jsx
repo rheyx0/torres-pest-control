@@ -11,6 +11,7 @@
 // office still issues those from its registered booklet.
 
 import { ACTIVITY_LEVELS, BILLING_SCHEDULES, COMPANY, PAYMENT_METHOD_LABELS, PAYMENT_TERMS } from "../../utils/constants";
+import { estimatedTotal } from "../../utils/pricing";
 import { warrantyLabel } from "../../utils/warranty";
 import { depositStatus, invoiceBalance, inspectionIncludedText } from "../../utils/billing";
 import { appointmentReference } from "../../utils/scheduling";
@@ -101,7 +102,7 @@ function WarrantyBox({ months, frequency, start = "", end = "", startsWhen }) {
   );
 }
 
-function QuoteBody({ quote, client, payments, includesFor, inspection, warranty }) {
+function QuoteBody({ quote, client, payments, includesFor, inspection, warranty, materialEstimate = 0 }) {
   const deposit = depositStatus(quote, payments);
   return (
     <>
@@ -120,6 +121,8 @@ function QuoteBody({ quote, client, payments, includesFor, inspection, warranty 
       </table>
       <section className="sf-block"><h2 className="sf-h2">Scope and price</h2><Lines lines={quote.lines} includesFor={includesFor} /></section>
       <Totals record={quote}>
+        {materialEstimate > 0 && <tr><th>Materials charged by use (estimate)</th><td>{formatPeso(materialEstimate)}</td></tr>}
+        {materialEstimate > 0 && <tr className="bd-strong"><th>Estimated total</th><td>{formatPeso(estimatedTotal(quote, materialEstimate))}</td></tr>}
         {deposit.required > 0 && <tr className="bd-strong"><th>Down payment to book</th><td>{formatPeso(deposit.required)}</td></tr>}
       </Totals>
       <WarrantyBox months={quote.warrantyMonths} frequency={quote.checkupFrequency} start={warranty?.start} end={warranty?.end} startsWhen="when the work is completed" />
@@ -418,7 +421,7 @@ function CheckoutBody({ checkout }) {
   );
 }
 
-function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, monitoring = null, report = null, payments = [], visits = [], includesFor, inspection = null, checkout = null, warranty = null }) {
+function BillingDocument({ kind, client, quote = null, invoice = null, payment = null, contract = null, monitoring = null, report = null, payments = [], visits = [], includesFor, inspection = null, checkout = null, warranty = null, materialEstimate = 0 }) {
   if (kind === "CHECKOUT") {
     if (!checkout) return null;
     return (
@@ -445,7 +448,7 @@ function BillingDocument({ kind, client, quote = null, invoice = null, payment =
   return (
     <div className="service-form billing-document">
       <Letterhead kind={kind} reference={reference} />
-      {kind === "QUOTE" && <QuoteBody quote={quote} client={client} payments={payments} includesFor={includesFor} inspection={inspection} warranty={warranty} />}
+      {kind === "QUOTE" && <QuoteBody quote={quote} client={client} payments={payments} includesFor={includesFor} inspection={inspection} warranty={warranty} materialEstimate={materialEstimate} />}
       {kind === "INVOICE" && <InvoiceBody invoice={invoice} client={client} quote={quote} payments={payments} visits={visits} />}
       {kind === "INVOICE" && warranty && <WarrantyBox months={warranty.months} frequency={warranty.frequency} start={warranty.start} end={warranty.end} startsWhen={warranty.type === "CONTRACT" ? "when the contract is signed" : "when the work is completed"} />}
       {kind === "RECEIPT" && <ReceiptBody contract={contract} payment={payment} client={client} quote={quote} invoice={invoice} payments={payments} />}

@@ -1,6 +1,6 @@
 // Pricing (Sprint 3, migration 060).
 
-import { customerPrice, defaultDeposit, describeServicePricing, includedMaterialsText, itemMargin, materialCharge, servicePrice } from "../pricing";
+import { chargeAllEstimate, chargeAllEstimateText, customerPrice, defaultDeposit, describeServicePricing, estimatedTotal, includedMaterialsText, itemMargin, materialCharge, quoteMaterialEstimate, servicePrice } from "../pricing";
 import { formatPeso } from "../formatters";
 
 describe("customerPrice and itemMargin", () => {
@@ -83,5 +83,30 @@ describe("includedMaterialsText", () => {
     expect(includedMaterialsText({ materials: [] }, itemById)).toBe("");
     expect(includedMaterialsText({ materials: [{ itemId: "gone", defaultAmount: 1 }] }, itemById)).toBe("");
     expect(includedMaterialsText(null, itemById)).toBe("");
+  });
+});
+
+// A Charge all material is shown on a quotation as an estimate, never a line.
+describe("charge all estimate", () => {
+  const termidor = { id: "i1", name: "Termidor SC", unit: "L", priceMode: "FIXED", customerPrice: 1200 };
+  const items = { i1: termidor };
+  const service = { id: "s1", materials: [
+    { itemId: "i1", defaultAmount: 8, billingMode: "CHARGE_ALL" },
+    { itemId: "i2", defaultAmount: 2, billingMode: "INCLUDED" },
+  ] };
+  const byId = (id) => items[id];
+
+  test("the service's usual amount at the customer price", () => {
+    expect(chargeAllEstimate(service, byId)).toEqual([{ itemId: "i1", name: "Termidor SC", unit: "L", amount: 8, unitPrice: 1200, total: 9600 }]);
+    expect(chargeAllEstimateText(service, byId)).toBe("Estimate: Termidor SC about 8 L × ₱1,200.00 = ₱9,600.00, charged by actual use");
+    expect(chargeAllEstimateText({ materials: [{ itemId: "i1", defaultAmount: 8, billingMode: "EXTRA_CHARGED" }] }, byId)).toBe("");
+  });
+
+  test("added up over the quote's service lines, with VAT when it is added on top", () => {
+    const lines = [{ kind: "SERVICE", serviceId: "s1", quantity: 2 }, { kind: "EXTRA", quantity: 1 }];
+    const estimate = quoteMaterialEstimate(lines, () => service, byId);
+    expect(estimate).toBe(19200);
+    expect(estimatedTotal({ total: 10000, vatMode: "ADDED", vatRate: 12 }, estimate)).toBe(31504);
+    expect(estimatedTotal({ total: 10000, vatMode: "NONE" }, estimate)).toBe(29200);
   });
 });

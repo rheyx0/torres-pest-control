@@ -17,7 +17,7 @@ import { Plus, X } from "lucide-react";
 import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
 import { colors } from "../../styles/theme";
 import { LIMITS, PAYMENT_TERMS, VAT_MODES, VAT_RATE } from "../../utils/constants";
-import { customerPrice, includedMaterialsText, servicePrice } from "../../utils/pricing";
+import { chargeAllEstimateText, customerPrice, estimatedTotal, includedMaterialsText, quoteMaterialEstimate, servicePrice } from "../../utils/pricing";
 import { lineAmount, quoteTotals, validUntilFrom } from "../../utils/billing";
 import { formatPeso } from "../../utils/formatters";
 import { todayISO, validateMoney } from "../../utils/validators";
@@ -103,6 +103,8 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
   const servicesById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
   const itemsById = useMemo(() => new Map(inventory.map((item) => [item.id, item])), [inventory]);
   const totals = quoteTotals(lines, { ...form, vatRate: VAT_RATE });
+  // Charge all materials: shown as an estimate, never saved as a line.
+  const materialEstimate = quoteMaterialEstimate(lines, (id) => servicesById.get(id), (id) => itemsById.get(id));
 
   const set = (field, value) => {
     setError("");
@@ -288,6 +290,11 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
                 {includedMaterialsText(servicesById.get(line.serviceId), (id) => itemsById.get(id))}
               </span>
             )}
+            {line.kind === "SERVICE" && chargeAllEstimateText(servicesById.get(line.serviceId), (id) => itemsById.get(id), line.quantity) && (
+              <span style={{ marginLeft: "calc(92px + 0.5rem)", fontSize: "0.75rem", color: colors.body }}>
+                {chargeAllEstimateText(servicesById.get(line.serviceId), (id) => itemsById.get(id), line.quantity)}
+              </span>
+            )}
             </div>
           ))}
         </section>
@@ -336,6 +343,10 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
             <dt>{form.vatMode === "INCLUSIVE" ? `VAT included (${VAT_RATE}%)` : `VAT (${VAT_RATE}%)`}</dt>
             <dd style={{ margin: 0, textAlign: "right" }}>{form.vatMode === "NONE" ? "—" : formatPeso(totals.vatAmount)}</dd>
             <dt style={{ fontWeight: 600, color: colors.ink }}>Total</dt><dd style={{ margin: 0, textAlign: "right", fontWeight: 600, color: colors.ink }}>{formatPeso(totals.total)}</dd>
+            {materialEstimate > 0 && (<>
+            <dt>Materials charged by use (estimate)</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(materialEstimate)}</dd>
+            <dt style={{ fontWeight: 600, color: colors.ink }}>Estimated total</dt><dd style={{ margin: 0, textAlign: "right", fontWeight: 600, color: colors.ink }}>{formatPeso(estimatedTotal({ ...totals, vatMode: form.vatMode, vatRate: VAT_RATE }, materialEstimate))}</dd>
+          </>)}
             {totals.depositAmount > 0 && (<>
               <dt>Down payment</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(totals.depositAmount)}</dd>
               <dt>Balance after down payment</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(Math.max(0, totals.total - totals.depositAmount))}</dd>
