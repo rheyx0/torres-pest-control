@@ -472,6 +472,10 @@ function NewAppointmentModal({
       return;
     }
     const [sourceType, sourceId] = source ? source.split(":") : ["", ""];
+    if (!check.ok && coveredBy) {
+      setFormError(`This service is under warranty until ${untilText(coveredBy.end)}. Book it as a free Warranty re-treatment, or make a new quotation for paid work.`);
+      return;
+    }
     if (!check.ok && !override) {
       setFormError(check.ready
         ? `Book this visit under ${check.ready.reference}, or use "Still make appointment without an approved quotation".`
@@ -1026,7 +1030,11 @@ function NewAppointmentModal({
                     Book under {check.ready.reference}
                   </Button>
                 )}
-                <Button size="sm" onClick={() => setOverride(true)}>Still make appointment without an approved quotation</Button>
+                {coveredBy ? (
+                  <span style={{ alignSelf: "center" }}>Under warranty: book it as a free re-treatment (above), or make a new quotation for paid work.</span>
+                ) : (
+                  <Button size="sm" onClick={() => setOverride(true)}>Still make appointment without an approved quotation</Button>
+                )}
               </span>
             ) : (
               <span style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>

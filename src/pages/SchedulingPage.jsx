@@ -957,13 +957,21 @@ function SchedulingPage() {
 
   const billingSources = useMemo(() => {
     if (!billing?.office || !billing.available) return null;
+    // A quotation is one job: once a live visit is booked under it, it is used.
+    const usedBy = new Map();
+    appointments
+      .filter((visit) => visit.quoteId && visit.status !== "Cancelled" && !visit.followUpOf)
+      .forEach((visit) => { if (!usedBy.has(visit.quoteId)) usedBy.set(visit.quoteId, visit); });
     return {
       quotes: billing.quotes
         .filter((quote) => quote.status === "APPROVED")
         .map((quote) => {
           const check = billing.bookingCheck(quote);
+          const used = usedBy.get(quote.id);
           return {
-            id: quote.id, clientId: quote.clientId, label: `${quote.reference} · ${formatPeso(quote.total)}`, bookable: check.ok, reason: check.reason,
+            id: quote.id, clientId: quote.clientId, label: `${quote.reference} · ${formatPeso(quote.total)}`,
+            bookable: check.ok && !used,
+            reason: used ? `already booked (${appointmentReference(used)})` : check.reason,
             // What picking it fills in on the form.
             serviceIds: quote.lines.filter((line) => line.kind === "SERVICE" && line.serviceId).map((line) => line.serviceId),
             price: quote.total,
@@ -976,7 +984,7 @@ function SchedulingPage() {
           serviceIds: contract.serviceIds, frequency: contract.frequency, visitCount: contract.visitCount, until: contract.endsOn, price: contract.pricePerVisit,
         })),
     };
-  }, [billing]);
+  }, [billing, appointments]);
 
   // Book the next visit for a client due for re-service, or renew a plan that
   // is running out: the last visit's services, frequency and pest concern come

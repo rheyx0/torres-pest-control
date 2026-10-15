@@ -826,6 +826,15 @@ describe("NewAppointmentModal under a warranty", () => {
     expect(screen.getByRole("button", { name: "Book checkups" })).toBeInTheDocument();
   });
 
+  it("a covered service cannot be booked as paid without a quotation", async () => {
+    const { onCreate } = renderModal({ services, initialClientId: "c1", initialScheduledAt: `${TODAY}T14:00`, warrantiesFor: () => [warranty], warrantyFor: () => warranty, onWarrantyBook: jest.fn(), paymentCheckFor: () => ({ ok: false, reason: "No quotation." }) });
+    await userEvent.click(screen.getByRole("checkbox", { name: "Termite Control" }));
+    expect(screen.queryByRole("button", { name: /Still make appointment/ })).not.toBeInTheDocument();
+    await submitBooking();
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(screen.getByText(/under warranty until .*Book it as a free Warranty re-treatment/)).toBeInTheDocument();
+  });
+
   it("ticking a covered service offers the re-treatment; a paid visit stays the default", async () => {
     renderModal({ services, initialClientId: "c1", warrantiesFor: () => [warranty], warrantyFor: () => warranty, onWarrantyBook: jest.fn() });
     expect(screen.getByRole("radio", { name: "Paid visit" })).toBeChecked();
