@@ -3,7 +3,6 @@
 // utils/clientTimeline.js; these only draw it.
 
 import { Link, useNavigate } from "react-router-dom";
-import { checkupLabel } from "../../utils/categories";
 import { withWarranty } from "../../utils/warranty";
 import {
   ArrowLeft,
@@ -220,7 +219,6 @@ export function ClientFacts({ client, value, canEdit, onEdit }) {
             {peso(value.total)} · {value.visits} {value.visits === 1 ? "visit" : "visits"}
           </span>
         </Fact>
-        <Fact label="Checkups">{client.checkupFrequency ? `${checkupLabel(client.checkupFrequency)} checkups` : missing("checkup frequency")}</Fact>
         <Fact label="Source">{client.source || "—"}</Fact>
         <div style={{ padding: "10px 0 4px", fontSize: "12px", color: neutral.bark }}>
           {client.reference ? `${client.reference} · ` : ""}Updated {shortDate(client.updatedAt || client.createdAt)}

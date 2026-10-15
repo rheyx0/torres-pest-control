@@ -15,7 +15,6 @@ import {
 } from "../../utils/constants";
 import { humanizeEnum } from "../../utils/formatters";
 import { clientWithEmail, emailTakenMessage, validateClient } from "../../utils/validators";
-import { CHECKUP_FREQUENCIES } from "../../utils/categories";
 import { buttonWhen, inputStyle, invalidInputStyle } from "../../styles/theme";
 
 const EMPTY_FORM = {
@@ -27,7 +26,6 @@ const EMPTY_FORM = {
   classification: "RESIDENTIAL",
   classificationOther: "",
   serviceNotes: "",
-  checkupFrequency: "",
 };
 
 /**
@@ -191,13 +189,6 @@ function ClientForm({ initialValues, onSubmit, submitLabel = "Save Client", foot
                 {humanizeEnum(option)}
               </option>
             ))}
-          </select>
-        </Field>
-
-        <Field label="Checkup frequency" hint="How often their checkups are booked.">
-          <select aria-label="Checkup frequency" name="checkupFrequency" value={form.checkupFrequency || ""} onChange={handleFieldChange} style={inputStyle}>
-            <option value="">Not set</option>
-            {CHECKUP_FREQUENCIES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
           </select>
         </Field>
 
