@@ -655,8 +655,8 @@ function NewAppointmentModal({
               picking it before the time means both are right when the time
               is chosen. */}
           {runningWarranties.length > 0 && chosenWarranty && (
-            <div role="group" aria-label="What kind of visit" style={{ display: "grid", gap: "8px", padding: "10px 12px", background: "#f3f8fd", border: "1px solid #bcd4ef", borderRadius: radius.control, ...text.small }}>
-              <span style={{ color: "#1d4f8a" }}>
+            <div role="group" aria-label="What kind of visit" style={{ display: "grid", gap: "8px", padding: "10px 12px", border: `1px solid ${surface.sunken}`, borderRadius: radius.control, ...text.small }}>
+              <span style={{ color: neutral.ink }}>
                 🛡 <strong style={{ fontWeight: weight.medium }}>Under warranty until {untilText(chosenWarranty.end)}</strong> ({chosenWarranty.type === "CONTRACT" ? "contract" : "quotation"} {chosenWarranty.reference})
               </span>
               {runningWarranties.length > 1 && (
@@ -761,7 +761,7 @@ function NewAppointmentModal({
             const sourced = runningWarranties.find((warranty) => source === `${warranty.type === "CONTRACT" ? "contract" : "quote"}:${warranty.id}`);
             if (!sourced) return null;
             return (
-              <div role="note" style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", padding: "9px 12px", background: "#e8f1fb", border: "1px solid #bcd4ef", color: "#1d4f8a", borderRadius: radius.control, ...text.small }}>
+              <div role="note" style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", padding: "9px 12px", border: `1px solid ${surface.sunken}`, color: neutral.ink, borderRadius: radius.control, ...text.small }}>
                 <span style={{ flex: "1 1 240px" }}>🛡 {sourced.reference} is under warranty until {untilText(sourced.end)}. A paid visit under it is charged; for a free visit choose:</span>
                 {sourced.frequency && <Button size="sm" onClick={() => switchToWarranty("CHECKUP", sourced)}>Warranty checkup</Button>}
                 <Button size="sm" variant="primary" onClick={() => switchToWarranty("RETREATMENT", sourced)}>Warranty re-treatment</Button>
@@ -997,7 +997,7 @@ function NewAppointmentModal({
           <div
             role="group"
             aria-label="Under warranty"
-            style={{ gridColumn: "1 / -1", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", padding: "10px 12px", background: "#e8f1fb", border: "1px solid #bcd4ef", color: "#1d4f8a", borderRadius: radius.control, ...text.small }}
+            style={{ gridColumn: "1 / -1", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", padding: "10px 12px", border: `1px solid ${surface.sunken}`, color: neutral.ink, borderRadius: radius.control, ...text.small }}
           >
             <span style={{ flex: "1 1 260px" }}>
               🛡 <strong style={{ fontWeight: weight.medium }}>Under warranty until {new Date(`${coveredBy.end}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</strong>{" "}
