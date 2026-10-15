@@ -27,7 +27,7 @@ import { neutral, radius, status, surface, text, weight } from "../../styles/tok
 import { LIMITS, PEST_CONCERN_SUGGESTIONS, SERVICE_FREQUENCIES } from "../../utils/constants";
 import { defaultAppointmentDateTime, toDateTimeLocal } from "../../utils/calendarDates";
 import { validateAppointmentStart, validateDuration, validateMoney } from "../../utils/validators";
-import { appointmentsOverlap, busyTechnicianIds, describeSlotConflict, isAssignedTo } from "../../utils/scheduling";
+import { appointmentsOverlap, busyTechnicianIds, describeSlotConflict, holdsCrewTime, isAssignedTo } from "../../utils/scheduling";
 import { describeOut, outDuring } from "../../utils/absences";
 import {
   MAX_PLAN_VISITS,
@@ -222,7 +222,7 @@ function NewAppointmentModal({
       .filter((account) => busyIds.has(account.id))
       .map((account) => {
         const visit = appointments.find(
-          (entry) => entry.status !== "Cancelled" && isAssignedTo(entry, account.id) && appointmentsOverlap(entry, slot)
+          (entry) => holdsCrewTime(entry) && isAssignedTo(entry, account.id) && appointmentsOverlap(entry, slot)
         );
         const start = visit ? new Date(visit.scheduledAt) : null;
         const end = visit ? new Date(start.getTime() + (visit.durationMinutes || 60) * 60000) : null;

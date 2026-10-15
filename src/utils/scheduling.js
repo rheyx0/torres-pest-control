@@ -241,13 +241,20 @@ export function isAssignedTo(appointment, accountId) {
   return crewOf(appointment).includes(accountId);
 }
 
+/**
+ * Whether a visit still holds its crew's time. A cancelled one never did, and
+ * a completed one is done: finished early, its crew is free for the rest of the
+ * booked time (migration 081 does the same on the server).
+ */
+export const holdsCrewTime = (entry) => entry.status !== "Cancelled" && entry.status !== "Completed";
+
 /** Appointments that would clash with `appointment` for any of its crew. */
 export function findTechnicianConflicts(appointments, appointment) {
   const crew = crewOf(appointment);
   if (crew.length === 0) return [];
   return appointments.filter((entry) =>
     entry.id !== appointment.id
-    && entry.status !== "Cancelled"
+    && holdsCrewTime(entry)
     && crewOf(entry).some((id) => crew.includes(id))
     && appointmentsOverlap(entry, appointment));
 }
@@ -258,7 +265,7 @@ export function busyTechnicianIds(appointments, appointment) {
   appointments
     .filter((entry) =>
       entry.id !== appointment.id
-      && entry.status !== "Cancelled"
+      && holdsCrewTime(entry)
       && appointmentsOverlap(entry, appointment))
     .forEach((entry) => crewOf(entry).forEach((id) => busy.add(id)));
   return busy;

@@ -61,9 +61,9 @@ export function ClientsProvider({ children }) {
 
       // The category and checkup frequency (075) are saved on their own.
       let categorised = { category: "", checkupFrequency: "" };
-      if (form.category || form.checkupFrequency) {
-        const saved = await clientService.setClientCategory(client.id, form.category, form.checkupFrequency);
-        if (!saved.error) categorised = { category: form.category || "", checkupFrequency: form.checkupFrequency || "" };
+      if (form.checkupFrequency) {
+        const saved = await clientService.setClientCategory(client.id, null, form.checkupFrequency);
+        if (!saved.error) categorised = { category: "", checkupFrequency: form.checkupFrequency };
       }
       Object.assign(client, categorised);
       setClients((previous) => [client, ...previous]);
@@ -136,10 +136,10 @@ export function ClientsProvider({ children }) {
       if (updateError) return updateError;
       const before = clients.find((entry) => entry.id === clientId);
       let categorised = { category: before?.category || "", checkupFrequency: before?.checkupFrequency || "" };
-      if (form.category !== undefined && ((form.category || "") !== categorised.category || (form.checkupFrequency || "") !== categorised.checkupFrequency)) {
-        const saved = await clientService.setClientCategory(clientId, form.category, form.checkupFrequency);
-        if (saved.error) return `The profile was saved, but its category was not: ${saved.error}`;
-        categorised = { category: form.category || "", checkupFrequency: form.checkupFrequency || "" };
+      if (form.checkupFrequency !== undefined && (form.checkupFrequency || "") !== categorised.checkupFrequency) {
+        const saved = await clientService.setClientCategory(clientId, categorised.category || null, form.checkupFrequency);
+        if (saved.error) return `The profile was saved, but its checkup frequency was not: ${saved.error}`;
+        categorised = { ...categorised, checkupFrequency: form.checkupFrequency || "" };
       }
 
       // The row comes back without documents or the payment-check exemption

@@ -8,7 +8,6 @@
 import { clientClassificationOptions } from "../../utils/constants";
 import { humanizeEnum } from "../../utils/formatters";
 import { inputStyle } from "../../styles/theme";
-import { SERVICE_CATEGORIES } from "../../utils/categories";
 
 function ClientSearch({
   searchTerm,
@@ -17,8 +16,6 @@ function ClientSearch({
   onClassificationChange,
   status = "ACTIVE",
   onStatusChange,
-  category = "ALL",
-  onCategoryChange,
 }) {
   return (
     <div style={{ display: "flex", gap: "12px", alignItems: "end", flexWrap: "wrap", padding: "14px 18px", borderBottom: "1px solid #e6dfd3" }}>
@@ -48,17 +45,6 @@ function ClientSearch({
           ))}
         </select>
         </div>
-
-      {onCategoryChange && (
-        <div style={{ flex: "0 0 190px" }}>
-          <label style={labelStyle}>Category</label>
-          <select aria-label="Category" value={category} onChange={(event) => onCategoryChange(event.target.value)} style={inputStyle}>
-            <option value="ALL">All categories</option>
-            {SERVICE_CATEGORIES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
-            <option value="NONE">Not set</option>
-          </select>
-        </div>
-      )}
 
       {onStatusChange && (
           <div style={{ flex: "0 0 190px" }}>

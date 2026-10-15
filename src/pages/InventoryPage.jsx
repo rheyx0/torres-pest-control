@@ -680,6 +680,11 @@ function InventoryPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    // Received today or earlier: a delivery can't come from the future.
+    if (form.dateReceived && form.dateReceived > todayISO()) {
+      showError("The date received can't be in the future.");
+      return;
+    }
     if (!(await confirm({ title: "Add this item?", details: [["Item", form.name.trim()], ["Type", form.type], ["Unit", form.unit.trim()]], message: "It starts with 0 stock. Add stock with Receive delivery.", confirmLabel: "Add item" }))) return;
 
     // No quantity here — items are created at 0 stock. id / createdAt /
@@ -845,7 +850,7 @@ function InventoryPage() {
                       <input name="hazardRating" value={form.hazardRating} onChange={handleChange} style={inputStyle} placeholder="Hazard description" />
                     </Field>
                     <Field label="Date Received">
-                      <input name="dateReceived" type="date" value={form.dateReceived} onChange={handleChange} style={inputStyle} />
+                      <input name="dateReceived" type="date" max={todayISO()} value={form.dateReceived} onChange={handleChange} style={inputStyle} />
                     </Field>
                   </div>
                 </div>
@@ -1707,6 +1712,7 @@ function EditItemModal({ item, onClose, onSave }) {
     const limitError =
       validateMoney(values.cost, { max: LIMITS.MAX_UNIT_COST, label: "Cost per unit" }) ||
       validateCustomerPrice(values) ||
+      (values.dateReceived && values.dateReceived > todayISO() ? "The date received can't be in the future." : null) ||
       (values.reorderLevel !== "" && Number(values.reorderLevel) > LIMITS.MAX_MOVEMENT_QTY
         ? `Reorder level cannot be more than ${LIMITS.MAX_MOVEMENT_QTY.toLocaleString()}.`
         : null);
@@ -1781,7 +1787,7 @@ function EditItemModal({ item, onClose, onSave }) {
                 </select>
               </Field>
               <Field label="Hazard Note"><input name="hazardRating" value={values.hazardRating} onChange={handleChange} style={inputStyle} /></Field>
-              <Field label="Date Received"><input name="dateReceived" type="date" value={values.dateReceived} onChange={handleChange} style={inputStyle} /></Field>
+              <Field label="Date Received"><input name="dateReceived" type="date" max={todayISO()} value={values.dateReceived} onChange={handleChange} style={inputStyle} /></Field>
             </div>
           </section>
         )}

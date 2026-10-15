@@ -1,4 +1,4 @@
-import { categoryLabel, suggestedClientCategory, visitCategory } from "../categories";
+import { categoryLabel, visitCategory } from "../categories";
 
 const chem = { id: "s1", category: "CHEMICAL" };
 const nonChem = { id: "s2", category: "NON_CHEMICAL" };
@@ -12,10 +12,6 @@ test("a visit is Chemical if any of its services is chemical", () => {
   expect(visitCategory([])).toBe("");
 });
 
-test("a client's visits suggest their category, ignoring cancelled ones", () => {
-  const servicesOf = (visit) => visit.services;
-  expect(suggestedClientCategory([{ status: "Completed", services: [nonChem] }, { status: "Pending", services: [chem] }], servicesOf)).toBe("CHEMICAL");
-  expect(suggestedClientCategory([{ status: "Completed", services: [nonChem] }, { status: "Cancelled", services: [chem] }], servicesOf)).toBe("NON_CHEMICAL");
-  expect(suggestedClientCategory([], servicesOf)).toBe("");
+test("labels", () => {
   expect(categoryLabel("NON_CHEMICAL")).toBe("Non-chemical");
 });
