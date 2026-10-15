@@ -28,6 +28,7 @@ import { findFollowUpService, followUpPriceFor, paymentCheck } from "../utils/sp
 import { announceFollowUp, earliestFollowUpDate, followUpDateProblem } from "../utils/followUpBooking";
 import { clientWarranties, coveringWarranty, runningWarrantyFor, warrantyKindLabel, warrantyOf, warrantyState } from "../utils/warranty";
 import WarrantyActions from "../components/billing/WarrantyActions";
+import WarrantyVisitList from "../components/billing/WarrantyVisitList";
 import WarrantyBadge from "../components/ui/WarrantyBadge";
 import { SERVICE_CATEGORIES, visitCategory } from "../utils/categories";
 import CategoryBadge from "../components/ui/CategoryBadge";
@@ -729,7 +730,7 @@ function SchedulingPage() {
   const untilText = (day) => new Date(`${day}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
   const warrantySlotFor = (appointment) => {
     const strip = (content) => (
-      <div role="note" aria-label="Warranty" style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap", padding: "0.6rem 1.5rem", background: "#e8f1fb", borderBottom: "1px solid #bcd4ef", color: "#1d4f8a", fontSize: "0.8rem", flexShrink: 0 }}>
+      <div role="note" aria-label="Warranty" style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap", padding: "0.6rem 1.5rem", background: "#faf7f2", borderBottom: "1px solid #efe9e0", color: "#50463c", fontSize: "0.8rem", flexShrink: 0, maxHeight: "40vh", overflowY: "auto" }}>
         {content}
       </div>
     );
@@ -758,6 +759,9 @@ function SchedulingPage() {
         {canReschedule && (
           <WarrantyActions warranty={covering} appointments={appointments} technicians={activeTechnicians} onBook={bookWarrantyVisits} onBooked={() => showSuccess("Booked under the warranty.")} />
         )}
+        <div style={{ flexBasis: "100%" }}>
+          <WarrantyVisitList warranty={covering} appointments={appointments} onOpen={setSelectedId} />
+        </div>
       </>
     );
   };

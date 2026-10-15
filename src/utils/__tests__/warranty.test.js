@@ -1,5 +1,5 @@
 // Migration 078: warranty, checkups and warranty re-treatment.
-import { addMonths, checkupDatesToBook, checkupPeriodOf, checkupPeriods, checkupProblem, checkupReminders, clientWarranties, coveringWarranty, plannedCheckupCount, runningWarrantyFor, warrantyKindLabel, warrantyLabel, warrantyOf, warrantyServiceIds, warrantyState, withWarranty } from "../warranty";
+import { addMonths, checkupDatesToBook, checkupPeriodOf, checkupPeriods, checkupProblem, warrantySchedule, checkupReminders, clientWarranties, coveringWarranty, plannedCheckupCount, runningWarrantyFor, warrantyKindLabel, warrantyLabel, warrantyOf, warrantyServiceIds, warrantyState, withWarranty } from "../warranty";
 import { invoiceableVisits } from "../billing";
 
 const now = new Date("2026-10-12T10:00:00");
@@ -101,4 +101,19 @@ test("checkups follow the frequency: one per period, as many as fit (086)", () =
   expect(checkupProblem(monthly, [taken], ["2026-11-14"])).toMatch(/already has its checkup/);
   expect(checkupProblem(monthly, [{ ...taken, status: "Cancelled" }], ["2026-11-14"])).toBe("");
   expect(checkupProblem(yearly, [], ["2027-12-01"])).toMatch(/not inside/);
+});
+
+test("one list of everything booked under a warranty", () => {
+  const yearly = { type: "QUOTE", id: "q9", months: 12, frequency: "QUARTERLY", start: "2026-10-15", end: "2027-10-15" };
+  const visit = (id, kind, at, status = "Pending") => ({ id, warrantyKind: kind, warrantyQuoteId: "q9", status, scheduledAt: at });
+  const list = warrantySchedule(yearly, [
+    visit("a", "CHECKUP", "2027-01-15T09:00:00"),
+    visit("b", "CHECKUP", "2027-02-11T09:00:00"),
+    visit("c", "CHECKUP", "2027-01-10T09:00:00"), // a second one in Q1, from before 086
+    visit("d", "CHECKUP", "2027-05-01T09:00:00", "Cancelled"),
+    visit("e", "RETREATMENT", "2027-03-02T09:00:00"),
+  ], new Date("2026-10-20T09:00:00"));
+  expect(list.periods.map((entry) => entry.visit?.id || null)).toEqual(["c", "b", null, null]);
+  expect(list.extras.map((entry) => entry.id)).toEqual(["a"]);
+  expect(list.retreatments.map((entry) => entry.id)).toEqual(["e"]);
 });

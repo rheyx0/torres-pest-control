@@ -3,6 +3,8 @@
 
 import { ShieldCheck } from "lucide-react";
 import WarrantyActions from "./WarrantyActions";
+import WarrantyVisitList from "./WarrantyVisitList";
+import { colors } from "../../styles/theme";
 import { formatDate } from "../../utils/formatters";
 import { checkupLabel } from "../../utils/categories";
 import { plannedCheckupCount, warrantyLabel, warrantyState, warrantyVisits } from "../../utils/warranty";
@@ -15,15 +17,16 @@ function WarrantyBlock({ warranty, appointments = [], technicians = [], onBook, 
     ? (warranty.type === "CONTRACT" ? "Starts when the contract is signed." : "Starts when the job is completed.")
     : state === "ENDED" ? `Ended ${formatDate(warranty.end)}.` : `Runs ${formatDate(warranty.start)} – ${formatDate(warranty.end)}.`;
   return (
-    <section aria-label="Warranty" style={{ display: "grid", gap: "0.5rem", padding: "0.75rem 0.9rem", borderRadius: "8px", border: "2px solid #bcd4ef", background: "#f3f8fd" }}>
-      <strong style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#1d4f8a" }}>
-        <ShieldCheck size={16} aria-hidden="true" /> Warranty: {warrantyLabel(warranty.months)}{state === "ACTIVE" ? ` · under warranty until ${formatDate(warranty.end)}` : ""}
+    <section aria-label="Warranty" style={{ display: "grid", gap: "0.5rem", padding: "0.75rem 0.9rem", borderRadius: "3.75px", border: `1px solid ${colors.line}`, background: colors.canvas }}>
+      <strong style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: colors.ink }}>
+        <ShieldCheck size={16} aria-hidden="true" style={{ color: colors.muted }} /> Warranty: {warrantyLabel(warranty.months)}{state === "ACTIVE" ? ` · under warranty until ${formatDate(warranty.end)}` : ""}
       </strong>
-      <span style={{ color: "#33475b", fontSize: "0.85rem" }}>
+      <span style={{ color: colors.body, fontSize: "0.85rem" }}>
         {when} Free re-treatment if pests come back.{warranty.frequency ? ` ${checkupLabel(warranty.frequency)} checkups · ${visits.done} of ${plannedCheckupCount(warranty)} done.` : ""}
         {visits.retreatments.length ? ` ${visits.retreatments.length} re-treatment${visits.retreatments.length === 1 ? "" : "s"}.` : ""}
       </span>
       <WarrantyActions warranty={warranty} appointments={appointments} technicians={technicians} onBook={onBook} now={now} />
+      <WarrantyVisitList warranty={warranty} appointments={appointments} now={now} />
     </section>
   );
 }

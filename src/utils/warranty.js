@@ -255,3 +255,27 @@ export function runningWarrantyFor(clientId, serviceIds = [], records = {}, day 
     && day >= warranty.start && day <= warranty.end
     && warrantyServiceIds(warranty).some((id) => serviceIds.includes(id))) || null;
 }
+
+/**
+ * Everything booked under a warranty, for its list: each checkup period with
+ * the checkup in it (or none yet), checkups outside every period (booked
+ * before 086), and the re-treatments, soonest first. Cancelled visits are
+ * left out.
+ */
+export function warrantySchedule(warranty, appointments = [], now = new Date()) {
+  const visits = warrantyVisits(warranty, appointments, now);
+  const byDate = (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt);
+  const placed = new Set();
+  const periods = checkupPeriods(warranty).map((period) => {
+    const visit = visits.checkups
+      .filter((entry) => !placed.has(entry.id) && checkupPeriodOf(warranty, localDay(entry.scheduledAt))?.index === period.index)
+      .sort(byDate)[0] || null;
+    if (visit) placed.add(visit.id);
+    return { period, visit };
+  });
+  return {
+    periods,
+    extras: visits.checkups.filter((entry) => !placed.has(entry.id)).sort(byDate),
+    retreatments: [...visits.retreatments].sort(byDate),
+  };
+}

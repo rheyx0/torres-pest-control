@@ -5,6 +5,7 @@
 import { ShieldCheck } from "lucide-react";
 import StatusPill from "../ui/StatusPill";
 import WarrantyActions from "../billing/WarrantyActions";
+import WarrantyVisitList from "../billing/WarrantyVisitList";
 import { colors } from "../../styles/theme";
 import { formatDate } from "../../utils/formatters";
 import { checkupLabel } from "../../utils/categories";
@@ -43,6 +44,7 @@ function WarrantyPanel({ clientId, quotes = [], contracts = [], appointments = [
               {visits.next ? ` · Next: ${formatDate(visits.next.scheduledAt)} (${appointmentReference(visits.next)})` : ""}
               {visits.retreatments.length ? ` · ${visits.retreatments.length} re-treatment${visits.retreatments.length === 1 ? "" : "s"}` : ""}
             </span>
+            <WarrantyVisitList warranty={warranty} appointments={appointments} now={now} />
             {canBook && state === "ACTIVE" && (
               <WarrantyActions warranty={warranty} appointments={appointments} technicians={technicians} onBook={onBook} onBooked={onBooked} now={now} />
             )}

@@ -470,7 +470,7 @@ function VisitPage() {
         </span>
       </header>
       {appointment.warrantyKind && (
-        <p role="status" style={{ margin: "10px 0 0", padding: "10px 12px", borderRadius: "8px", background: "#e8f1fb", color: "#1d4f8a", fontWeight: 600 }}>
+        <p role="status" style={{ margin: "10px 0 0", padding: "10px 12px", borderRadius: "8px", background: "#faf7f2", border: "1px solid #efe9e0", color: "#50463c", fontWeight: 600 }}>
           🛡 {warrantyKindLabel(appointment)}: no charge to the client.
         </p>
       )}
