@@ -8,7 +8,7 @@
 // mistake is voided and issued again.
 
 import { useEffect, useMemo, useState } from "react";
-import { ChargeButtons, LaborParts, TransportHint } from "./FieldCharges";
+import { ChargeButtons, LaborParts, TransportHint, LineHeadings, totalsBox } from "./FieldCharges";
 import { CHARGE_LABELS, chargeKind, updateCharge } from "../../utils/fieldCharges";
 import { Plus, X } from "lucide-react";
 import { Button, Field, Input, Modal, Select, Textarea } from "../ui";
@@ -236,6 +236,7 @@ function InvoiceEditor({
             </Button>
           </div>
           {lines.length === 0 && <p style={{ margin: 0, color: colors.muted, fontSize: "0.85rem" }}>Choose a quote or visits, or add a line.</p>}
+          {lines.length > 0 && <div style={{ minWidth: "620px" }}><LineHeadings columns="82px minmax(180px, 1fr) 80px 110px 110px auto" /></div>}
           {lines.map((line) => (
             <div key={line.key} style={{ display: "grid", gap: "0.2rem", minWidth: "620px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "82px minmax(180px, 1fr) 80px 110px 110px auto", gap: "0.5rem", alignItems: "center" }}>
@@ -269,10 +270,13 @@ function InvoiceEditor({
               {VAT_MODES.map((mode) => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
             </Select>
           </Field>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem", alignItems: "start" }}>
           <Field label="Notes" hint="Shown on the invoice.">
-            <Textarea aria-label="Invoice notes" rows={2} maxLength={LIMITS.NOTES_MAX} value={form.notes} onChange={(event) => set("notes", event.target.value)} />
+            <Textarea aria-label="Invoice notes" rows={3} maxLength={LIMITS.NOTES_MAX} value={form.notes} onChange={(event) => set("notes", event.target.value)} />
           </Field>
-          <dl aria-label="Invoice totals" style={{ margin: 0, display: "grid", gridTemplateColumns: "1fr auto", gap: "0.3rem 1rem", fontSize: "0.88rem", color: colors.body }}>
+          <dl aria-label="Invoice totals" style={totalsBox}>
             <dt>Subtotal</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(totals.subtotal)}</dd>
             <dt>Discount</dt><dd style={{ margin: 0, textAlign: "right" }}>−{formatPeso(totals.discountAmount)}</dd>
             <dt>{form.vatMode === "INCLUSIVE" ? `VAT included (${VAT_RATE}%)` : `VAT (${VAT_RATE}%)`}</dt>

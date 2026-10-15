@@ -10,7 +10,7 @@
 // those lines re-price, unless their price was typed over by hand.
 
 import { useMemo, useState } from "react";
-import { ChargeButtons, LaborParts, TransportHint } from "./FieldCharges";
+import { ChargeButtons, LaborParts, TransportHint, LineHeadings, totalsBox } from "./FieldCharges";
 import WarrantyFields, { validateWarranty } from "./WarrantyFields";
 import { CHARGE_LABELS, chargeKind, updateCharge } from "../../utils/fieldCharges";
 import { Plus, X } from "lucide-react";
@@ -266,6 +266,7 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
           </div>
 
           {lines.length === 0 && <p style={{ margin: 0, color: colors.muted, fontSize: "0.85rem" }}>Add the services first, then any materials, transportation and labor.</p>}
+          {lines.length > 0 && <LineHeadings columns="92px minmax(0, 1fr) 90px 120px 110px auto" />}
 
           {lines.map((line) => (
             <div key={line.key} style={{ display: "grid", gap: "0.2rem" }}>
@@ -290,6 +291,13 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
             </div>
           ))}
         </section>
+
+        <WarrantyFields
+          months={form.warrantyMonths}
+          frequency={form.checkupFrequency}
+          clientFrequency={clients.find((client) => client.id === form.clientId)?.checkupFrequency || ""}
+          onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+        />
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", alignItems: "start" }}>
           <Field label="Discount">
@@ -316,25 +324,22 @@ function QuoteEditor({ quote = null, clients = [], services = [], inventory = []
               <Input aria-label="Down payment value" type="number" min="0" step="0.01" value={form.depositValue} disabled={form.depositType === "NONE"} onChange={(event) => set("depositValue", event.target.value)} />
             </div>
           </Field>
-          <WarrantyFields
-            months={form.warrantyMonths}
-            frequency={form.checkupFrequency}
-            clientFrequency={clients.find((client) => client.id === form.clientId)?.checkupFrequency || ""}
-            onChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
-          />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(220px, 280px)", gap: "1rem", alignItems: "start" }}>
           <Field label="Notes" hint="Shown on the quote.">
             <Textarea aria-label="Quote notes" rows={3} maxLength={LIMITS.NOTES_MAX} value={form.notes} onChange={(event) => set("notes", event.target.value)} />
           </Field>
-          <dl aria-label="Quote totals" style={{ margin: 0, display: "grid", gridTemplateColumns: "1fr auto", gap: "0.3rem 1rem", fontSize: "0.88rem", color: colors.body }}>
+          <dl aria-label="Quote totals" style={totalsBox}>
             <dt>Subtotal</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(totals.subtotal)}</dd>
             <dt>Discount</dt><dd style={{ margin: 0, textAlign: "right" }}>−{formatPeso(totals.discountAmount)}</dd>
             <dt>{form.vatMode === "INCLUSIVE" ? `VAT included (${VAT_RATE}%)` : `VAT (${VAT_RATE}%)`}</dt>
             <dd style={{ margin: 0, textAlign: "right" }}>{form.vatMode === "NONE" ? "—" : formatPeso(totals.vatAmount)}</dd>
             <dt style={{ fontWeight: 600, color: colors.ink }}>Total</dt><dd style={{ margin: 0, textAlign: "right", fontWeight: 600, color: colors.ink }}>{formatPeso(totals.total)}</dd>
-            {totals.depositAmount > 0 && (<><dt>Down payment</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(totals.depositAmount)}</dd></>)}
+            {totals.depositAmount > 0 && (<>
+              <dt>Down payment</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(totals.depositAmount)}</dd>
+              <dt>Balance after down payment</dt><dd style={{ margin: 0, textAlign: "right" }}>{formatPeso(Math.max(0, totals.total - totals.depositAmount))}</dd>
+            </>)}
           </dl>
         </div>
 

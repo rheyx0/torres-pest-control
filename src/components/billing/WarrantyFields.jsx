@@ -4,7 +4,9 @@
 
 import { useState } from "react";
 import { Field, Input, Select } from "../ui";
-import { WARRANTY_MONTH_OPTIONS, warrantyLabel } from "../../utils/warranty";
+import { ShieldCheck } from "lucide-react";
+import { WARRANTY_MONTH_OPTIONS, plannedCheckupCount, warrantyLabel } from "../../utils/warranty";
+import { colors } from "../../styles/theme";
 import { CHECKUP_FREQUENCIES } from "../../utils/categories";
 
 function WarrantyFields({ months, frequency, onChange, startsWhen = "when the job is completed", clientFrequency = "" }) {
@@ -24,9 +26,17 @@ function WarrantyFields({ months, frequency, onChange, startsWhen = "when the jo
       ...(!value ? { checkupFrequency: "" } : {}),
     });
   };
+  const checkups = plannedCheckupCount({ months: Number(months) || 0, frequency });
+  const summary = !months
+    ? "No warranty. Choose one for free re-treatment if pests come back while it runs."
+    : `Starts ${startsWhen} · free re-treatment if pests come back${frequency ? ` · ${checkups} free checkup${checkups === 1 ? "" : "s"}` : " · no checkups"}.`;
   return (
-    <>
-      <Field label="Warranty" hint={months ? `Starts ${startsWhen}.` : "Free re-treatment if pests come back while it runs."}>
+    <section aria-label="Warranty and checkups" style={{ display: "grid", gap: "0.6rem", padding: "0.8rem 0.9rem", border: "1px solid #bcd4ef", borderRadius: "6px", background: "#f3f8fd" }}>
+      <strong style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", color: "#1d4f8a", fontSize: "0.9rem" }}>
+        <ShieldCheck size={15} aria-hidden="true" /> Warranty
+      </strong>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", alignItems: "start" }}>
+      <Field label="Warranty">
         <div style={{ display: "grid", gridTemplateColumns: custom ? "1fr 90px" : "1fr", gap: "0.5rem" }}>
           <Select aria-label="Warranty" value={custom ? "CUSTOM" : String(months || "")} onChange={(event) => choose(event.target.value)}>
             <option value="">No warranty</option>
@@ -38,13 +48,15 @@ function WarrantyFields({ months, frequency, onChange, startsWhen = "when the jo
           )}
         </div>
       </Field>
-      <Field label="Checkups" hint="Free, during the warranty.">
+      <Field label="Checkups">
         <Select aria-label="Checkups" value={frequency || ""} disabled={!months} onChange={(event) => onChange({ checkupFrequency: event.target.value })}>
           <option value="">None</option>
           {CHECKUP_FREQUENCIES.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
         </Select>
       </Field>
-    </>
+      </div>
+      <span style={{ color: colors.body, fontSize: "0.8rem" }}>{summary}</span>
+    </section>
   );
 }
 

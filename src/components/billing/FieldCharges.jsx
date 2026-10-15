@@ -21,15 +21,44 @@ export function ChargeButtons({ rates = {}, onAdd }) {
   );
 }
 
+/** The column headings above the lines, on the same grid as each line. */
+export function LineHeadings({ columns }) {
+  const cell = { fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em", color: colors.muted, fontWeight: 500 };
+  return (
+    <div aria-hidden="true" style={{ display: "grid", gridTemplateColumns: columns, gap: "0.5rem", alignItems: "end", paddingBottom: "0.2rem", borderBottom: `1px solid ${colors.line}` }}>
+      <span />
+      <span style={cell}>Description</span>
+      <span style={cell}>Qty</span>
+      <span style={cell}>Unit price (₱)</span>
+      <span style={{ ...cell, textAlign: "right" }}>Amount</span>
+      <span style={{ width: "2rem" }} />
+    </div>
+  );
+}
+
+/** The boxed totals beside the notes, clear of the modal's footer. */
+export const totalsBox = {
+  margin: "0 0 0.5rem",
+  display: "grid",
+  gridTemplateColumns: "1fr auto",
+  gap: "0.35rem 1rem",
+  fontSize: "0.88rem",
+  color: colors.body,
+  padding: "0.75rem 0.9rem",
+  border: `1px solid ${colors.line}`,
+  borderRadius: "6px",
+  background: colors.canvas,
+};
+
 /** Under a labor line: technicians × days, which set its quantity. */
 export function LaborParts({ line, onChange, indent = "92px" }) {
   const parts = laborParts(line);
   return (
     <span style={{ marginLeft: `calc(${indent} + 0.5rem)`, display: "inline-flex", alignItems: "center", gap: "0.4rem", fontSize: "0.78rem", color: colors.muted, flexWrap: "wrap" }}>
       <Input aria-label="Technicians" type="number" min="1" step="1" value={parts.technicians} onChange={(event) => onChange({ technicians: event.target.value })} style={{ width: "4.5rem", padding: "4px 8px" }} />
-      technicians ×
+      {Number(parts.technicians) === 1 ? "technician" : "technicians"} ×
       <Input aria-label="Days" type="number" min="1" step="1" value={parts.days} onChange={(event) => onChange({ days: event.target.value })} style={{ width: "4.5rem", padding: "4px 8px" }} />
-      days = {line.quantity || 0} technician-days × the daily rate
+      {Number(parts.days) === 1 ? "day" : "days"} = {line.quantity || 0} technician-day{Number(line.quantity) === 1 ? "" : "s"} × the daily rate
     </span>
   );
 }

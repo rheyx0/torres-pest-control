@@ -220,13 +220,6 @@ function ContractEditor({ contract = null, clients = [], services = [], initialC
               </Select>
             </div>
           </Field>
-          <WarrantyFields
-            months={values.warrantyMonths}
-            frequency={values.checkupFrequency}
-            startsWhen="when the contract is signed"
-            clientFrequency={clients.find((client) => client.id === values.clientId)?.checkupFrequency || ""}
-            onChange={(patch) => setValues((current) => ({ ...current, ...patch }))}
-          />
           <Field label="Billed">
             <Select aria-label="Billing schedule" value={values.billingSchedule} onChange={set("billingSchedule")}>
               {BILLING_SCHEDULES.map((schedule) => <option key={schedule.value} value={schedule.value}>{schedule.label}</option>)}
@@ -238,6 +231,14 @@ function ContractEditor({ contract = null, clients = [], services = [], initialC
             </Select>
           </Field>
         </div>
+
+        <WarrantyFields
+          months={values.warrantyMonths}
+          frequency={values.checkupFrequency}
+          startsWhen="when the contract is signed"
+          clientFrequency={clients.find((client) => client.id === values.clientId)?.checkupFrequency || ""}
+          onChange={(patch) => setValues((current) => ({ ...current, ...patch }))}
+        />
 
         <Field label="What's included" hint="Visits, materials and any free call-backs, as agreed.">
           <Textarea aria-label="Inclusions" rows={2} maxLength={LIMITS.NOTES_MAX} value={values.inclusions} onChange={set("inclusions")} placeholder="Quarterly treatment of the whole house, materials included, one free call-back between visits." />
