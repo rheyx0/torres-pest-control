@@ -70,3 +70,10 @@ test("booking the warranty's service again finds the running warranty", () => {
   expect(runningWarrantyFor("c1", ["s-termite"], records, "2028-01-01")).toBeNull(); // ended
   expect(runningWarrantyFor("c2", ["s-termite"], records, "2026-11-01")).toBeNull();
 });
+
+test("a job finished early starts its warranty that day, not on the day it was booked for", () => {
+  const early = { id: "v9", clientId: "c1", quoteId: "q1", status: "Completed", scheduledAt: "2026-10-19T07:00:00", reportSubmittedAt: "2026-10-15T17:20:00" };
+  expect(warrantyOf("QUOTE", quote, [early])).toMatchObject({ start: "2026-10-15", end: "2027-10-15" });
+  expect(warrantyOf("QUOTE", quote, [{ ...early, signedAt: "2026-10-16T09:00:00" }])).toMatchObject({ start: "2026-10-16" });
+  expect(warrantyOf("QUOTE", quote, [{ ...early, reportSubmittedAt: "" }])).toMatchObject({ start: "2026-10-19" });
+});

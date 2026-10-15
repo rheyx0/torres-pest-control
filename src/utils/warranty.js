@@ -30,11 +30,15 @@ export const warrantyLabel = (months) => {
   return `${months} month${months === 1 ? "" : "s"}`;
 };
 
-/** When the job behind a quotation was completed: its first completed visit. */
+/**
+ * When the job behind a quotation was completed: its first completed visit,
+ * on the day the client signed, else the day the report went in, else its
+ * scheduled day (migration 083, the same as warranty_window()).
+ */
 export function quoteCompletedOn(quote, appointments = []) {
   const done = appointments
     .filter((visit) => visit.quoteId === quote?.id && visit.status === "Completed" && !visit.warrantyKind)
-    .map((visit) => localDay(visit.signedAt || visit.scheduledAt))
+    .map((visit) => localDay(visit.signedAt || visit.reportSubmittedAt || visit.scheduledAt))
     .filter(Boolean)
     .sort();
   return done[0] || "";
