@@ -26,7 +26,10 @@ import useServices from "../hooks/useServices";
 import { useOptionalBilling } from "../hooks/useBilling";
 import { findFollowUpService, followUpPriceFor, paymentCheck } from "../utils/sprint4";
 import { announceFollowUp, earliestFollowUpDate, followUpDateProblem } from "../utils/followUpBooking";
-import { coveringWarranty, warrantyOf } from "../utils/warranty";
+import { coveringWarranty, runningWarrantyFor, warrantyKindLabel, warrantyOf } from "../utils/warranty";
+import WarrantyActions from "../components/billing/WarrantyActions";
+import WarrantyBookingModal from "../components/billing/WarrantyBookingModal";
+import WarrantyBadge from "../components/ui/WarrantyBadge";
 import { SERVICE_CATEGORIES, visitCategory } from "../utils/categories";
 import CategoryBadge from "../components/ui/CategoryBadge";
 import { useScheduling } from "../context/SchedulingContext";
@@ -105,7 +108,7 @@ function SchedulingPage() {
   const outWithTechnicians = useMemo(() => openCheckouts(movements), [movements]);
   const { staff, technicians } = useUsers();
   const { activeServices, serviceById, serviceByName } = useServices();
-  const { logBookingOverride, linkFollowUp, markWarrantyRetreatment, appointments, absences, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
+  const { logBookingOverride, linkFollowUp, markWarrantyRetreatment, bookWarrantyVisits, appointments, absences, createAppointment, bookAppointments, planActions, updateAppointment, submitReport, addStockUsed, addAttachment, removeAttachment, getAttachmentUrl, uploadSignature, getSignatureUrl, loading, error } = useScheduling();
   const billing = useOptionalBilling();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState(null);
@@ -122,6 +125,8 @@ function SchedulingPage() {
   const [createScheduledAt, setCreateScheduledAt] = useState("");
   // Service, frequency and pest concern carried over when booking a re-service.
   const [createPrefill, setCreatePrefill] = useState(null);
+  // A warranty re-treatment offered from New appointment: { warranty, day }.
+  const [warrantyRetreat, setWarrantyRetreat] = useState(null);
   // A re-service card being dragged from the side panel (not an appointment).
   const [reserviceDrag, setReserviceDrag] = useState(null);
   const [overflowGroup, setOverflowGroup] = useState(null);
@@ -718,6 +723,46 @@ function SchedulingPage() {
     showSuccess(message);
   };
 
+  // The warranty line under the visit's header (Sprint 5): a warranty visit
+  // names its warranty and says it is free; a paid job still under warranty
+  // says until when, with the buttons to book under it.
+  const warrantyRecords = billing?.office ? { quotes: billing.quotes || [], contracts: billing.contracts || [], appointments } : null;
+  const untilText = (day) => new Date(`${day}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  const warrantySlotFor = (appointment) => {
+    const strip = (content) => (
+      <div role="note" aria-label="Warranty" style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap", padding: "0.6rem 1.5rem", background: "#e8f1fb", borderBottom: "1px solid #bcd4ef", color: "#1d4f8a", fontSize: "0.8rem", flexShrink: 0 }}>
+        {content}
+      </div>
+    );
+    const sourceName = (warranty) => `${warranty.type === "CONTRACT" ? "Contract" : "Quotation"} ${warranty.reference}`;
+    if (appointment.warrantyKind) {
+      const contract = warrantyRecords && appointment.warrantyContractId ? warrantyRecords.contracts.find((entry) => entry.id === appointment.warrantyContractId) : null;
+      const quote = warrantyRecords && appointment.warrantyQuoteId ? warrantyRecords.quotes.find((entry) => entry.id === appointment.warrantyQuoteId) : null;
+      const warranty = (contract && warrantyOf("CONTRACT", contract, appointments)) || (quote && warrantyOf("QUOTE", quote, appointments)) || null;
+      return strip(
+        <span>
+          <WarrantyBadge label={warrantyKindLabel(appointment)} style={{ marginRight: "0.5rem" }} />
+          {warranty ? `${sourceName(warranty)}${warranty.end ? ` · under warranty until ${untilText(warranty.end)}` : ""} · ` : ""}
+          <strong style={{ fontWeight: 600 }}>No charge to the client.</strong>
+        </span>
+      );
+    }
+    if (!warrantyRecords) return null;
+    const covering = coveringWarranty(appointment, warrantyRecords);
+    if (!covering) return null;
+    return strip(
+      <>
+        <span style={{ flex: "1 1 260px" }}>
+          <WarrantyBadge label={`Under warranty until ${untilText(covering.end)}`} style={{ marginRight: "0.5rem" }} />
+          {sourceName(covering)} · free re-treatment if pests come back.
+        </span>
+        {canReschedule && (
+          <WarrantyActions warranty={covering} appointments={appointments} technicians={activeTechnicians} onBook={bookWarrantyVisits} onBooked={() => showSuccess("Booked under the warranty.")} />
+        )}
+      </>
+    );
+  };
+
   // The warranty a visit is under or comes with (078), for the printed report.
   const reportWarranty = (appointment) => {
     if (!billing?.office) return null;
@@ -1269,6 +1314,7 @@ function SchedulingPage() {
           appointments={appointments}
           activeAccounts={bookableTechnicians(technicians, crewOf(selected))}
           absences={absences}
+          warrantySlot={warrantySlotFor(selected)}
           ui={{ tab, setTab, onClose: () => setSelectedId(null), onOpen: setSelectedId }}
           access={{
             canReschedule,
@@ -1358,6 +1404,14 @@ function SchedulingPage() {
           initialUntil={createPrefill?.until || ""}
           billingSources={billingSources}
           paymentCheckFor={paymentCheckFor}
+          warrantyFor={warrantyRecords ? (clientId, serviceIds, day) => runningWarrantyFor(clientId, serviceIds, warrantyRecords, day || undefined) : null}
+          onWarrantyRetreatment={(warranty, day) => {
+            setCreateOpen(false);
+            setCreateClientId("");
+            setCreateScheduledAt("");
+            setCreatePrefill(null);
+            setWarrantyRetreat({ warranty, day });
+          }}
           initialSource={createPrefill?.quoteId ? `quote:${createPrefill.quoteId}` : createPrefill?.contractId ? `contract:${createPrefill.contractId}` : ""}
           onClose={() => {
             setCreateOpen(false);
@@ -1367,6 +1421,22 @@ function SchedulingPage() {
           }}
           onCreate={handleCreate}
           onBook={handleBook}
+        />
+      )}
+      {warrantyRetreat && (
+        <WarrantyBookingModal
+          kind="RETREATMENT"
+          warranty={warrantyRetreat.warranty}
+          dates={[warrantyRetreat.day]}
+          technicians={activeTechnicians}
+          onClose={() => setWarrantyRetreat(null)}
+          onBook={async (request) => {
+            const result = await bookWarrantyVisits(request);
+            if (typeof result === "string") return result;
+            setWarrantyRetreat(null);
+            showSuccess("Warranty re-treatment booked, at no charge.");
+            return true;
+          }}
         />
       )}
       {/* The "+N more" tile's contents. Cards carry the same technician
@@ -1476,6 +1546,7 @@ function AppointmentListView({ appointments, clients, accounts, scope, limit, on
         <span>
           {row.serviceType || "—"}
           {categoryOf(row) && <CategoryBadge category={categoryOf(row)} style={{ marginLeft: "6px" }} />}
+          {row.warrantyKind && <WarrantyBadge label={warrantyKindLabel(row)} title="Free: booked under a warranty" style={{ marginLeft: "6px" }} />}
           {row.pestConcern && <span style={{ display: "block", color: colors.muted, fontSize: "12px" }}>{row.pestConcern}</span>}
         </span>
       ),
@@ -1916,6 +1987,8 @@ function AppointmentPanel({
   actions,
   stock,
   plan,
+  // The warranty line under the header (Sprint 5), from SchedulingPage.
+  warrantySlot = null,
 }) {
   const { tab, setTab, onClose } = ui;
   const {
@@ -2023,6 +2096,8 @@ function AppointmentPanel({
             </button>
           </div>
         </div>
+
+        {warrantySlot}
 
         {/* 2. Tabs */}
         <div

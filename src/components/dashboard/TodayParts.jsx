@@ -4,6 +4,7 @@
 // draw it.
 
 import { useState } from "react";
+import { warrantyKindLabel } from "../../utils/warranty";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
@@ -99,6 +100,7 @@ function DispatchJob({ job, clientName, now, draggable, onDragStart }) {
             ? "Pending"
             : appointment.pestConcern || appointment.serviceType || appointment.status;
   const time = new Date(appointment.scheduledAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const shownDetail = appointment.warrantyKind ? `🛡 ${warrantyKindLabel(appointment)} · ${detail}` : detail;
 
   return (
     <Link
@@ -139,7 +141,7 @@ function DispatchJob({ job, clientName, now, draggable, onDragStart }) {
       }}
     >
       <b style={{ fontWeight: weight.medium, display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{clientName}</b>
-      <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", color: neutral.saddle }}>{detail}</span>
+      <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", color: neutral.saddle }}>{shownDetail}</span>
     </Link>
   );
 }

@@ -1,5 +1,5 @@
 // Migration 078: warranty, checkups and warranty re-treatment.
-import { addMonths, checkupDatesToBook, checkupReminders, clientWarranties, coveringWarranty, plannedCheckupCount, warrantyLabel, warrantyOf, warrantyState } from "../warranty";
+import { addMonths, checkupDatesToBook, checkupReminders, clientWarranties, coveringWarranty, plannedCheckupCount, runningWarrantyFor, warrantyKindLabel, warrantyLabel, warrantyOf, warrantyServiceIds, warrantyState, withWarranty } from "../warranty";
 import { invoiceableVisits } from "../billing";
 
 const now = new Date("2026-10-12T10:00:00");
@@ -48,4 +48,25 @@ test("checkups due and not booked are reminded; warranty visits are never invoic
   expect(clientWarranties("c1", { quotes: [quote], contracts: [contract], appointments: [job] })).toHaveLength(2);
   const checkup = { id: "x", clientId: "c1", status: "Completed", warrantyKind: "CHECKUP" };
   expect(invoiceableVisits([job, checkup], "c1")).toEqual([job]);
+});
+
+test("a warranty visit says so wherever it is listed", () => {
+  const checkup = { warrantyKind: "CHECKUP" };
+  expect(warrantyKindLabel(checkup)).toBe("Warranty checkup");
+  expect(warrantyKindLabel({ warrantyKind: "RETREATMENT" })).toBe("Warranty re-treatment");
+  expect(warrantyKindLabel({})).toBe("");
+  expect(withWarranty("Termite Treatment", { warrantyKind: "RETREATMENT" })).toBe("Termite Treatment · 🛡 Warranty re-treatment · free");
+  expect(withWarranty("", checkup)).toBe("🛡 Warranty checkup · free");
+  expect(withWarranty("Termite Treatment", {})).toBe("Termite Treatment");
+});
+
+test("booking the warranty's service again finds the running warranty", () => {
+  const quoted = { ...quote, lines: [{ serviceId: "s-termite" }, { serviceId: "" }] };
+  const records = { quotes: [quoted], contracts: [{ ...contract, serviceIds: ["s-roach"] }], appointments: [job] };
+  expect(warrantyServiceIds(warrantyOf("QUOTE", quoted, [job]))).toEqual(["s-termite"]);
+  expect(runningWarrantyFor("c1", ["s-termite"], records, "2026-11-01")).toMatchObject({ type: "QUOTE", id: "q1" });
+  expect(runningWarrantyFor("c1", ["s-roach"], records, "2026-11-01")).toMatchObject({ type: "CONTRACT", id: "k1" });
+  expect(runningWarrantyFor("c1", ["s-other"], records, "2026-11-01")).toBeNull();
+  expect(runningWarrantyFor("c1", ["s-termite"], records, "2028-01-01")).toBeNull(); // ended
+  expect(runningWarrantyFor("c2", ["s-termite"], records, "2026-11-01")).toBeNull();
 });

@@ -29,7 +29,9 @@ import useAuth from "../hooks/useAuth";
 import useBilling from "../hooks/useBilling";
 import useClients from "../hooks/useClients";
 import useServices from "../hooks/useServices";
+import useUsers from "../hooks/useUsers";
 import { warrantyOf } from "../utils/warranty";
+import WarrantyBlock from "../components/billing/WarrantyBlock";
 import useInventory from "../hooks/useInventory";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
@@ -65,7 +67,14 @@ function BillingPage() {
   const { clients, uploadDocumentRecord, getDocumentUrl } = useClients();
   const { services: billingServices, activeServices, serviceById, serviceByName, rates } = useServices();
   const { inventory } = useInventory();
-  const { appointments } = useScheduling();
+  const { appointments, bookWarrantyVisits } = useScheduling();
+  const { technicians: technicianAccounts = [] } = useUsers();
+  const activeTechs = technicianAccounts.filter((account) => account.status !== "INACTIVE");
+  // The warranty block on a quote or contract (Sprint 5).
+  const warrantySlotFor = (type, record) => {
+    const warranty = warrantyOf(type, record, appointments);
+    return warranty ? <WarrantyBlock warranty={warranty} appointments={appointments} technicians={activeTechs} onBook={bookWarrantyVisits} /> : null;
+  };
   const { showSuccess, showError } = useToast();
   // "Are you sure?" before anything that issues, approves or records money.
   // A "no" returns "" so the window that asked stays open with no error.
@@ -460,6 +469,7 @@ function BillingPage() {
           payments={paymentsForQuote(openQuoteRecord.id)}
           visits={appointments.filter((visit) => visit.quoteId === openQuoteRecord.id)}
           invoices={billing.invoicesForQuote(openQuoteRecord.id)}
+          warrantySlot={warrantySlotFor("QUOTE", openQuoteRecord)}
           invoicePayments={billing.invoicesForQuote(openQuoteRecord.id).flatMap((invoice) => billing.paymentsForInvoice(invoice.id))}
           canReverse={canReverse}
           onEdit={() => setEditing({ quote: openQuoteRecord })}
@@ -585,6 +595,7 @@ function BillingPage() {
             booking={billing.contractBookingCheck ? billing.contractBookingCheck(contract) : { ok: true, reason: "" }}
             depositPayments={billing.paymentsForContract ? billing.paymentsForContract(contract.id) : []}
             onRecordDeposit={() => setPaying({ contract })}
+            warrantySlot={warrantySlotFor("CONTRACT", contract)}
             onReceipt={printReceipt}
             onClose={() => openContract(null)}
           />

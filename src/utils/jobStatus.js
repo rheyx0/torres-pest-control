@@ -9,6 +9,7 @@
 //                 invoiced, paid.
 
 import { depositStatus, invoiceBalance, quoteStatus } from "./billing";
+import { withWarranty } from "./warranty";
 import { appointmentReference, crewOf, reportOwed } from "./scheduling";
 import { formatPeso } from "./formatters";
 
@@ -103,7 +104,7 @@ export function jobTimeline(visit, { quote = null, invoice = null, payments = []
       .forEach((payment) => add(`dp-${payment.id}`, `${payment.paidOn}T12:00:00`, "Down payment received", `${formatPeso(payment.amount)} · ${payment.reference || ""}`.trim()));
   }
 
-  add("booked", visit.createdAt, `Booked ${appointmentReference(visit)}`, `For ${new Date(visit.scheduledAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`);
+  add("booked", visit.createdAt, withWarranty(`Booked ${appointmentReference(visit)}`, visit), `For ${new Date(visit.scheduledAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`);
   statusHistory
     .filter((entry) => entry.fromStatus)
     .forEach((entry, index) => add(`s-${index}`, entry.changedAt, `${entry.fromStatus} → ${entry.toStatus}`, entry.changedByName || ""));

@@ -30,6 +30,7 @@ import Button from "../components/ui/Button";
 import StatusPill from "../components/ui/StatusPill";
 import { ACTIVITY_LEVELS, REPORT_UPLOAD_CATEGORIES, ROLES } from "../utils/constants";
 import { announceFollowUp, earliestFollowUpDate, followUpDateProblem } from "../utils/followUpBooking";
+import { warrantyKindLabel } from "../utils/warranty";
 import { combineServices, crewOf, isAssignedTo, servicesOf } from "../utils/scheduling";
 import { heldBy, openCheckouts } from "../utils/custody";
 import BatchSelect from "../components/inventory/BatchSelect";
@@ -468,6 +469,11 @@ function VisitPage() {
           <StatusPill status={appointment.status} />
         </span>
       </header>
+      {appointment.warrantyKind && (
+        <p role="status" style={{ margin: "10px 0 0", padding: "10px 12px", borderRadius: "8px", background: "#e8f1fb", color: "#1d4f8a", fontWeight: 600 }}>
+          🛡 {warrantyKindLabel(appointment)}: no charge to the client.
+        </p>
+      )}
 
       {canStart(appointment, now) && (
         <div style={{ marginTop: "14px", padding: "12px 14px", borderRadius: radius.card, background: semantic.warningSurface, display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>

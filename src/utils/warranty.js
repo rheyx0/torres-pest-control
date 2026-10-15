@@ -170,3 +170,33 @@ export function checkupReminders({ quotes = [], contracts = [], appointments = [
 }
 
 export { dayOf };
+
+// ---- how a warranty visit is labelled everywhere (Sprint 5) -------------------
+export const WARRANTY_KIND_LABELS = { CHECKUP: "Warranty checkup", RETREATMENT: "Warranty re-treatment" };
+
+/** "Warranty checkup", "Warranty re-treatment", or "" for any other visit. */
+export const warrantyKindLabel = (visit) => WARRANTY_KIND_LABELS[visit?.warrantyKind] || "";
+
+/** A visit's one-line text with its warranty mark added: "General Pest Control · 🛡 Warranty re-treatment · free". */
+export const withWarranty = (text, visit) => (visit?.warrantyKind
+  ? [text, `🛡 ${warrantyKindLabel(visit)} · free`].filter(Boolean).join(" · ")
+  : text);
+
+/** The services a warranty's quotation or contract was sold for. */
+export function warrantyServiceIds(warranty) {
+  const source = warranty?.source;
+  if (!source) return [];
+  if (warranty.type === "CONTRACT") return source.serviceIds || [];
+  return (source.lines || []).map((line) => line.serviceId).filter(Boolean);
+}
+
+/**
+ * The client's warranty running on `day` that covers one of `serviceIds`, or
+ * null: booking that service again is a free re-treatment, not a paid visit.
+ */
+export function runningWarrantyFor(clientId, serviceIds = [], records = {}, day = localDay(new Date())) {
+  if (!clientId || !serviceIds.length) return null;
+  return clientWarranties(clientId, records).find((warranty) => warranty.start
+    && day >= warranty.start && day <= warranty.end
+    && warrantyServiceIds(warranty).some((id) => serviceIds.includes(id))) || null;
+}

@@ -139,6 +139,11 @@ function NewAppointmentModal({
   // The payment check before booking (Sprint 4): (clientId, serviceIds,
   // source) => { ok, reason }. Null where billing is not in use.
   paymentCheckFor = null,
+  // A running warranty for this client and these services (Sprint 5):
+  // (clientId, serviceIds, day) => warranty | null, and booking it instead as
+  // a free re-treatment: (warranty, day) => void.
+  warrantyFor = null,
+  onWarrantyRetreatment = null,
   onClose,
   onCreate,
   onBook,
@@ -350,8 +355,6 @@ function NewAppointmentModal({
   // Recomputed per render: the picker's lower bound moves with the clock.
   const earliest = toDateTimeLocal(new Date());
 
-  const check = paymentCheckFor && clientId ? paymentCheckFor(clientId, serviceIds, source) : { ok: true, reason: "" };
-
   // The Follow-up Visit service ticked by hand (not from Book follow-up): the
   // visit it checks on is asked for, and choosing it fills in the follow-up
   // price and the quotation, the same as Book follow-up does.
@@ -362,6 +365,15 @@ function NewAppointmentModal({
       .sort((a, b) => new Date(b.scheduledAt) - new Date(a.scheduledAt))
       .slice(0, 20)
     : [];
+  // Which visit a follow-up checks on is asked first: that visit's quotation
+  // is what covers the payment check, so the check waits for the answer.
+  const awaitingFollowUpOf = followUpChoices.length > 0 && !followUpOf;
+  const check = paymentCheckFor && clientId && !awaitingFollowUpOf ? paymentCheckFor(clientId, serviceIds, source) : { ok: true, reason: "" };
+  // The same service under a running warranty: offer the free re-treatment.
+  const bookingDay = String(scheduledAt || "").slice(0, 10);
+  const coveredBy = warrantyFor && onWarrantyRetreatment && clientId && !initialFollowUpOf && !followUpWarranty
+    ? warrantyFor(clientId, serviceIds, bookingDay)
+    : null;
   const chooseFollowUpOf = (originalId) => {
     setFormError("");
     if (!originalId) { setFollowUpOf(null); setFollowUpWarranty(null); return; }
@@ -887,6 +899,20 @@ function NewAppointmentModal({
               ? `Covered by warranty ${followUpWarranty.reference} until ${new Date(`${followUpWarranty.end}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}: a free re-treatment, no charge.`
               : "Priced at the follow-up price of that visit's services, and booked under its quotation."}
           </p>
+        )}
+
+        {coveredBy && (
+          <div
+            role="group"
+            aria-label="Under warranty"
+            style={{ gridColumn: "1 / -1", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", padding: "10px 12px", background: "#e8f1fb", border: "1px solid #bcd4ef", color: "#1d4f8a", borderRadius: radius.control, ...text.small }}
+          >
+            <span style={{ flex: "1 1 260px" }}>
+              🛡 <strong style={{ fontWeight: weight.medium }}>Under warranty until {new Date(`${coveredBy.end}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}</strong>{" "}
+              ({coveredBy.type === "CONTRACT" ? "contract" : "quotation"} {coveredBy.reference}). This service is covered: book it as a free Warranty re-treatment?
+            </span>
+            <Button size="sm" variant="primary" onClick={() => onWarrantyRetreatment(coveredBy, bookingDay)}>Book as warranty re-treatment</Button>
+          </div>
         )}
 
         {/* Skipping billing is allowed (an inspection), but it should be a

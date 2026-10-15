@@ -23,7 +23,7 @@ export const CONTRACT_TONES = { DRAFT: "neutral", ACTIVE: "success", ENDED: "neu
 
 const labelOf = (list, value) => list.find((entry) => entry.value === value)?.label || value;
 
-function ContractDetail({ contract, client, signedDocument = null, visits = [], onEdit, onPrint, onEmail, onUploadSigned, onViewSigned, onActivate, onEnd, onCancel, onDelete, onBook, onClose, deposit = null, booking = { ok: true, reason: "" }, depositPayments = [], onRecordDeposit, onReceipt }) {
+function ContractDetail({ contract, client, signedDocument = null, visits = [], onEdit, onPrint, onEmail, onUploadSigned, onViewSigned, onActivate, onEnd, onCancel, onDelete, onBook, onClose, deposit = null, booking = { ok: true, reason: "" }, depositPayments = [], onRecordDeposit, onReceipt, warrantySlot = null }) {
   const fileRef = useRef(null);
   const [asking, setAsking] = useState(null); // "CANCEL" | "DELETE"
   const [reason, setReason] = useState("");
@@ -150,6 +150,8 @@ function ContractDetail({ contract, client, signedDocument = null, visits = [], 
             ))}
           </section>
         )}
+
+        {warrantySlot}
 
         <section aria-label="Signed copy" style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap", padding: "0.7rem 0.8rem", border: `1px solid ${colors.line}`, borderRadius: "3.75px" }}>
           <span style={{ color: colors.body, fontSize: "0.88rem", marginRight: "auto" }}>

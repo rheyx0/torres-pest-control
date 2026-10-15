@@ -19,6 +19,7 @@
 // box no matter how tall it is — so the tier is capped by width too.
 
 import { RotateCcw } from "lucide-react";
+import { warrantyKindLabel } from "../../utils/warranty";
 import { neutral, radius, weight } from "../../styles/tokens";
 import { formatDuration } from "../../utils/calendarDates";
 import { crewOf, endOf } from "../../utils/scheduling";
@@ -98,7 +99,7 @@ function AppointmentCard({ appointment, height = null, columns = 1, placement = 
       data-status={appointment.status}
       title={`${client.name}${plan ? ` (${plan})` : ""}
 ${startLabel} – ${endLabel} · ${formatDuration(appointment.durationMinutes || 60)}
-${technicianName} · ${appointment.status}${appointment.pestConcern ? ` · ${appointment.pestConcern}` : ""}`}
+${technicianName} · ${appointment.status}${appointment.pestConcern ? ` · ${appointment.pestConcern}` : ""}${appointment.warrantyKind ? ` · ${warrantyKindLabel(appointment)} (free)` : ""}`}
       style={{
         width: "100%",
         textAlign: "left",
@@ -156,6 +157,7 @@ ${technicianName} · ${appointment.status}${appointment.pestConcern ? ` · ${app
           <span style={{ ...detailStyle, ...clampLines(1) }}>
             {startLabel} – {endLabel}
             {appointment.pestConcern ? ` · ${appointment.pestConcern}` : ""}
+            {appointment.warrantyKind ? ` · 🛡 ${warrantyKindLabel(appointment)}` : ""}
           </span>
           {crew.length > 0 && (
             <span style={{ marginTop: "3px" }}>

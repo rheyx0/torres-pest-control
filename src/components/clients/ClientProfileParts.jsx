@@ -4,6 +4,7 @@
 
 import { Link, useNavigate } from "react-router-dom";
 import { checkupLabel } from "../../utils/categories";
+import { withWarranty } from "../../utils/warranty";
 import {
   ArrowLeft,
   AlertTriangle,
@@ -259,7 +260,7 @@ export function NextVisitBanner({ appointment, crewNames }) {
           Next visit · {when.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}, {clock(when)}
         </b>
         <span style={{ display: "block", fontSize: "12.5px", color: neutral.saddle }}>
-          {[appointment.serviceFrequency && `${appointment.serviceFrequency} service`, appointment.serviceType, crewNames.join(", ") || "Unassigned"]
+          {[appointment.serviceFrequency && `${appointment.serviceFrequency} service`, withWarranty(appointment.serviceType, appointment), crewNames.join(", ") || "Unassigned"]
             .filter(Boolean)
             .join(" · ")}
         </span>
@@ -311,7 +312,7 @@ function EventBody({ event, nameOf, onOpenReport }) {
         <div style={{ fontSize: "12.5px", color: neutral.bark, marginTop: "6px" }}>
           {[
             crew.join(", ") || null,
-            appointment.serviceType || appointment.pestConcern || null,
+            withWarranty(appointment.serviceType || appointment.pestConcern || "", appointment) || null,
             appointment.activityLevel ? `Activity: ${activityLabel(appointment.activityLevel)}` : null,
             materials.length ? materials.join(", ") : null,
             photos ? `${photos} ${photos === 1 ? "photo" : "photos"}` : null,
@@ -334,7 +335,7 @@ function EventBody({ event, nameOf, onOpenReport }) {
           <StatusPill tone="danger">Report due</StatusPill>
         </div>
         <div style={{ fontSize: "12.5px", color: neutral.bark, marginTop: "3px" }}>
-          {[crew.join(", ") || "Unassigned", appointment.serviceType || appointment.pestConcern].filter(Boolean).join(" · ")}
+          {withWarranty([crew.join(", ") || "Unassigned", appointment.serviceType || appointment.pestConcern].filter(Boolean).join(" · "), appointment)}
         </div>
       </>
     );

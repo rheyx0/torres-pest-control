@@ -2,22 +2,19 @@
 // each covers and until when, its checkups, and the two ways to book under
 // it: Book checkups, and Warranty re-treatment when pests come back.
 
-import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
-import Button from "../ui/Button";
 import StatusPill from "../ui/StatusPill";
-import WarrantyBookingModal from "../billing/WarrantyBookingModal";
+import WarrantyActions from "../billing/WarrantyActions";
 import { colors } from "../../styles/theme";
 import { formatDate } from "../../utils/formatters";
 import { checkupLabel } from "../../utils/categories";
-import { checkupDatesToBook, clientWarranties, plannedCheckupCount, warrantyLabel, warrantyState, warrantyVisits } from "../../utils/warranty";
+import { clientWarranties, plannedCheckupCount, warrantyLabel, warrantyState, warrantyVisits } from "../../utils/warranty";
 import { appointmentReference } from "../../utils/scheduling";
 
 const STATE_WORDS = { ACTIVE: "Under warranty", NOT_STARTED: "Not started", ENDED: "Ended" };
 const STATE_TONES = { ACTIVE: "success", NOT_STARTED: "neutral", ENDED: "neutral" };
 
 function WarrantyPanel({ clientId, quotes = [], contracts = [], appointments = [], technicians = [], canBook = false, onBook, onBooked, now = new Date() }) {
-  const [booking, setBooking] = useState(null); // { kind, warranty, dates }
   const warranties = clientWarranties(clientId, { quotes, contracts, appointments });
   if (!warranties.length) return null;
 
@@ -28,7 +25,6 @@ function WarrantyPanel({ clientId, quotes = [], contracts = [], appointments = [
         const state = warrantyState(warranty, now);
         const visits = warrantyVisits(warranty, appointments, now);
         const planned = plannedCheckupCount(warranty);
-        const toBook = state === "ACTIVE" ? checkupDatesToBook(warranty, appointments, now) : [];
         return (
           <div key={`${warranty.type}-${warranty.id}`} style={{ display: "grid", gap: "6px", padding: "10px 12px", border: `1px solid ${colors.line}`, borderRadius: "7.5px" }}>
             <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
@@ -48,37 +44,11 @@ function WarrantyPanel({ clientId, quotes = [], contracts = [], appointments = [
               {visits.retreatments.length ? ` · ${visits.retreatments.length} re-treatment${visits.retreatments.length === 1 ? "" : "s"}` : ""}
             </span>
             {canBook && state === "ACTIVE" && (
-              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                {warranty.frequency && toBook.length > 0 && (
-                  <Button size="sm" onClick={() => setBooking({ kind: "CHECKUP", warranty, dates: toBook })}>Book checkups ({toBook.length})</Button>
-                )}
-                <Button size="sm" variant="secondary" onClick={() => {
-                  const today = new Date(now);
-                  today.setDate(today.getDate() + 1);
-                  const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-                  setBooking({ kind: "RETREATMENT", warranty, dates: [day <= warranty.end ? day : warranty.end] });
-                }}>Warranty re-treatment</Button>
-              </div>
+              <WarrantyActions warranty={warranty} appointments={appointments} technicians={technicians} onBook={onBook} onBooked={onBooked} now={now} />
             )}
           </div>
         );
       })}
-      {booking && (
-        <WarrantyBookingModal
-          kind={booking.kind}
-          warranty={booking.warranty}
-          dates={booking.dates}
-          technicians={technicians}
-          onClose={() => setBooking(null)}
-          onBook={async (request) => {
-            const result = await onBook(request);
-            if (typeof result === "string") return result;
-            setBooking(null);
-            onBooked?.(request, result);
-            return true;
-          }}
-        />
-      )}
     </section>
   );
 }

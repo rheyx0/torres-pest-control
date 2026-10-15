@@ -36,6 +36,8 @@ function QuoteDetail({
   quote,
   client,
   payments = [],
+  // The warranty block with its booking buttons (Sprint 5), from BillingPage.
+  warrantySlot = null,
   visits = [],
   invoices = [],
   invoicePayments = [],
@@ -159,6 +161,8 @@ function QuoteDetail({
           {quote.areaSqm && <span>· {quote.areaSqm} sqm</span>}
           {inspection && <span>· {inspectionIncludedText(inspection)}</span>}
         </div>
+
+        {warrantySlot}
 
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.88rem", minWidth: "520px" }}>

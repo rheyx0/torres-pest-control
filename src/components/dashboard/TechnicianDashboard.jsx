@@ -24,6 +24,7 @@
 // so every figure here is theirs.
 
 import { useState } from "react";
+import { withWarranty } from "../../utils/warranty";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, BarChart3, Bug, CalendarDays, CalendarX2, Check, CheckCircle2, MapPin, Navigation, Package, Phone, Plane } from "lucide-react";
 import useAuth from "../../hooks/useAuth";
@@ -226,7 +227,7 @@ function ComingUp({ visits, clientName }) {
                   </span>
                   <span style={{ minWidth: 0 }}>
                     <span style={{ display: "block", color: neutral.ink, fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{clientName(entry)}</span>
-                    <span style={{ display: "block", color: neutral.saddle, fontSize: "12.5px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.serviceType || entry.pestConcern || "Service visit"}</span>
+                    <span style={{ display: "block", color: neutral.saddle, fontSize: "12.5px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{withWarranty(entry.serviceType || entry.pestConcern || "Service visit", entry)}</span>
                   </span>
                   <span style={{ color: neutral.saddle, fontSize: "13px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{clock(entry.scheduledAt)}</span>
                 </Link>
@@ -309,7 +310,7 @@ function UpNextCard({ appointment, client, crewNames, me, onStart, starting, now
       )}
       <p style={{ margin: 0, display: "flex", gap: "8px", alignItems: "flex-start", color: neutral.saddle }}>
         <Bug size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: "2px", color: brand.base }} />
-        {[appointment.pestConcern, appointment.serviceType, formatDuration(appointment.durationMinutes || 60)].filter(Boolean).join(" · ")}
+        {withWarranty([appointment.pestConcern, appointment.serviceType, formatDuration(appointment.durationMinutes || 60)].filter(Boolean).join(" · "), appointment)}
       </p>
       {client?.serviceNotes && (
         <p style={{ margin: "14px 0 0", padding: "10px 12px", borderRadius: radius.control, background: surface.sunken, color: neutral.ink, fontSize: "14px", lineHeight: 1.5 }}>
@@ -546,7 +547,7 @@ function TechnicianDashboard() {
                       key={entry.id}
                       time={clock(entry.scheduledAt)}
                       title={clientName(entry)}
-                      detail={[entry.pestConcern || entry.serviceType, others.length ? `with ${others.join(", ")}` : formatDuration(entry.durationMinutes || 60)].filter(Boolean).join(" · ")}
+                      detail={withWarranty([entry.pestConcern || entry.serviceType, others.length ? `with ${others.join(", ")}` : formatDuration(entry.durationMinutes || 60)].filter(Boolean).join(" · "), entry)}
                       badge={leadsCrew(entry, me) ? <StatusPill tone="brand">Lead</StatusPill> : null}
                       to={`/scheduling?appointment=${encodeURIComponent(entry.id)}`}
                     />
