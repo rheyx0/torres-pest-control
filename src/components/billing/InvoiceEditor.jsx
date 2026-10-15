@@ -70,6 +70,9 @@ function InvoiceEditor({
   initialVisitIds = null,
   presetLines = [],
   contract = null,
+  // Every contract: ticking a visit of a contract's plan bills it under that
+  // contract, so its down payment is deducted however the invoice was opened.
+  contracts = [],
   prepaid = new Set(),
   // Transportation and labor default rates (076).
   rates = {},
@@ -107,8 +110,15 @@ function InvoiceEditor({
   }, [form.clientId, form.quoteId, visitIds.join(",")]);
 
   const totals = quoteTotals(lines, { ...form, vatRate: VAT_RATE });
+  // The contract a ticked visit belongs to (by its plan), when the form was
+  // opened from New invoice rather than "Ready to invoice from contracts".
+  const visitContract = !contract && !quote
+    ? contracts.find((entry) => entry.clientId === form.clientId && entry.planId && ["ACTIVE", "ENDED"].includes(entry.status)
+      && chosenVisits.some((visit) => visit.planId === entry.planId)) || null
+    : null;
+  const billedContract = contract || visitContract;
   // A contract's first invoice deducts the contract's down payment (077).
-  const deposit = quote ? depositToApply(quote, payments, invoices, totals.total) : contract ? contractDepositToApply(contract, payments, invoices, totals.total) : 0;
+  const deposit = quote ? depositToApply(quote, payments, invoices, totals.total) : billedContract ? contractDepositToApply(billedContract, payments, invoices, totals.total) : 0;
   const amountDue = Math.max(0, Math.round((totals.total - deposit) * 100) / 100);
 
   const set = (field, value) => {
@@ -159,7 +169,7 @@ function InvoiceEditor({
     }
     setSaving(true);
     const result = await onSave(
-      { ...form, vatRate: VAT_RATE, appointmentIds: visitIds },
+      { ...form, vatRate: VAT_RATE, appointmentIds: visitIds, contractId: billedContract?.id || "" },
       lines.map((line) => ({ ...line, description: line.description.trim(), quantity: Number(line.quantity), unitPrice: Number(line.unitPrice) }))
     );
     setSaving(false);
@@ -225,6 +235,12 @@ function InvoiceEditor({
               </div>
             )}
           </fieldset>
+        )}
+
+        {visitContract && (
+          <p role="status" style={{ margin: 0, padding: "0.55rem 0.75rem", border: `1px solid ${colors.line}`, borderRadius: "6px", background: colors.canvas, fontSize: "0.85rem", color: colors.body }}>
+            These visits are under contract <strong style={{ color: colors.ink }}>{visitContract.reference}</strong>: the invoice is billed under it, and its down payment is deducted.
+          </p>
         )}
 
         <section aria-label="Invoice lines" style={{ display: "grid", gap: "0.5rem", padding: "0.9rem", border: `1px solid ${colors.line}`, borderRadius: "3.75px", background: colors.canvas, overflowX: "auto" }}>

@@ -142,6 +142,22 @@ describe("InvoiceEditor", () => {
     // 2500 + 12% VAT = 2800, less the 1400 down payment.
     expect(totals.getByText("Amount due").nextElementSibling).toHaveTextContent("₱1,400.00");
   });
+
+  test("from New invoice, ticking a contract visit bills it under the contract and deducts its down payment", async () => {
+    const contract = { id: "k1", reference: "TPC-K-00003", clientId: "c1", status: "ACTIVE", planId: "p1", depositAmount: 3500, paymentTerms: "DUE_ON_RECEIPT" };
+    const contractDeposit = { id: "p9", kind: "DEPOSIT", contractId: "k1", method: "CASH", amount: 3500 };
+    const contractVisit = { id: "a9", reference: "TPC-V-00090", clientId: "c1", status: "Completed", planId: "p1", price: 3500, scheduledAt: "2026-11-17T09:00:00", serviceType: "General Pest Control", stockUsed: [] };
+    const onSave = jest.fn().mockResolvedValue(true);
+    render(<InvoiceEditor clients={clients} quotes={[]} contracts={[contract]} payments={[contractDeposit]} appointments={[contractVisit]} extras={[]} initialClientId="c1" onSave={onSave} onClose={jest.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: /TPC-V-00090/ }));
+    expect(screen.getByText(/under contract/)).toHaveTextContent("TPC-K-00003");
+    const totals = within(screen.getByLabelText("Invoice totals"));
+    // 3500 + 12% VAT = 3920, less the 3500 down payment.
+    expect(totals.getByText("Less down payment").nextElementSibling).toHaveTextContent("−₱3,500.00");
+    expect(totals.getByText("Amount due").nextElementSibling).toHaveTextContent("₱420.00");
+    await userEvent.click(screen.getByRole("button", { name: "Issue invoice" }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ contractId: "k1" }), expect.any(Array));
+  });
 });
 
 test("quoteMismatch: a visit booked under a quote needs that quote", () => {

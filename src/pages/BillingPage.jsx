@@ -265,10 +265,13 @@ function BillingPage() {
       details: [["Client", clientName(form.clientId)], ["Lines", String(lines.length)], ["Subtotal", formatPeso(total)]],
       confirmLabel: "Issue invoice",
     }))) return NOT_CONFIRMED;
-    const result = await billing.createInvoice(form, lines);
+    const { contractId, ...invoiceForm } = form;
+    const result = await billing.createInvoice(invoiceForm, lines);
     if (typeof result === "string") return result;
-    // A contract's invoice names the contract, so it is not billed twice.
-    if (invoicing?.contract && result?.id) await billing.linkInvoiceContract(result.id, invoicing.contract.id);
+    // A contract's invoice names the contract, so it is not billed twice and
+    // its down payment is deducted (077), however the form was opened.
+    const linkTo = invoicing?.contract?.id || contractId;
+    if (linkTo && result?.id) await billing.linkInvoiceContract(result.id, linkTo);
     showSuccess(`Invoice ${result?.reference || ""} issued.`);
     setInvoicing(null);
     setTab("invoices");
@@ -632,6 +635,7 @@ function BillingPage() {
           initialVisitIds={invoicing.visitIds || null}
           presetLines={invoicing.lines || []}
           contract={invoicing.contract || null}
+          contracts={billing.contracts || []}
           prepaid={prepaid}
           rates={rates}
           onSave={issueInvoice}
