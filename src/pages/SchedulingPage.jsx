@@ -517,6 +517,7 @@ function SchedulingPage() {
               onClick: async () => {
                 const undoFailure = await relocate({ ...current, scheduledAt: nextScheduledAt }, current.scheduledAt);
                 if (undoFailure) showError(undoFailure);
+                else showSuccess(`Moved back to ${formatDateTime(current.scheduledAt)}.`);
                 setMessage(undoFailure || `Moved back to ${formatDateTime(current.scheduledAt)}.`);
               },
             },
@@ -618,8 +619,17 @@ function SchedulingPage() {
       notes: form.get("notes"),
       cancellationReason: form.get("cancellationReason") || "",
     });
-    if (typeof result === "string") showError(result);
-    setMessage(typeof result === "string" ? result : "Appointment details updated.");
+    if (typeof result === "string") {
+      showError(result);
+      setMessage(result);
+      return;
+    }
+    const moved = new Date(nextScheduledAt).getTime() !== new Date(selected.scheduledAt).getTime();
+    const saved = nextStatus === "Cancelled" && selected.status !== "Cancelled"
+      ? "Appointment cancelled."
+      : moved ? `Appointment updated: now ${formatDateTime(nextScheduledAt)}.` : "Appointment updated.";
+    setMessage(saved);
+    showSuccess(saved);
   };
 
   /**
@@ -757,7 +767,7 @@ function SchedulingPage() {
           {sourceName(covering)} · free re-treatment if pests come back.
         </span>
         {canReschedule && (
-          <WarrantyActions warranty={covering} appointments={appointments} technicians={activeTechnicians} onBook={bookWarrantyVisits} onBooked={() => showSuccess("Booked under the warranty.")} />
+          <WarrantyActions warranty={covering} appointments={appointments} technicians={activeTechnicians} onBook={bookWarrantyVisits} />
         )}
         <div style={{ flexBasis: "100%" }}>
           <WarrantyVisitList warranty={covering} appointments={appointments} onOpen={setSelectedId} />
@@ -844,6 +854,7 @@ function SchedulingPage() {
       addStockUsed(selected.id, { itemId: row.item_id, name: item?.name || "Inventory item", amount: Number(row.amount), unit: item?.unit || "", batchNumber: row.batch_number || "", date });
     });
     setMessage(`${entries.length} stock item${entries.length === 1 ? "" : "s"} recorded as OUT for this appointment.`);
+    showSuccess(`${entries.length} stock item${entries.length === 1 ? "" : "s"} recorded for this appointment.`);
     return true;
   };
 
@@ -1276,7 +1287,10 @@ function SchedulingPage() {
                   onBookReservice={(entry) => bookReservice(entry, "")}
                   onDeclineRenewal={canReschedule ? async (entry) => {
                     const result = await planActions.setPlanRenewal(entry.last.planId, false);
-                    if (result === true) setMessage(`${entry.client.name}'s plan won't be renewed. Undo from any of its visits.`);
+                    if (result === true) {
+                      setMessage(`${entry.client.name}'s plan won't be renewed. Undo from any of its visits.`);
+                      showSuccess(`${entry.client.name}'s plan won't be renewed.`);
+                    }
                     else showError(result);
                   } : undefined}
                 />
@@ -1384,7 +1398,10 @@ function SchedulingPage() {
               };
               if (asks[name] && !(await confirm(asks[name]))) return "";
               const result = await planActions[name](...args);
-              if (result === true) setMessage("Plan updated.");
+              if (result === true) {
+                setMessage("Plan updated.");
+                showSuccess("Plan updated.");
+              }
               else if (result) showError(result);
               return result;
             },
@@ -1991,6 +2008,7 @@ function AppointmentPanel({
   warrantySlot = null,
 }) {
   const { tab, setTab, onClose } = ui;
+  const { showSuccess } = useToast();
   const {
     canReschedule = true,
     canFileService = true,
@@ -2342,8 +2360,16 @@ function AppointmentPanel({
                             documents={(appointment.attachments || []).filter((attachment) => (attachment.category || "OTHER") === category.value)}
                             canUpload={canUpload}
                             canRemove={true}
-                            onUpload={(file) => addAttachment(appointment.id, file, category.value)}
-                            onRemove={(attachment) => removeAttachment({ ...attachment, appointmentId: attachment.appointmentId || appointment.id })}
+                            onUpload={async (file) => {
+                              const result = await addAttachment(appointment.id, file, category.value);
+                              if (result === true) showSuccess(`${file.name} uploaded.`);
+                              return result;
+                            }}
+                            onRemove={async (attachment) => {
+                              const result = await removeAttachment({ ...attachment, appointmentId: attachment.appointmentId || appointment.id });
+                              if (result === true) showSuccess(`${attachment.name || "File"} removed.`);
+                              return result;
+                            }}
                             onResolveUrl={getAttachmentUrl}
                             accept=".jpg,.jpeg,.png,.pdf"
                             validate={validateAttachment}

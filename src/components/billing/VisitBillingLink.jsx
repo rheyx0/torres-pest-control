@@ -7,6 +7,7 @@
 // Office only, and only once billing is set up — renders nothing otherwise.
 
 import { useState } from "react";
+import { useToast } from "../../context/ToastContext";
 import { Link } from "react-router-dom";
 import { Button, Select } from "../ui";
 import { colors } from "../../styles/theme";
@@ -16,6 +17,7 @@ import useAuth from "../../hooks/useAuth";
 import { useOptionalBilling } from "../../hooks/useBilling";
 
 function VisitBillingLink({ appointment }) {
+  const { showSuccess } = useToast();
   const { can } = useAuth();
   const billing = useOptionalBilling();
   const [choice, setChoice] = useState("");
@@ -60,7 +62,10 @@ function VisitBillingLink({ appointment }) {
       : await billing.linkQuoteAppointments(id, [appointment.id]);
     setBusy(false);
     if (typeof result === "string") setError(result);
-    else setChoice("");
+    else {
+      setChoice("");
+      showSuccess(`Linked to ${type === "contract" ? "the contract" : "the quotation"}.`);
+    }
   };
 
   return box(

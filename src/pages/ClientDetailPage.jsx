@@ -66,10 +66,16 @@ function ClientDetailPage() {
     return false;
   };
 
-  const handleUpload = (file, category) => addDocument(client.id, file, category);
+  const handleUpload = async (file, category) => {
+    const result = await addDocument(client.id, file, category);
+    if (result && typeof result !== "string") showSuccess(`${file.name} uploaded.`);
+    return result;
+  };
   const handleRemove = async (document) => {
     if (!(await confirm({ title: "Delete this document?", message: `"${document.name}" is removed from ${client.name}'s documents for good.`, confirmLabel: "Delete", tone: "danger" }))) return true;
-    return removeDocument(client.id, document);
+    const result = await removeDocument(client.id, document);
+    if (result === true) showSuccess(`${document.name} deleted.`);
+    return result;
   };
 
   // Archive is the everyday way to retire a client: reversible, and the

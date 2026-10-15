@@ -247,6 +247,7 @@ function VisitPage() {
   const handleRemoveFile = async (attachment) => {
     const result = await removeAttachment({ ...attachment, appointmentId: attachment.appointmentId || appointment.id });
     if (result !== true) showError(result);
+    else showSuccess("Photo removed.");
   };
 
   const handleStart = async () => {
@@ -255,6 +256,7 @@ function VisitPage() {
     const result = await startVisit(appointment.id);
     setStarting(false);
     if (result !== true) showError(result);
+    else showSuccess("Visit started.");
   };
 
   const handlePhoto = async (event) => {
@@ -270,6 +272,7 @@ function VisitPage() {
     const result = await addAttachment(appointment.id, file, photoCategory);
     setUploading(false);
     if (result !== true) showError(result);
+    else showSuccess("Photo added.");
   };
 
   const stepProblem = (name) => {

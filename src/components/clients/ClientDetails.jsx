@@ -7,6 +7,7 @@
 // Reports / Documents tabs) follows the redesign handoff.
 
 import { useEffect, useMemo, useState } from "react";
+import { useToast } from "../../context/ToastContext";
 import { useNavigate } from "react-router-dom";
 import { Download, Eye, FileText, Printer, Trash2, X } from "lucide-react";
 import ClientForm from "./ClientForm";
@@ -373,6 +374,7 @@ function ClientDetails({
   // Sprint 4: the client's payment check, and the monitoring report.
   const { role } = useAuth();
   const { setClientPaymentCheck, clients: allClients } = useClients();
+  const { showSuccess } = useToast();
   const confirm = useConfirm();
   const [checkBusy, setCheckBusy] = useState(false);
   const [checkError, setCheckError] = useState("");
@@ -387,6 +389,7 @@ function ClientDetails({
     const result = await setClientPaymentCheck(client, skip);
     setCheckBusy(false);
     if (result !== true) setCheckError(result);
+    else showSuccess(skip ? `${client.name} can be booked without payment.` : `Payment check turned back on for ${client.name}.`);
   };
   const printMonitoring = () => {
     const now = new Date();
@@ -460,6 +463,7 @@ function ClientDetails({
     }
     const result = await removeAttachment({ ...file, appointmentId: file.appointmentId || selectedHistory?.id });
     if (result === true) {
+      showSuccess(`${file.name || "Attachment"} removed.`);
       setSelectedHistory((prev) => prev ? {
         ...prev,
         attachments: (prev.attachments || []).filter((a) => a.id !== file.id),

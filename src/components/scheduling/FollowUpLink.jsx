@@ -5,6 +5,7 @@
 // client had, and is booked under the same quotation (SchedulingPage).
 
 import { useState } from "react";
+import { useToast } from "../../context/ToastContext";
 import { useNavigate } from "react-router-dom";
 import { CalendarPlus, CornerDownRight } from "lucide-react";
 import Button from "../ui/Button";
@@ -19,6 +20,7 @@ import { appointmentReference } from "../../utils/scheduling";
 const day = (value) => new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 
 function FollowUpLink({ appointment }) {
+  const { showSuccess } = useToast();
   const navigate = useNavigate();
   const { can } = useAuth();
   const canBook = can(SUBSYSTEMS.SCHEDULING, "create");
@@ -47,6 +49,7 @@ function FollowUpLink({ appointment }) {
     const result = await linkFollowUp(appointment.id, originalId);
     setLinking(false);
     if (result !== true) setLinkError(result);
+    else showSuccess("Marked as a follow-up.");
   };
 
   const open = (visit) => navigate(`/scheduling?appointment=${encodeURIComponent(visit.id)}`);

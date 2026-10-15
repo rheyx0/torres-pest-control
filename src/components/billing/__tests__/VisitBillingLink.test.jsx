@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import VisitBillingLink from "../VisitBillingLink";
+import { ToastProvider } from "../../../context/ToastContext";
 import { canBookFromQuote } from "../../../utils/billing";
 import { useOptionalBilling } from "../../../hooks/useBilling";
 
@@ -25,7 +26,7 @@ function setup({ quotes = [paid, unpaid], contracts = [contract], appointment = 
     linkContractPlan: jest.fn().mockResolvedValue({}),
   };
   useOptionalBilling.mockReturnValue(billing);
-  render(<MemoryRouter><VisitBillingLink appointment={{ id: "a1", clientId: "c1", status: "Confirmed", ...appointment }} /></MemoryRouter>);
+  render(<MemoryRouter><ToastProvider><VisitBillingLink appointment={{ id: "a1", clientId: "c1", status: "Confirmed", ...appointment }} /></ToastProvider></MemoryRouter>);
   return billing;
 }
 
@@ -55,6 +56,6 @@ test("a linked visit shows what it is billed under", () => {
 
 test("without billing it shows nothing", () => {
   useOptionalBilling.mockReturnValue(null);
-  const { container } = render(<MemoryRouter><VisitBillingLink appointment={{ id: "a1", clientId: "c1" }} /></MemoryRouter>);
-  expect(container).toBeEmptyDOMElement();
+  const { container } = render(<MemoryRouter><ToastProvider><VisitBillingLink appointment={{ id: "a1", clientId: "c1" }} /></ToastProvider></MemoryRouter>);
+  expect(container.textContent).toBe(""); // only the toast area, empty
 });

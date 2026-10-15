@@ -352,9 +352,9 @@ function BillingPage() {
     if (!(await confirm(status === "CLEARED"
       ? { title: "Mark this check as cleared?", message: `${formatPeso(payment.amount)} will count as paid.`, confirmLabel: "Cleared" }
       : { title: "Mark this check as bounced?", message: `${formatPeso(payment.amount)} stops counting and the balance comes back.`, confirmLabel: "Bounced", tone: "danger" }))) return NOT_CONFIRMED;
-    return billing.setCheckStatus(payment, status, null, note);
+    return withToast(status === "CLEARED" ? "Check marked as cleared." : "Check marked as bounced.")(() => billing.setCheckStatus(payment, status, null, note));
   };
-  const reverse = (payment, reason) => billing.reversePayment(payment, reason);
+  const reverse = (payment, reason) => withToast(`${payment.reference || "Payment"} reversed.`)(() => billing.reversePayment(payment, reason));
 
   if (!available) {
     return (

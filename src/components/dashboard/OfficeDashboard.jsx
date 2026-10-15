@@ -185,6 +185,7 @@ function OfficeDashboard() {
         onClick: async () => {
           const undo = await updateAppointment({ ...appointment, technicianId: "", technicianIds: [] });
           if (typeof undo === "string") showError(undo);
+          else showSuccess("Assignment undone.");
         },
       },
     });

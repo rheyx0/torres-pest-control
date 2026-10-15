@@ -7,6 +7,7 @@ import { useState } from "react";
 import Button from "../ui/Button";
 import WarrantyBookingModal from "./WarrantyBookingModal";
 import { checkupDatesToBook, warrantyState } from "../../utils/warranty";
+import { useToast } from "../../context/ToastContext";
 
 const nextDay = (now, warranty) => {
   const day = new Date(now);
@@ -17,6 +18,7 @@ const nextDay = (now, warranty) => {
 
 function WarrantyActions({ warranty, appointments = [], technicians = [], onBook, onBooked, now = new Date(), size = "sm" }) {
   const [booking, setBooking] = useState(null); // { kind, dates }
+  const { showSuccess } = useToast();
   if (!warranty || !onBook || warrantyState(warranty, now) !== "ACTIVE") return null;
   const toBook = checkupDatesToBook(warranty, appointments, now);
 
@@ -44,6 +46,8 @@ function WarrantyActions({ warranty, appointments = [], technicians = [], onBook
             const result = await onBook(request);
             if (typeof result === "string") return result;
             setBooking(null);
+            const count = Array.isArray(result) ? result.length : request.visits.length;
+            showSuccess(request.kind === "CHECKUP" ? `${count} warranty checkup${count === 1 ? "" : "s"} booked, at no charge.` : "Warranty re-treatment booked, at no charge.");
             onBooked?.(request, result);
             return true;
           }}
