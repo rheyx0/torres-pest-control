@@ -161,3 +161,24 @@ export function describeConversion(amount, fromUnit, toUnit) {
   if (converted === null || normalizeUnit(fromUnit) === normalizeUnit(toUnit)) return "";
   return `${Number(amount)} ${fromUnit} = ${converted} ${toUnit}`;
 }
+
+/**
+ * A price per `fromUnit` re-expressed per `toUnit`, for the Stock In cost box
+ * when the unit received in changes (₱1,000 per L is ₱3,785.41 per gal).
+ * Rounded to centavos, except a price under ₱1, which keeps 4 decimals:
+ * ₱5 per L is ₱0.005 per mL, and rounding that to ₱0.01 would double it.
+ * Null when the units can't be compared.
+ */
+export function convertUnitPrice(price, fromUnit, toUnit) {
+  if (price === "" || price === null || price === undefined) return null;
+  const numeric = Number(price);
+  if (!Number.isFinite(numeric)) return null;
+  // A price per one fromUnit buys 1/factor of a toUnit... so per toUnit it is
+  // price × (fromUnits in one toUnit).
+  const factor = conversionFactor(toUnit, fromUnit);
+  if (factor === null) return null;
+  const converted = numeric * factor;
+  return Math.abs(converted) >= 1
+    ? Math.round(converted * 100) / 100
+    : Math.round(converted * 10000) / 10000;
+}

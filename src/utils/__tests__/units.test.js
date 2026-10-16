@@ -1,6 +1,7 @@
 import {
   conversionFactor,
   convertAmount,
+  convertUnitPrice,
   convertibleUnits,
   describeConversion,
   dimensionOf,
@@ -89,5 +90,21 @@ describe("describeConversion", () => {
   it("says nothing when no conversion is happening", () => {
     expect(describeConversion(5, "L", "L")).toBe("");
     expect(describeConversion(5, "gal", "pcs")).toBe("");
+  });
+});
+
+// Stock In: changing the unit received in converts the price typed so far.
+describe("convertUnitPrice", () => {
+  test("re-expresses a price per another unit, rounded to centavos", () => {
+    expect(convertUnitPrice(1000, "L", "gal")).toBe(3785.41);
+    expect(convertUnitPrice(3785.41, "gal", "L")).toBe(1000);
+    expect(convertUnitPrice(100, "L", "mL")).toBe(0.1);
+  });
+  test("keeps 4 decimals under ₱1, so a small price isn't doubled by rounding", () => {
+    expect(convertUnitPrice(5, "L", "mL")).toBe(0.005);
+  });
+  test("nothing for a blank price or units that can't be compared", () => {
+    expect(convertUnitPrice("", "L", "gal")).toBeNull();
+    expect(convertUnitPrice(100, "L", "kg")).toBeNull();
   });
 });

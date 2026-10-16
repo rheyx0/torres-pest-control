@@ -43,6 +43,7 @@ import { LOSS_REASONS, REASON_FILTERS, countByReason, describeLosses, filterByRe
 import {
   conversionFactor,
   convertAmount,
+  convertUnitPrice,
   convertibleUnits,
   describeConversion,
   normalizeUnit,
@@ -1956,8 +1957,8 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
       // Switching the unit received in converts the price typed so far too:
       // ₱100 per L is ₱0.10 per mL.
       if (changes.enteredUnit && changes.enteredUnit !== row.enteredUnit && row.unitCost !== "") {
-        const ratio = conversionFactor(changes.enteredUnit, row.enteredUnit);
-        if (ratio) return { ...row, ...changes, unitCost: String(Math.round(Number(row.unitCost) * ratio * 10000) / 10000) };
+        const price = convertUnitPrice(row.unitCost, row.enteredUnit, changes.enteredUnit);
+        if (price !== null) return { ...row, ...changes, unitCost: String(price) };
       }
       return { ...row, ...changes };
     }));
@@ -2213,7 +2214,7 @@ export function BulkStockInModal({ inventory, initialItemId = "", onClose, onSub
                       type="number"
                       min="0"
                       max={LIMITS.MAX_UNIT_COST}
-                      step="0.01"
+                      step="any"
                       value={row.unitCost}
                       onChange={(event) => updateRow(row.key, { unitCost: event.target.value })}
                       style={{ ...inputStyle, padding: "0.6rem 0.55rem", fontSize: "0.82rem" }}
