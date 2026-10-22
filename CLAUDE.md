@@ -25,6 +25,10 @@ There is no lint script; ESLint runs through `react-scripts` during `start`/`bui
 
 `.env.local` (gitignored) must define `REACT_APP_SUPABASE_URL` and `REACT_APP_SUPABASE_PUBLISHABLE_KEY`. Without them `isSupabaseConfigured` is false and `App.jsx` renders a setup screen instead of the router — the placeholder check rejects any value containing `your-`.
 
+### Local database (no Supabase)
+
+The system also runs against a plain PostgreSQL 16 on the same computer (Technical Manual §4); `.env.local.example` is the template. `npm run db:local` (`supabase/local/db.mjs`) creates `torres_pest_control` from `supabase/local/torres-database.sql` — a pg_dump of schema-v2 plus every migration — after `roles.sql` (anon, authenticated, service_role, authenticator), and creates the `admin` account from `LOCAL_ADMIN_PASSWORD`; `--demo` adds a demo Staff and Technician account and the demo seed, `--reset` rebuilds, `--migrations` replays schema-v2 and the migrations (after `bootstrap.sql`: the `extensions` schema with pgcrypto, a `storage` schema with `buckets`/`objects`, Supabase's default grants) instead of loading the snapshot. **After adding a migration, run `npm run db:snapshot` and commit the regenerated `torres-database.sql`**, or local setups miss it. `npm run local` (`supabase/local/server.mjs`) starts PostgREST (`POSTGREST_PATH`) on 127.0.0.1:54322 and a gateway on localhost:54321 that the app's `REACT_APP_SUPABASE_URL` points at: `/rest/v1` is proxied to PostgREST without the Authorization header (every request runs as `anon` with `x-session-token`, as on Supabase), `/storage/v1` keeps files in `supabase/local/storage/` (gitignored) with the bucket limits from `storage.buckets`, a live session for writes and signed links, and only `profile-avatars` public, and `/functions/v1` answers 503, so forgot-password shows its fallback.
+
 ## Architecture
 
 Layering is strict and worth preserving; each layer only talks to the one below it.

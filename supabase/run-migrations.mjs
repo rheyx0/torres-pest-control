@@ -100,7 +100,8 @@ async function main() {
 
   console.log("");
   for (const file of files) {
-    const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8");
+    // 009 starts with a byte-order mark: the SQL Editor skips it, the server does not.
+    const sql = readFileSync(join(MIGRATIONS_DIR, file), "utf8").replace(/^﻿/, "");
     const started = Date.now();
     process.stdout.write(`  ${file} … `);
     try {

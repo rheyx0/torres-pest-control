@@ -25,3 +25,6 @@ yarn-error.log*
 
 # downloaded env file (use .env.local instead)
 env.download
+
+# files uploaded while running locally (npm run local)
+/supabase/local/storage

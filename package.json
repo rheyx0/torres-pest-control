@@ -20,7 +20,10 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "db:migrate": "node supabase/run-migrations.mjs"
+    "db:migrate": "node supabase/run-migrations.mjs",
+    "db:local": "node supabase/local/db.mjs setup",
+    "db:snapshot": "node supabase/local/db.mjs snapshot",
+    "local": "node supabase/local/server.mjs"
   },
   "eslintConfig": {
     "extends": [
