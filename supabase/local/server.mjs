@@ -26,12 +26,13 @@
 // also gets its storage.objects row, as on Supabase.
 //
 // Settings come from .env.local: POSTGREST_PATH, LOCAL_DB_PASSWORD, and the
-// optional LOCAL_DB_HOST / LOCAL_DB_PORT / LOCAL_DB_USER / LOCAL_DB_NAME.
+// optional LOCAL_DB_HOST / LOCAL_DB_PORT / LOCAL_DB_USER / LOCAL_DB_NAME and
+// LOCAL_PG_BIN (PostgreSQL's bin folder, found by itself on Windows).
 
 import http from "node:http";
 import { spawn } from "node:child_process";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, statSync, createReadStream } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, unlinkSync, statSync, createReadStream } from "node:fs";
 import { join, dirname, basename, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -99,6 +100,31 @@ async function preflight() {
 
 let postgrest;
 
+// postgrest.exe needs LIBPQ.dll from PostgreSQL's bin folder. A terminal opened
+// before that folder was added to PATH (or a VS Code started before it) cannot
+// see it, so the folder is put on PostgREST's own PATH here: LOCAL_PG_BIN if set,
+// else C:\Program Files\PostgreSQL\16\bin, else the newest version installed.
+function postgresBinDir() {
+  const configured = readEnv("LOCAL_PG_BIN");
+  if (configured) return existsSync(configured) ? configured : null;
+  if (process.platform !== "win32") return null;
+  const base = join(process.env.ProgramFiles || "C:\\Program Files", "PostgreSQL");
+  if (!existsSync(base)) return null;
+  const versions = readdirSync(base)
+    .filter((name) => existsSync(join(base, name, "bin", "libpq.dll")))
+    .sort((a, b) => (a === "16" ? -1 : b === "16" ? 1 : parseFloat(b) - parseFloat(a)));
+  return versions.length ? join(base, versions[0], "bin") : null;
+}
+
+function withPostgresOnPath(env) {
+  const bin = postgresBinDir();
+  if (!bin) return env;
+  // On Windows the variable is usually spelled "Path"; keep one key, whatever its case.
+  const key = Object.keys(env).find((name) => name.toUpperCase() === "PATH") || "PATH";
+  const separator = process.platform === "win32" ? ";" : ":";
+  return { ...env, [key]: env[key] ? `${bin}${separator}${env[key]}` : bin };
+}
+
 function startPostgrest() {
   if (postgrestPath.includes("\\") || postgrestPath.includes("/")) {
     if (!existsSync(postgrestPath)) {
@@ -108,7 +134,7 @@ function startPostgrest() {
   const dbUri = `postgres://authenticator:${AUTHENTICATOR_PASSWORD}@${db.host}:${db.port}/${db.database}`;
   postgrest = spawn(postgrestPath, [], {
     env: {
-      ...process.env,
+      ...withPostgresOnPath(process.env),
       PGRST_DB_URI: dbUri,
       PGRST_DB_SCHEMAS: "public",
       PGRST_DB_ANON_ROLE: "anon",
@@ -131,7 +157,8 @@ function startPostgrest() {
     if (shuttingDown) return;
     // 0xC0000135 (3221225781): Windows could not find a DLL, i.e. libpq.dll.
     const hint = code === 3221225781 || code === -1073741515
-      ? "\nWindows could not find LIBPQ.dll: add C:\\Program Files\\PostgreSQL\\16\\bin to PATH and open a new Command Prompt."
+      ? "\nWindows could not find LIBPQ.dll. Check that PostgreSQL 16 is installed (C:\\Program Files\\PostgreSQL\\16\\bin\\libpq.dll),\n" +
+        "or set LOCAL_PG_BIN in .env.local to PostgreSQL's bin folder."
       : "";
     fail(`PostgREST stopped (exit code ${code}).${hint}`);
   });
