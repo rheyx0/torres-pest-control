@@ -5,7 +5,6 @@
 
 import { useState } from "react";
 import { warrantyKindLabel } from "../../utils/warranty";
-import { appointmentStatusLabel } from "../../utils/constants";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
@@ -114,7 +113,7 @@ function DispatchJob({ job, clientName, now, draggable, onDragStart }) {
         }
         onDragStart?.(appointment);
       }}
-      title={`${clientName} · ${time} · ${appointmentStatusLabel(appointment.status)}`}
+      title={`${clientName} · ${time} · ${appointment.status}`}
       data-status={appointment.status}
       style={{
         position: "absolute",

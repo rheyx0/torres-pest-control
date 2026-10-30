@@ -98,6 +98,42 @@ export function upcomingAppointments(appointments, now = new Date()) {
     .sort(byTime);
 }
 
+/**
+ * What the Schedule badge's number is made of: by status, and by kind of
+ * visit (warranty checkup, free re-treatment, follow-up, service visit),
+ * plus how many still have no technician. Only kinds with visits are listed.
+ */
+export const UPCOMING_KINDS = [
+  { key: "checkup", label: "Warranty checkup", plural: "Warranty checkups", test: (entry) => entry.warrantyKind === "CHECKUP" },
+  { key: "retreatment", label: "Free re-treatment", plural: "Free re-treatments", test: (entry) => entry.warrantyKind === "RETREATMENT" },
+  { key: "followup", label: "Follow-up", plural: "Follow-ups", test: (entry) => !entry.warrantyKind && Boolean(entry.followUpOf) },
+  { key: "service", label: "Service visit", plural: "Service visits", test: (entry) => !entry.warrantyKind && !entry.followUpOf },
+];
+
+export function upcomingBreakdown(upcoming) {
+  const count = (test) => upcoming.filter(test).length;
+  return {
+    total: upcoming.length,
+    statuses: UPCOMING_STATUSES.map((status) => ({ status, count: count((entry) => entry.status === status) })).filter((entry) => entry.count),
+    kinds: UPCOMING_KINDS.map(({ key, label, plural, test }) => {
+      const n = count(test);
+      return { key, count: n, label: n === 1 ? label : plural };
+    }).filter((entry) => entry.count),
+    unassigned: count(unassigned),
+  };
+}
+
+/** "13 upcoming appointments: 4 Pending, 9 Confirmed. 4 Warranty checkups, 9 Service visits. 1 with no technician." */
+export function upcomingSummary(breakdown) {
+  if (!breakdown.total) return "No upcoming appointments.";
+  const parts = [
+    `${breakdown.total} upcoming appointment${breakdown.total === 1 ? "" : "s"}: ${breakdown.statuses.map((entry) => `${entry.count} ${entry.status}`).join(", ")}.`,
+    `${breakdown.kinds.map((entry) => `${entry.count} ${entry.label}`).join(", ")}.`,
+  ];
+  if (breakdown.unassigned) parts.push(`${breakdown.unassigned} with no technician.`);
+  return parts.join(" ");
+}
+
 export function awaitingReschedule(appointments) {
   return appointments.filter((entry) => entry.status === "Reschedule").sort(byTime);
 }

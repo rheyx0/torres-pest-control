@@ -208,10 +208,11 @@ const styles = {
 
 /**
  * @param badges  counts keyed by an item's `badge` name, e.g. { scheduling: 3 }.
+ * @param badgeNotes  what a badge counts, shown when it is hovered, keyed the same way.
  * @param open    drawer state below the breakpoint; ignored on desktop.
  * @param onClose asks the shell to close the drawer (link click, Escape).
  */
-function Sidebar({ badges = {}, open = false, onClose = () => {} }) {
+function Sidebar({ badges = {}, badgeNotes = {}, open = false, onClose = () => {} }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { currentUser, can, logout } = useAuth();
@@ -285,6 +286,7 @@ function Sidebar({ badges = {}, open = false, onClose = () => {} }) {
                         to={item.path}
                         onClick={onClose}
                         aria-current={isActive ? "page" : undefined}
+                        title={count > 0 ? badgeNotes[item.badge] || undefined : undefined}
                         style={{ ...styles.link, ...(isActive ? styles.activeLink : null) }}
                       >
                         {isActive && <span aria-hidden="true" data-active-marker="" style={styles.marker} />}
@@ -296,7 +298,7 @@ function Sidebar({ badges = {}, open = false, onClose = () => {} }) {
                         />
                         {item.label}
                         {count > 0 && (
-                          <span style={styles.badge} aria-label={`${count} ${item.badgeLabel || "need attention"}`}>
+                          <span style={styles.badge} title={badgeNotes[item.badge] || undefined} aria-label={badgeNotes[item.badge] || `${count} ${item.badgeLabel || "need attention"}`}>
                             {count > 99 ? "99+" : count}
                           </span>
                         )}

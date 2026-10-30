@@ -3,10 +3,13 @@
 //
 //   Service     the paid job the warranty came with
 //   Checkups    each checkup period with its checkup, or "Not booked"
-//   Follow-ups  warranty re-treatments (free) and follow-up visits on the job
+//   Follow-ups  follow-up visits on the job (068)
+//   Free re-treatments  ₱0 visits when pests come back under the warranty
 //
-// The office books checkups and re-treatments from here too (WarrantyActions,
-// the same buttons as on the quotation, the contract and the client profile).
+// Every warranty feature works from here: Book checkups (all, or one period's
+// Book), Free re-treatment, Book follow-up (the Schedule's follow-up booking,
+// which under a running warranty books the free re-treatment) and Edit
+// warranty (its length and checkups, on the quotation or contract).
 // Quotes and contracts come from BillingContext, which loads for office
 // accounts only, so the route is gated on Billing.
 
@@ -14,9 +17,11 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import PageHeader from "../components/common/PageHeader";
-import { Card, Input, SegmentedControl, StatusPill } from "../components/ui";
+import { Button, Card, Input, Modal, SegmentedControl, StatusPill } from "../components/ui";
 import { StatTile, TileRow } from "../components/dashboard/DashboardParts";
-import WarrantyActions from "../components/billing/WarrantyActions";
+import WarrantyBookingModal from "../components/billing/WarrantyBookingModal";
+import WarrantyFields, { validateWarranty } from "../components/billing/WarrantyFields";
+import { useToast } from "../context/ToastContext";
 import useAuth from "../hooks/useAuth";
 import useClients from "../hooks/useClients";
 import useServices from "../hooks/useServices";
@@ -28,7 +33,7 @@ import { formatDate } from "../utils/formatters";
 import { checkupLabel } from "../utils/categories";
 import { SUBSYSTEMS } from "../utils/permissions";
 import { appointmentReference, crewOf } from "../utils/scheduling";
-import { allWarranties, checkupReminders, warrantyLabel, warrantyOverview, warrantyServiceIds, warrantyState } from "../utils/warranty";
+import { allWarranties, checkupDatesToBook, checkupReminders, warrantyLabel, warrantyOverview, warrantyServiceIds, warrantyState } from "../utils/warranty";
 
 const STATE_WORDS = { ACTIVE: "Under warranty", NOT_STARTED: "Not started", ENDED: "Ended" };
 const STATE_TONES = { ACTIVE: "success", NOT_STARTED: "neutral", ENDED: "neutral" };
@@ -38,6 +43,15 @@ const FILTERS = [
   { value: "ENDED", word: "Ended" },
   { value: "ALL", word: "All" },
 ];
+
+const dayKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+// A re-treatment is offered for tomorrow, never past the warranty's end.
+const nextDay = (now, warranty) => {
+  const day = new Date(now);
+  day.setDate(day.getDate() + 1);
+  const key = dayKey(day);
+  return key <= warranty.end ? key : warranty.end;
+};
 
 const sectionTitle = { margin: 0, fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.muted, fontWeight: 500 };
 const rowStyle = { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", padding: "6px 0", borderTop: `1px solid ${colors.line}`, fontSize: "13px" };
@@ -66,20 +80,36 @@ function Section({ title, empty, children, count }) {
   );
 }
 
-function WarrantyCard({ warranty, appointments, clientName, serviceNames, crewName, technicians, canBook, onBook, onOpen, now }) {
+function WarrantyCard({ warranty, appointments, clientName, serviceNames, crewName, technicians, canBook, canEdit, onBook, onEdit, onFollowUp, onOpen, now }) {
+  const [booking, setBooking] = useState(null); // { kind, dates }
+  const { showSuccess } = useToast();
   const state = warrantyState(warranty, now);
+  const running = state === "ACTIVE";
   const overview = warrantyOverview(warranty, appointments, now);
   const sourceLink = warranty.type === "CONTRACT" ? `/billing?contract=${warranty.id}` : `/billing?quote=${warranty.id}`;
   const covers = serviceNames(warranty);
   const booked = overview.periods.filter((entry) => entry.visit).length;
   const checkupCount = overview.periods.length + overview.extras.length;
-  const followUpCount = overview.retreatments.length + overview.followUps.length;
+  const today = dayKey(now);
+  const toBook = running ? checkupDatesToBook(warranty, appointments, now) : [];
+  // The job's last completed visit is what a follow-up checks on.
+  const lastDone = [...overview.service].reverse().find((visit) => visit.status === "Completed") || null;
+  const bookable = canBook && running;
+
+  const book = async (request) => {
+    const result = await onBook(request);
+    if (typeof result === "string") return result;
+    setBooking(null);
+    const count = Array.isArray(result) ? result.length : request.visits.length;
+    showSuccess(request.kind === "CHECKUP" ? `${count} warranty checkup${count === 1 ? "" : "s"} booked, at no charge.` : "Free warranty re-treatment booked.");
+    return true;
+  };
 
   return (
     <Card padded={false}>
       <div style={{ display: "grid", gap: "12px", padding: "14px 18px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-          <ShieldCheck size={16} aria-hidden="true" style={{ color: state === "ACTIVE" ? "#2f6b3f" : colors.muted }} />
+          <ShieldCheck size={16} aria-hidden="true" style={{ color: running ? "#2f6b3f" : colors.muted }} />
           <Link to={`/clients/${warranty.source.clientId}`} style={{ fontWeight: 600, color: colors.ink, textDecoration: "none" }}>{clientName(warranty.source.clientId)}</Link>
           <StatusPill tone={STATE_TONES[state]}>{STATE_WORDS[state]}</StatusPill>
           <Link to={sourceLink} style={{ color: colors.muted, fontSize: "12.5px" }}>
@@ -117,7 +147,30 @@ function WarrantyCard({ warranty, appointments, clientName, serviceNames, crewNa
           </div>
         </dl>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "14px 20px" }}>
+        {/* The warranty's features, all from here. */}
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+          {bookable && warranty.frequency && (
+            <Button size="sm" variant="primary" disabled={!toBook.length} onClick={() => setBooking({ kind: "CHECKUP", dates: toBook })}>
+              {toBook.length ? `Book checkups (${toBook.length})` : "Every checkup is booked"}
+            </Button>
+          )}
+          {bookable && (
+            <Button size="sm" onClick={() => setBooking({ kind: "RETREATMENT", dates: [nextDay(now, warranty)] })}>Free re-treatment</Button>
+          )}
+          {canBook && lastDone && (
+            <Button size="sm" onClick={() => onFollowUp(lastDone)} title={running ? "Under warranty, a follow-up is booked as a free re-treatment." : "Book a follow-up visit on this job."}>
+              Book follow-up
+            </Button>
+          )}
+          {canEdit && <Button size="sm" variant="secondary" onClick={() => onEdit(warranty)}>Edit warranty</Button>}
+          {!running && (
+            <span style={{ color: colors.muted, fontSize: "12.5px" }}>
+              {state === "NOT_STARTED" ? "Checkups and free re-treatments can be booked once the warranty starts." : "This warranty has ended; book a paid visit or a new quotation instead."}
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "14px 24px" }}>
           <Section title="Service" count={overview.service.length} empty={state === "NOT_STARTED" ? "No visit done yet." : "No service visit on file."}>
             {overview.service.map((visit) => (
               <VisitRow key={visit.id} visit={visit} label={visit.serviceType || ""} crewName={crewName} onOpen={onOpen} />
@@ -131,7 +184,15 @@ function WarrantyCard({ warranty, appointments, clientName, serviceNames, crewNa
               <li key={`p-${period.index}`} style={rowStyle}>
                 <span style={{ color: colors.ink }}>Checkup {period.index + 1}</span>
                 <span style={{ color: colors.body }}>due {formatDate(period.from)} – {formatDate(period.to)}</span>
-                <span style={{ marginLeft: "auto", color: colors.muted }}>Not booked</span>
+                <span style={{ marginLeft: "auto", display: "inline-flex", gap: "8px", alignItems: "center" }}>
+                  {period.to < today ? (
+                    <span style={{ color: colors.danger }}>Missed</span>
+                  ) : bookable ? (
+                    <Button size="sm" onClick={() => setBooking({ kind: "CHECKUP", dates: [period.to] })}>Book</Button>
+                  ) : (
+                    <span style={{ color: colors.muted }}>Not booked</span>
+                  )}
+                </span>
               </li>
             )))}
             {overview.extras.map((visit) => (
@@ -139,21 +200,73 @@ function WarrantyCard({ warranty, appointments, clientName, serviceNames, crewNa
             ))}
           </Section>
 
-          <Section title="Follow-ups" count={followUpCount} empty="No re-treatment or follow-up yet.">
-            {overview.retreatments.map((visit) => (
-              <VisitRow key={visit.id} visit={visit} label="Warranty re-treatment" note="free" crewName={crewName} onOpen={onOpen} />
-            ))}
+          <Section title="Follow-ups" count={overview.followUps.length} empty="No follow-up visit yet.">
             {overview.followUps.map((visit) => (
               <VisitRow key={visit.id} visit={visit} label="Follow-up visit" crewName={crewName} onOpen={onOpen} />
             ))}
           </Section>
-        </div>
 
-        {canBook && state === "ACTIVE" && (
-          <WarrantyActions warranty={warranty} appointments={appointments} technicians={technicians} onBook={onBook} now={now} />
-        )}
+          <Section title="Free re-treatments" count={overview.retreatments.length} empty={running ? "None yet. Book one if pests come back." : "None."}>
+            {overview.retreatments.map((visit) => (
+              <VisitRow key={visit.id} visit={visit} label="Warranty re-treatment" note="free" crewName={crewName} onOpen={onOpen} />
+            ))}
+          </Section>
+        </div>
       </div>
+
+      {booking && (
+        <WarrantyBookingModal
+          kind={booking.kind}
+          warranty={warranty}
+          dates={booking.dates}
+          appointments={appointments}
+          technicians={technicians}
+          onClose={() => setBooking(null)}
+          onBook={book}
+        />
+      )}
     </Card>
+  );
+}
+
+/** Its warranty and checkups, saved on the quotation or contract (078). */
+function EditWarrantyModal({ warranty, onSave, onClose }) {
+  const [values, setValues] = useState({ warrantyMonths: warranty.months ?? "", checkupFrequency: warranty.frequency || "" });
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const save = async (event) => {
+    event.preventDefault();
+    const problem = validateWarranty(values.warrantyMonths);
+    if (problem) { setError(problem); return; }
+    setSaving(true);
+    const result = await onSave(warranty, values);
+    setSaving(false);
+    if (typeof result === "string") setError(result);
+    else onClose();
+  };
+  return (
+    <Modal
+      title="Edit warranty"
+      eyebrow={`${warranty.type === "CONTRACT" ? "Contract" : "Quotation"} ${warranty.reference}`}
+      size="md"
+      onClose={onClose}
+      footer={(
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" type="submit" form="edit-warranty-form" loading={saving}>Save warranty</Button>
+        </>
+      )}
+    >
+      <form id="edit-warranty-form" onSubmit={save} style={{ display: "grid", gap: "0.75rem" }}>
+        <WarrantyFields
+          months={values.warrantyMonths}
+          frequency={values.checkupFrequency}
+          onChange={(next) => { setError(""); setValues((current) => ({ ...current, ...next })); }}
+          startsWhen={warranty.type === "CONTRACT" ? "when the contract is signed" : "when the job is completed"}
+        />
+        {error && <p role="alert" style={{ margin: 0, color: colors.danger }}>{error}</p>}
+      </form>
+    </Modal>
   );
 }
 
@@ -167,6 +280,8 @@ function WarrantyPage() {
   const { users = [], technicians: technicianAccounts = [] } = useUsers();
   const [filter, setFilter] = useState("ACTIVE");
   const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState(null);
+  const { showSuccess } = useToast();
   const now = new Date();
 
   const quotes = billing?.quotes || [];
@@ -187,6 +302,19 @@ function WarrantyPage() {
   };
   const activeTechs = technicianAccounts.filter((account) => account.status !== "INACTIVE");
   const canBook = can(SUBSYSTEMS.SCHEDULING, "create") && Boolean(bookWarrantyVisits);
+  const canEdit = can(SUBSYSTEMS.BILLING, "edit") && Boolean(billing?.setQuoteWarranty);
+  const saveWarranty = async (warranty, values) => {
+    const months = values.warrantyMonths === "" ? null : Number(values.warrantyMonths);
+    const checkups = months ? values.checkupFrequency || null : null;
+    const result = warranty.type === "CONTRACT"
+      ? await billing.setContractWarranty(warranty.source, months, checkups)
+      : await billing.setQuoteWarranty(warranty.source, months, checkups);
+    if (typeof result === "string") return result;
+    showSuccess(`Warranty on ${warranty.reference} saved.`);
+    return true;
+  };
+  // "Book follow-up": the Schedule's follow-up booking, on the job's last visit (068, 084).
+  const bookFollowUp = (visit) => navigate(`/scheduling?new=1&client=${encodeURIComponent(visit.clientId)}&followup=${encodeURIComponent(visit.id)}`);
 
   const warranties = useMemo(
     () => allWarranties({ quotes, contracts, appointments }, now),
@@ -210,9 +338,10 @@ function WarrantyPage() {
     return {
       done: sum.done + overview.checkupsDone,
       planned: sum.planned + overview.checkupsPlanned,
-      followUps: sum.followUps + overview.retreatments.length + overview.followUps.length,
+      followUps: sum.followUps + overview.followUps.length,
+      retreatments: sum.retreatments + overview.retreatments.length,
     };
-  }, { done: 0, planned: 0, followUps: 0 });
+  }, { done: 0, planned: 0, followUps: 0, retreatments: 0 });
 
   const openVisit = (visit) => navigate(`/scheduling?appointment=${encodeURIComponent(visit.id)}`);
 
@@ -234,11 +363,12 @@ function WarrantyPage() {
       />
 
       <div style={{ marginBottom: "1rem" }}>
-        <TileRow min="170px">
+        <TileRow min="160px">
           <StatTile label="Under warranty" tone="done" value={running.length} note={`${warranties.length} warrant${warranties.length === 1 ? "y" : "ies"} on file`} onClick={() => setFilter("ACTIVE")} />
           <StatTile label="Checkups due soon" tone={dueSoon.length ? "attn" : "plain"} value={dueSoon.length} note={dueSoon.length ? "Due within 7 days, not booked" : "Nothing to book this week"} />
           <StatTile label="Checkups done" value={`${totals.done} of ${totals.planned}`} note="On running warranties" />
-          <StatTile label="Follow-ups" value={totals.followUps} note="Re-treatments and follow-up visits" />
+          <StatTile label="Follow-ups" value={totals.followUps} note="Follow-up visits on the jobs" />
+          <StatTile label="Free re-treatments" value={totals.retreatments} note="When pests came back" />
         </TileRow>
       </div>
 
@@ -288,13 +418,18 @@ function WarrantyPage() {
               crewName={crewName}
               technicians={activeTechs}
               canBook={canBook}
+              canEdit={canEdit}
               onBook={bookWarrantyVisits}
+              onEdit={setEditing}
+              onFollowUp={bookFollowUp}
               onOpen={openVisit}
               now={now}
             />
           ))}
         </div>
       )}
+
+      {editing && <EditWarrantyModal warranty={editing} onSave={saveWarranty} onClose={() => setEditing(null)} />}
     </div>
   );
 }

@@ -15,7 +15,7 @@ import { ROLES } from "../../utils/constants";
 import useAuth from "../../hooks/useAuth";
 import useInventory from "../../hooks/useInventory";
 import { useScheduling } from "../../context/SchedulingContext";
-import { lowStockItems, upcomingAppointments } from "../../utils/dashboardMetrics";
+import { lowStockItems, upcomingAppointments, upcomingBreakdown, upcomingSummary } from "../../utils/dashboardMetrics";
 import { SUBSYSTEMS } from "../../utils/permissions";
 import { useOptionalBilling } from "../../hooks/useBilling";
 import { paymentReminders } from "../../utils/sprint4";
@@ -52,6 +52,12 @@ function Layout({ children }) {
   const billing = useOptionalBilling();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef(null);
+
+  // Hovering the Schedule badge says what its number is made of.
+  const badgeNotes = useMemo(
+    () => ({ scheduling: upcomingSummary(upcomingBreakdown(upcomingAppointments(appointments))) }),
+    [appointments]
+  );
 
   const badges = useMemo(
     () =>
@@ -94,7 +100,7 @@ function Layout({ children }) {
       data-tabs={isTechnician && !inVisit ? "on" : undefined}
       style={{ background: appBackground }}
     >
-      <Sidebar badges={badges} open={drawerOpen} onClose={closeDrawer} />
+      <Sidebar badges={badges} badgeNotes={badgeNotes} open={drawerOpen} onClose={closeDrawer} />
       <div className="app-scrim" aria-hidden="true" onClick={closeDrawer} />
 
       <div className="app-main">

@@ -36,7 +36,7 @@ import { useScheduling } from "../../context/SchedulingContext";
 import useUsers from "../../hooks/useUsers";
 import useInventory from "../../hooks/useInventory";
 import { formatDate, formatDateTime, formatFileSize, formatPeso, formatTime } from "../../utils/formatters";
-import { appointmentStatusLabel, DOCUMENT_CATEGORIES } from "../../utils/constants";
+import { DOCUMENT_CATEGORIES } from "../../utils/constants";
 import { appointmentReference, crewOf } from "../../utils/scheduling";
 import { printableJob } from "../../utils/plans";
 import { colors, pageShell, secondaryButton } from "../../styles/theme";
@@ -784,10 +784,10 @@ function ClientDetails({
                         }}
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" style={{ width: "0.375rem", height: "0.375rem", borderRadius: "9999px", background: "#10b981", display: "inline-block" }}></span>
-                        {appointmentStatusLabel(selectedHistory.status)}
+                        {selectedHistory.status}
                       </span>
                     ) : (
-                      <span style={{ display: "inline-flex", alignItems: "center", padding: "0.1rem 0.55rem", borderRadius: "999px", fontSize: "0.68rem", fontWeight: 500, background: "#efe9e0", color: "#50463c", border: "1px solid #efe9e0" }}>{appointmentStatusLabel(selectedHistory.status)}</span>
+                      <span style={{ display: "inline-flex", alignItems: "center", padding: "0.1rem 0.55rem", borderRadius: "999px", fontSize: "0.68rem", fontWeight: 500, background: "#efe9e0", color: "#50463c", border: "1px solid #efe9e0" }}>{selectedHistory.status}</span>
                     )}
                     <span>·</span>
                     <span>{selectedHistory.serviceType || selectedHistory.pestConcern || client.pestConcern || "General Service"}</span>

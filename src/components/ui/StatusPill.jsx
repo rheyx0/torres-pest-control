@@ -9,7 +9,6 @@
 // not a button, and the design language reserves 3.75px for controls.
 
 import { brand, neutral, radius, status as semantic, surface, weight } from "../../styles/tokens";
-import { appointmentStatusLabel } from "../../utils/constants";
 
 export const TONES = {
   neutral: { background: surface.sunken, color: neutral.saddle },
@@ -95,7 +94,7 @@ function StatusPill({ children, tone, status, icon = null, dot = true, style, ..
             style={{ width: "6px", height: "6px", borderRadius: "50%", background: "currentColor", flexShrink: 0 }}
           />
         ))}
-      {status ? appointmentStatusLabel(status) : children}
+      {status || children}
     </span>
   );
 }
