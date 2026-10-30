@@ -88,6 +88,16 @@ export function needsScheduling(appointments) {
     .sort(byTime);
 }
 
+/** Booked, still-open visits from today on: what the Schedule badge counts. */
+export const UPCOMING_STATUSES = ["Pending", "Scheduled", "Confirmed"];
+
+export function upcomingAppointments(appointments, now = new Date()) {
+  const today = startOfDay(now).getTime();
+  return appointments
+    .filter((entry) => UPCOMING_STATUSES.includes(entry.status) && new Date(entry.scheduledAt).getTime() >= today)
+    .sort(byTime);
+}
+
 export function awaitingReschedule(appointments) {
   return appointments.filter((entry) => entry.status === "Reschedule").sort(byTime);
 }

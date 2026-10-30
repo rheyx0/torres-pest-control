@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { colors } from "../../styles/theme";
 import { appointmentReference } from "../../utils/scheduling";
 import { warrantySchedule } from "../../utils/warranty";
+import { appointmentStatusLabel } from "../../utils/constants";
 
 const day = (value) => new Date(`${String(value).slice(0, 10)}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 const when = (value) => new Date(value).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
@@ -46,7 +47,7 @@ function WarrantyVisitList({ warranty, appointments = [], now = new Date(), onOp
                 <td style={cell}>{visit ? link(visit) : `Checkup ${period.index + 1}`}</td>
                 <td style={cell}>{day(period.from)} – {day(period.to)}</td>
                 <td style={cell}>{visit ? when(visit.scheduledAt) : "—"}</td>
-                <td style={{ ...cell, color: visit ? colors.ink : colors.muted }}>{visit ? visit.status : "Not booked"}</td>
+                <td style={{ ...cell, color: visit ? colors.ink : colors.muted }}>{visit ? appointmentStatusLabel(visit.status) : "Not booked"}</td>
               </tr>
             ))}
             {extras.map((visit) => (
@@ -54,7 +55,7 @@ function WarrantyVisitList({ warranty, appointments = [], now = new Date(), onOp
                 <td style={cell}>{link(visit)}</td>
                 <td style={{ ...cell, color: colors.muted }}>Extra checkup</td>
                 <td style={cell}>{when(visit.scheduledAt)}</td>
-                <td style={cell}>{visit.status}</td>
+                <td style={cell}>{appointmentStatusLabel(visit.status)}</td>
               </tr>
             ))}
             {retreatments.map((visit) => (
@@ -62,7 +63,7 @@ function WarrantyVisitList({ warranty, appointments = [], now = new Date(), onOp
                 <td style={cell}>{link(visit)}</td>
                 <td style={cell}>Re-treatment</td>
                 <td style={cell}>{when(visit.scheduledAt)}</td>
-                <td style={cell}>{visit.status}</td>
+                <td style={cell}>{appointmentStatusLabel(visit.status)}</td>
               </tr>
             ))}
           </tbody>

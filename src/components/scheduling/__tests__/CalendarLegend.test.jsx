@@ -6,15 +6,15 @@ describe("CalendarLegend", () => {
     render(<CalendarLegend />);
 
     const legend = screen.getByRole("list", { name: "Legend" });
-    ["Confirmed", "Pending", "Reschedule", "Completed", "Cancelled"].forEach((status) => {
+    ["Confirmed", "Pending", "Reschedule", "Completed", "Cancel"].forEach((status) => {
       expect(within(legend).getByText(status)).toBeInTheDocument();
     });
   });
 
-  it("strikes through Cancelled, as the cards do", () => {
+  it("strikes through Cancel (stored as Cancelled), as the cards do", () => {
     render(<CalendarLegend />);
 
-    expect(screen.getByText("Cancelled")).toHaveStyle({ textDecoration: "line-through" });
+    expect(screen.getByText("Cancel")).toHaveStyle({ textDecoration: "line-through" });
   });
 
   it("shows a note beside the key when given one", () => {

@@ -15,12 +15,13 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
+  BarChart3,
   CalendarDays,
   Home,
   Lock,
   Package,
   Receipt,
-  BarChart3,
+  ShieldCheck,
   Tag,
   Users,
 } from "lucide-react";
@@ -46,8 +47,10 @@ const NAV_GROUPS = [
   {
     label: "Work",
     items: [
-      { label: "Schedule", path: "/scheduling", subsystem: SUBSYSTEMS.SCHEDULING, action: "view", Icon: CalendarDays, badge: "scheduling" },
+      { label: "Schedule", path: "/scheduling", subsystem: SUBSYSTEMS.SCHEDULING, action: "view", Icon: CalendarDays, badge: "scheduling", badgeLabel: "upcoming appointments" },
       { label: "Clients", path: "/clients", subsystem: SUBSYSTEMS.CLIENTS, action: "view", Icon: Users },
+      // Warranties live on the office's quotations and contracts, so Billing gates it.
+      { label: "Warranty", path: "/warranty", subsystem: SUBSYSTEMS.BILLING, action: "view", Icon: ShieldCheck },
     ],
   },
   {
@@ -293,7 +296,7 @@ function Sidebar({ badges = {}, open = false, onClose = () => {} }) {
                         />
                         {item.label}
                         {count > 0 && (
-                          <span style={styles.badge} aria-label={`${count} need attention`}>
+                          <span style={styles.badge} aria-label={`${count} ${item.badgeLabel || "need attention"}`}>
                             {count > 99 ? "99+" : count}
                           </span>
                         )}

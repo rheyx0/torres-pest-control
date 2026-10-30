@@ -194,6 +194,14 @@ export const APPOINTMENT_STATUSES = [
   "Cancelled",
 ];
 
+/**
+ * The word shown for an appointment status. The stored value stays
+ * "Cancelled" (the check constraint, the transition trigger and every rule
+ * that compares it); only the screen says "Cancel".
+ */
+export const APPOINTMENT_STATUS_LABELS = { Cancelled: "Cancel" };
+export const appointmentStatusLabel = (status) => APPOINTMENT_STATUS_LABELS[status] || status || "";
+
 /** Set only by start_visit() (migration 048), never picked from a status select. */
 export const IN_PROGRESS = "In progress";
 

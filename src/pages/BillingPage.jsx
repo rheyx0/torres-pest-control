@@ -23,7 +23,7 @@ import InvoiceDetail, { INVOICE_TONES } from "../components/billing/InvoiceDetai
 import ContractEditor from "../components/billing/ContractEditor";
 import ContractDetail, { CONTRACT_TONES } from "../components/billing/ContractDetail";
 import PaymentForm from "../components/billing/PaymentForm";
-import PaymentList from "../components/billing/PaymentList";
+import PaymentList, { paymentState } from "../components/billing/PaymentList";
 import BillingPrinter from "../components/billing/BillingPrinter";
 import useAuth from "../hooks/useAuth";
 import useBilling from "../hooks/useBilling";
@@ -48,6 +48,7 @@ import { formatDate, formatPeso } from "../utils/formatters";
 import { SUBSYSTEMS } from "../utils/permissions";
 
 const TABS = [
+  { value: "all", label: "All billing" },
   { value: "quotes", label: "Quotes" },
   { value: "invoices", label: "Invoices" },
   { value: "contracts", label: "Contracts" },
@@ -57,6 +58,8 @@ const TABS = [
 const QUOTE_FILTERS = ["All", "Draft", "Sent", "Approved", "Rejected", "Expired"];
 const INVOICE_FILTERS = ["All", "Unpaid", "Partly paid", "Overdue", "Paid", "Void"];
 const CONTRACT_FILTERS = ["All", "Draft", "Active", "Ended", "Cancelled"];
+// "All billing" lists every record together; its chips pick one kind.
+const RECORD_FILTERS = ["All", "Quotes", "Invoices", "Contracts", "Payments"];
 
 function BillingPage() {
   const navigate = useNavigate();
@@ -81,7 +84,7 @@ function BillingPage() {
   const confirm = useConfirm();
   const NOT_CONFIRMED = "";
 
-  const [tab, setTab] = useState(searchParams.get("invoice") ? "invoices" : searchParams.get("contract") ? "contracts" : "quotes");
+  const [tab, setTab] = useState(searchParams.get("invoice") ? "invoices" : searchParams.get("contract") ? "contracts" : searchParams.get("quote") ? "quotes" : "all");
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null); // { quote } — quote null means new
@@ -185,9 +188,51 @@ function BillingPage() {
     { key: "reference", label: "Contract", sortable: true, render: (contract) => <strong style={{ color: colors.ink }}>{contract.reference}</strong> },
     { key: "clientName", label: "Client", sortable: true },
     { key: "title", label: "Title", sortable: true },
-    { key: "state", label: "Status", sortable: true, render: (contract) => <StatusPill tone={CONTRACT_TONES[contract.status]} status={contract.state} /> },
+    { key: "state", label: "Status", sortable: true, render: (contract) => <StatusPill tone={CONTRACT_TONES[contract.status]}>{contract.state}</StatusPill> },
     { key: "startsOn", label: "Starts", sortable: true, render: (contract) => formatDate(contract.startsOn) },
     { key: "pricePerVisit", label: "Per visit", align: "right", sortable: true, render: (contract) => formatPeso(contract.pricePerVisit) },
+  ];
+
+  // "All billing": every quote, invoice, contract and payment in one list,
+  // newest first, each opening its own record.
+  const paymentSource = (payment) => (payment.contractId && payment.kind === "DEPOSIT"
+    ? billing.contractById(payment.contractId)
+    : payment.kind === "DEPOSIT" ? quoteById(payment.quoteId) : invoiceById(payment.invoiceId));
+  const recordMatches = [
+    ...quoteMatches.map((quote) => ({ key: `q-${quote.id}`, kind: "Quotes", type: "Quote", id: quote.id, reference: quote.reference, clientName: quote.clientName, state: quote.state, pill: <StatusPill status={quote.state} />, date: String(quote.createdAt || "").slice(0, 10), amount: quote.total, open: () => openQuote(quote.id) })),
+    ...(invoicesAvailable ? invoiceMatches : []).map((invoice) => ({ key: `i-${invoice.id}`, kind: "Invoices", type: "Invoice", id: invoice.id, reference: invoice.reference, clientName: invoice.clientName, state: invoice.state, pill: <StatusPill tone={INVOICE_TONES[invoice.balance.state]} status={invoice.state} />, date: invoice.issuedOn, amount: invoice.amountDue, open: () => openInvoice(invoice.id) })),
+    ...(billing.contractsAvailable ? contractMatches : []).map((contract) => ({ key: `k-${contract.id}`, kind: "Contracts", type: "Contract", id: contract.id, reference: contract.reference, clientName: contract.clientName, state: contract.state, pill: <StatusPill tone={CONTRACT_TONES[contract.status]}>{contract.state}</StatusPill>, date: contract.startsOn, amount: contract.pricePerVisit, amountNote: "per visit", open: () => openContract(contract.id) })),
+    ...payments
+      .map((payment) => ({ payment, source: paymentSource(payment), clientName: clientName(payment.clientId) }))
+      .filter(({ payment, source, clientName: name }) => !needle || `${payment.reference} ${source?.reference || ""} ${name}`.toLowerCase().includes(needle))
+      .map(({ payment, source, clientName: name }) => ({
+        key: `p-${payment.id}`,
+        kind: "Payments",
+        type: payment.kind === "DEPOSIT" ? "Down payment" : "Payment",
+        id: payment.id,
+        reference: payment.reference,
+        detail: source?.reference || "",
+        clientName: name,
+        state: paymentState(payment),
+        pill: <StatusPill status={paymentState(payment)} />,
+        date: payment.paidOn,
+        amount: payment.amount,
+        open: () => {
+          if (!source) return;
+          if (payment.contractId && payment.kind === "DEPOSIT") openContract(source.id);
+          else if (payment.kind === "DEPOSIT") openQuote(source.id);
+          else openInvoice(source.id);
+        },
+      })),
+  ];
+  const recordRows = recordMatches.filter((record) => filter === "All" || record.kind === filter);
+  const recordColumns = [
+    { key: "type", label: "Type", sortable: true },
+    { key: "reference", label: "Reference", sortable: true, render: (record) => <span><strong style={{ color: colors.ink }}>{record.reference}</strong>{record.detail ? <span style={{ color: colors.muted }}> · {record.detail}</span> : null}</span> },
+    { key: "clientName", label: "Client", sortable: true },
+    { key: "state", label: "Status", sortable: true, render: (record) => record.pill },
+    { key: "date", label: "Date", sortable: true, render: (record) => formatDate(record.date) },
+    { key: "amount", label: "Amount", align: "right", sortable: true, render: (record) => <>{formatPeso(record.amount)}{record.amountNote ? <span style={{ color: colors.muted }}> {record.amountNote}</span> : null}</> },
   ];
 
   const saveContract = async (values) => {
@@ -371,9 +416,12 @@ function BillingPage() {
   }
 
   // Each filter chip carries its count ("Overdue 2"); the value stays the plain word.
-  const filterRows = tab === "quotes" ? quoteMatches : tab === "contracts" ? contractMatches : invoiceMatches;
-  const filters = (tab === "quotes" ? QUOTE_FILTERS : tab === "contracts" ? CONTRACT_FILTERS : INVOICE_FILTERS).map((value) => {
-    const count = value === "All" ? filterRows.length : filterRows.filter((row) => row.state === value).length;
+  const filterRows = tab === "all" ? recordMatches : tab === "quotes" ? quoteMatches : tab === "contracts" ? contractMatches : invoiceMatches;
+  const filterValues = tab === "all"
+    ? RECORD_FILTERS.filter((value) => (value !== "Invoices" || invoicesAvailable) && (value !== "Contracts" || billing.contractsAvailable))
+    : tab === "quotes" ? QUOTE_FILTERS : tab === "contracts" ? CONTRACT_FILTERS : INVOICE_FILTERS;
+  const filters = filterValues.map((value) => {
+    const count = value === "All" ? filterRows.length : filterRows.filter((row) => (tab === "all" ? row.kind : row.state) === value).length;
     return {
       value,
       label: (
@@ -395,7 +443,7 @@ function BillingPage() {
       <PageHeader
         eyebrow="Money"
         title="Billing"
-        description="Quotes, invoices and the money received."
+        description="Quotes, invoices, contracts and the money received. All billing shows every record together."
         actions={canCreate && (
           <div style={{ display: "flex", gap: "0.5rem" }}>
             {billing.contractsAvailable && <Button icon={<Plus size={15} />} onClick={() => setContractEditing({ contract: null })}>New contract</Button>}
@@ -409,7 +457,7 @@ function BillingPage() {
         <SegmentedControl ariaLabel="Billing view" options={tabs} value={tab} onChange={changeTab} />
         {tab !== "payments" && (
           <>
-            <SegmentedControl ariaLabel={`${tab === "quotes" ? "Quote" : tab === "contracts" ? "Contract" : "Invoice"} status`} size="sm" options={filters} value={filter} onChange={setFilter} />
+            <SegmentedControl ariaLabel={tab === "all" ? "Billing record type" : `${tab === "quotes" ? "Quote" : tab === "contracts" ? "Contract" : "Invoice"} status`} size="sm" options={filters} value={filter} onChange={setFilter} />
             <Input aria-label="Search billing" placeholder="Search reference or client" value={search} onChange={(event) => setSearch(event.target.value)} style={{ flex: "1 1 220px", maxWidth: "320px" }} />
           </>
         )}
@@ -432,6 +480,11 @@ function BillingPage() {
       {error && <p role="alert" style={{ color: colors.danger }}>{error}</p>}
       {!invoicesAvailable && <p style={{ color: colors.muted, fontSize: "0.85rem" }}>Invoices need migration 062.</p>}
 
+      {tab === "all" && (
+        <Card padded={false}>
+          <DataTable caption="All billing records" columns={recordColumns} rows={recordRows} rowKey={(record) => record.key} initialSort={{ key: "date", direction: "desc" }} onRowClick={(record) => record.open()} loading={loading} empty={loading ? "Loading billing…" : "No billing records yet."} />
+        </Card>
+      )}
       {tab === "quotes" && (
         <Card padded={false}>
           <DataTable caption="Quotes" columns={quoteColumns} rows={quoteRows} initialSort={{ key: "reference", direction: "desc" }} onRowClick={(quote) => openQuote(quote.id)} loading={loading} empty={loading ? "Loading quotes…" : "No quotes yet."} />

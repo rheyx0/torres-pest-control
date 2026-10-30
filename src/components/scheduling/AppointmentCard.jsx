@@ -20,6 +20,7 @@
 
 import { RotateCcw } from "lucide-react";
 import { warrantyKindLabel } from "../../utils/warranty";
+import { appointmentStatusLabel } from "../../utils/constants";
 import { neutral, radius, weight } from "../../styles/tokens";
 import { formatDuration } from "../../utils/calendarDates";
 import { crewOf, endOf } from "../../utils/scheduling";
@@ -99,7 +100,7 @@ function AppointmentCard({ appointment, height = null, columns = 1, placement = 
       data-status={appointment.status}
       title={`${client.name}${plan ? ` (${plan})` : ""}
 ${startLabel} – ${endLabel} · ${formatDuration(appointment.durationMinutes || 60)}
-${technicianName} · ${appointment.status}${appointment.pestConcern ? ` · ${appointment.pestConcern}` : ""}${appointment.warrantyKind ? ` · ${warrantyKindLabel(appointment)} (free)` : ""}`}
+${technicianName} · ${appointmentStatusLabel(appointment.status)}${appointment.pestConcern ? ` · ${appointment.pestConcern}` : ""}${appointment.warrantyKind ? ` · ${warrantyKindLabel(appointment)} (free)` : ""}`}
       style={{
         width: "100%",
         textAlign: "left",

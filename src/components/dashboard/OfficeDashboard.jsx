@@ -4,6 +4,9 @@
 //   - four summary cards, each a link to the list behind it;
 //   - the dispatch board: who is where today (or tomorrow), with a line for
 //     now and an Unassigned row whose visits can be dragged onto a technician;
+//   - Unassigned appointments: every upcoming visit with no technician yet,
+//     each opening the visit to assign it (the Schedule badge counts
+//     upcoming visits instead);
 //   - Needs attention: one row per kind of loose end, each with the one
 //     action that closes it;
 //   - visits per day this week, and the visits that just finished with their
@@ -31,6 +34,7 @@ import { bookableTechnicians, crewOf, endOf, findTechnicianConflicts } from "../
 import { greetingFor } from "../../utils/greetings";
 import { absenceDuring, describeOut, outOn } from "../../utils/absences";
 import { plural } from "../../utils/formatters";
+import { withWarranty } from "../../utils/warranty";
 import {
   attentionItems,
   dispatchLanes,
@@ -58,7 +62,7 @@ import { colors, pageShell } from "../../styles/theme";
 import { neutral } from "../../styles/tokens";
 import StatusPill from "../ui/StatusPill";
 import { Panel, RankedBars, StatTile, TileRow, whenLabel } from "./DashboardParts";
-import { AttentionList, DispatchBoard, KpiCard, RecentList, WeekBarsCard } from "./TodayParts";
+import { AttentionList, DispatchBoard, KpiCard, RecentList, UnassignedList, WeekBarsCard } from "./TodayParts";
 import BillingPanel from "./BillingPanel";
 import { useOptionalBilling } from "../../hooks/useBilling";
 
@@ -157,6 +161,15 @@ function OfficeDashboard() {
       .join(" · "),
     state: signatureState(entry),
     to: `/scheduling?appointment=${encodeURIComponent(entry.id)}${entry.reportSubmitted ? "" : "&tab=Report"}`,
+  }));
+
+  const unassignedRows = unassigned.map((entry) => ({
+    id: entry.id,
+    when: whenLabel(entry.scheduledAt, now),
+    title: clientName(entry.clientId),
+    detail: withWarranty(entry.serviceType || entry.pestConcern || "No service yet", entry),
+    status: entry.status,
+    to: `/scheduling?appointment=${encodeURIComponent(entry.id)}`,
   }));
 
   // Drag from the Unassigned row onto a technician. Only the crew changes —
@@ -265,6 +278,8 @@ function OfficeDashboard() {
           dayChoice={dayChoice}
           onDayChange={setDayChoice}
         />
+
+        <UnassignedList rows={unassignedRows} loading={loading} />
 
         <div className="today-columns dash-joined">
           <AttentionList items={attention} loading={loading} />

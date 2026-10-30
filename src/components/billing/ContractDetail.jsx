@@ -12,7 +12,7 @@ import { warrantyLabel } from "../../utils/warranty";
 import { Ban, Mail, Printer, Trash2 } from "lucide-react";
 import { Button, Input, Modal, MoreMenu, StatusPill } from "../ui";
 import { colors } from "../../styles/theme";
-import { BILLING_SCHEDULES, CONTRACT_STATUS_LABELS, PAYMENT_TERMS } from "../../utils/constants";
+import { appointmentStatusLabel, BILLING_SCHEDULES, CONTRACT_STATUS_LABELS, PAYMENT_TERMS } from "../../utils/constants";
 import { appointmentReference } from "../../utils/scheduling";
 import { formatDate, formatPeso } from "../../utils/formatters";
 import { validateDocument } from "../../utils/validators";
@@ -116,7 +116,7 @@ function ContractDetail({ contract, client, signedDocument = null, visits = [], 
       <div style={{ display: "grid", gap: "1rem" }}>
         <div style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
           <strong style={{ color: colors.ink }}>{contract.title}</strong>
-          <StatusPill tone={CONTRACT_TONES[status]} status={CONTRACT_STATUS_LABELS[status]} />
+          <StatusPill tone={CONTRACT_TONES[status]}>{CONTRACT_STATUS_LABELS[status]}</StatusPill>
         </div>
         {status === "CANCELLED" && <p style={{ margin: 0, color: colors.danger }}>Cancelled {formatDate(contract.cancelledAt)}: {contract.cancellationReason}</p>}
 
@@ -170,7 +170,7 @@ function ContractDetail({ contract, client, signedDocument = null, visits = [], 
           <section aria-label="Visits under this contract">
             <h3 style={{ margin: "0 0 0.3rem", fontSize: "0.95rem", color: colors.ink }}>Visits · {done} of {live} done</h3>
             <ul style={{ margin: 0, paddingLeft: "1.1rem", color: colors.body, fontSize: "0.88rem" }}>
-              {visits.map((visit) => <li key={visit.id}>{appointmentReference(visit)} · {formatDate(visit.scheduledAt)} · {visit.status}</li>)}
+              {visits.map((visit) => <li key={visit.id}>{appointmentReference(visit)} · {formatDate(visit.scheduledAt)} · {appointmentStatusLabel(visit.status)}</li>)}
             </ul>
           </section>
         ) : status === "ACTIVE" ? (

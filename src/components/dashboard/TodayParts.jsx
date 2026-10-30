@@ -5,6 +5,7 @@
 
 import { useState } from "react";
 import { warrantyKindLabel } from "../../utils/warranty";
+import { appointmentStatusLabel } from "../../utils/constants";
 import { Link } from "react-router-dom";
 import {
   ArrowRight,
@@ -113,7 +114,7 @@ function DispatchJob({ job, clientName, now, draggable, onDragStart }) {
         }
         onDragStart?.(appointment);
       }}
-      title={`${clientName} · ${time} · ${appointment.status}`}
+      title={`${clientName} · ${time} · ${appointmentStatusLabel(appointment.status)}`}
       data-status={appointment.status}
       style={{
         position: "absolute",
@@ -426,6 +427,43 @@ export function WeekBarsCard({ bars, rangeLabel }) {
 // ---------------------------------------------------------------------------
 
 const SIGNATURE_TONES = { Signed: "success", "No signature": "warning", "Report due": "danger" };
+
+/**
+ * Upcoming visits with no technician yet, soonest first. These left the
+ * Schedule badge (which now counts upcoming visits) for the Today page, where
+ * the office assigns them: each row opens the visit to pick its crew.
+ */
+export function UnassignedList({ rows, loading = false, limit = 8 }) {
+  const shown = rows.slice(0, limit);
+  return (
+    <Card title={`Unassigned appointments${rows.length ? ` (${rows.length})` : ""}`} padded={false}>
+      {loading ? (
+        <p style={{ margin: 0, padding: "16px 18px", color: neutral.bark }}>Loading…</p>
+      ) : rows.length === 0 ? (
+        <p style={{ margin: 0, padding: "16px 18px", color: neutral.bark }}>Every upcoming visit has a technician.</p>
+      ) : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          {shown.map((row, index) => (
+            <li key={row.id} style={rowStyle(index === shown.length - 1 && rows.length <= limit)}>
+              <span style={{ width: "96px", flex: "none", fontSize: "12.5px", color: neutral.bark, fontVariantNumeric: "tabular-nums" }}>{row.when}</span>
+              <Link to={row.to} style={{ minWidth: 0, flex: 1, color: "inherit", textDecoration: "none" }}>
+                <span style={{ display: "block", fontWeight: weight.medium, color: neutral.ink }}>{row.title}</span>
+                <span style={{ display: "block", fontSize: "12.5px", color: neutral.bark }}>{row.detail}</span>
+              </Link>
+              <StatusPill status={row.status} />
+              <Link to={row.to} aria-label={`Assign ${row.title}`} style={{ ...quietButton, padding: "0 10px", minHeight: "28px", display: "inline-flex", alignItems: "center", fontSize: "12.5px", textDecoration: "none", flexShrink: 0 }}>Assign</Link>
+            </li>
+          ))}
+          {rows.length > limit && (
+            <li style={{ ...rowStyle(true), color: neutral.bark, fontSize: "12.5px" }}>
+              and {rows.length - limit} more. Use the Unassigned filter on the Schedule to see them all.
+            </li>
+          )}
+        </ul>
+      )}
+    </Card>
+  );
+}
 
 export function RecentList({ rows }) {
   return (

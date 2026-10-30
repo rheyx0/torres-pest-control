@@ -117,3 +117,32 @@ test("one list of everything booked under a warranty", () => {
   expect(list.extras.map((entry) => entry.id)).toEqual(["a"]);
   expect(list.retreatments.map((entry) => entry.id)).toEqual(["e"]);
 });
+
+test("the Warranty page: every warranty, running first, with its service, checkups and follow-ups", () => {
+  const { allWarranties, warrantyOverview } = require("../warranty");
+  const ended = { id: "q0", reference: "TPC-Q-00001", clientId: "c2", status: "APPROVED", warrantyMonths: 3, checkupFrequency: "" };
+  const oldJob = { id: "v0", clientId: "c2", quoteId: "q0", status: "Completed", scheduledAt: "2025-01-10T09:00:00" };
+  const draft = { id: "q9", reference: "TPC-Q-00099", clientId: "c3", status: "DRAFT", warrantyMonths: 6 };
+  const checkup = { id: "w1", clientId: "c1", warrantyKind: "CHECKUP", warrantyQuoteId: "q1", status: "Pending", scheduledAt: "2026-10-20T09:00:00" };
+  const retreat = { id: "w2", clientId: "c1", warrantyKind: "RETREATMENT", warrantyQuoteId: "q1", status: "Completed", scheduledAt: "2026-10-08T09:00:00" };
+  const followUp = { id: "f1", clientId: "c1", followUpOf: "v1", quoteId: "q1", status: "Confirmed", scheduledAt: "2026-10-15T09:00:00" };
+  const gone = { id: "x1", clientId: "c1", quoteId: "q1", status: "Cancelled", scheduledAt: "2026-10-02T09:00:00" };
+  const appointments = [job, oldJob, checkup, retreat, followUp, gone];
+
+  const list = allWarranties({ quotes: [ended, quote, draft], contracts: [], appointments }, now);
+  expect(list.map((entry) => entry.reference)).toEqual(["TPC-Q-00030", "TPC-Q-00099", "TPC-Q-00001"]);
+
+  const overview = warrantyOverview(list[0], appointments, now);
+  expect(overview.service.map((visit) => visit.id)).toEqual(["v1"]); // the follow-up, checkups and cancelled visit are not the job
+  expect(overview.followUps.map((visit) => visit.id)).toEqual(["f1"]);
+  expect(overview.retreatments.map((visit) => visit.id)).toEqual(["w2"]);
+  expect(overview.periods[0].visit?.id).toBe("w1"); // Oct 2 – Nov 1
+  expect(overview.checkupsPlanned).toBe(12);
+  expect(overview.checkupsDone).toBe(0);
+  expect(overview.next?.id).toBe("w1");
+
+  // A contract's job is its plan's visits.
+  const planVisit = { id: "pv1", clientId: "c1", planId: "p1", status: "Completed", scheduledAt: "2026-07-05T09:00:00" };
+  const contractOverview = warrantyOverview(warrantyOf("CONTRACT", contract), [planVisit, job], now);
+  expect(contractOverview.service.map((visit) => visit.id)).toEqual(["pv1"]);
+});

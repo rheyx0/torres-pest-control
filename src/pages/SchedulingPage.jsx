@@ -35,7 +35,7 @@ import CategoryBadge from "../components/ui/CategoryBadge";
 import { useScheduling } from "../context/SchedulingContext";
 import { useToast } from "../context/ToastContext";
 import { useConfirm } from "../context/ConfirmContext";
-import { ACTIVITY_LEVELS, APPOINTMENT_STATUSES, ATTACHMENT_CATEGORIES, DOCUMENT_CATEGORIES, PEST_CONCERN_SUGGESTIONS, REPORT_UPLOAD_CATEGORIES, ROLES, LIMITS, SERVICE_FREQUENCIES } from "../utils/constants";
+import { ACTIVITY_LEVELS, APPOINTMENT_STATUSES, appointmentStatusLabel, ATTACHMENT_CATEGORIES, DOCUMENT_CATEGORIES, PEST_CONCERN_SUGGESTIONS, REPORT_UPLOAD_CATEGORIES, ROLES, LIMITS, SERVICE_FREQUENCIES } from "../utils/constants";
 import useNow from "../hooks/useNow";
 import { CALENDAR_END_HOUR, DAY_END_HOUR, DAY_START_HOUR, SCHEDULE_END_HOUR, allowedNextStatuses, appointmentReference, combineServices, servicesOf, bookableTechnicians, busyTechnicianIds, canTransition, crewOf, dayLoad, describeSlotConflict, findTechnicianConflicts, isAssignedTo, endOf, layoutDayAppointments, moveSteps, startOf, technicianHours } from "../utils/scheduling";
 import {
@@ -503,7 +503,7 @@ function SchedulingPage() {
       return;
     }
 
-    const moved = `Moved to ${formatDateTime(nextScheduledAt)}. Still ${current.status}.`;
+    const moved = `Moved to ${formatDateTime(nextScheduledAt)}. Still ${appointmentStatusLabel(current.status)}.`;
     setMessage(moved);
     // Undo puts it back where it was — unless that slot is now in the past,
     // which update_appointment would refuse.
@@ -588,7 +588,7 @@ function SchedulingPage() {
       message: nextStatus === "Cancelled" ? "The visit is cancelled and its time is freed." : undefined,
       details: [
         ["Visit", appointmentReference(selected)],
-        statusChanged ? ["Status", `${selected.status} → ${nextStatus}`] : null,
+        statusChanged ? ["Status", `${appointmentStatusLabel(selected.status)} → ${appointmentStatusLabel(nextStatus)}`] : null,
         timingChanged ? ["New time", formatDateTime(nextScheduledAt)] : null,
       ],
       confirmLabel: ending ? `Mark ${nextStatus}` : "Save changes",
@@ -1191,7 +1191,7 @@ function SchedulingPage() {
               <Field label="Status">
                 <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                   <option value="ALL">All statuses</option>
-                  {APPOINTMENT_STATUSES.map((status) => <option key={status}>{status}</option>)}
+                  {APPOINTMENT_STATUSES.map((status) => <option key={status} value={status}>{appointmentStatusLabel(status)}</option>)}
                 </Select>
               </Field>
               <Field label="Client">
@@ -1505,7 +1505,7 @@ function AppointmentOverviewForm({ appointment, client, activeAccounts, busyTech
       <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Frequency</strong><select name="serviceFrequency" defaultValue={appointment.serviceFrequency || ""} style={inputStyle}><option value="">Not set</option>{SERVICE_FREQUENCIES.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
       <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Price (₱)</strong><input name="price" type="number" min="0" max={LIMITS.MAX_PRICE} step="0.01" defaultValue={appointment.price === "" || appointment.price === null || appointment.price === undefined ? "" : appointment.price} placeholder="0.00" style={inputStyle} /></div>
     </div>
-    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Status</strong><select name="status" value={status} onChange={(event) => setStatus(event.target.value)} style={inputStyle}>{statusOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select>{statusOptions.length === 1 && <span style={hintStyle}>A {appointment.status.toLowerCase()} appointment cannot change status.</span>}</div>
+    <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Status</strong><select name="status" value={status} onChange={(event) => setStatus(event.target.value)} style={inputStyle}>{statusOptions.map((option) => <option key={option} value={option}>{appointmentStatusLabel(option)}</option>)}</select>{statusOptions.length === 1 && <span style={hintStyle}>A {appointmentStatusLabel(appointment.status).toLowerCase()} appointment cannot change status.</span>}</div>
     {status === "Cancelled" && <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Cancellation reason (optional)</strong><textarea name="cancellationReason" maxLength={LIMITS.NOTES_MAX} defaultValue={appointment.cancellationReason || ""} rows={2} placeholder="Why is this appointment being cancelled?" style={{ ...inputStyle, resize: "vertical" }} /></div>}
     <div style={{ display: "grid", gap: "0.4rem" }}><strong style={labelStyle}>Visit notes</strong><textarea name="notes" defaultValue={appointment.notes} rows={3} maxLength={LIMITS.NOTES_MAX} style={{ ...inputStyle, resize: "vertical" }} /></div>
     <button type="submit" style={primaryButton}><Check size={15} /> Save appointment</button>

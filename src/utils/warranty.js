@@ -279,3 +279,51 @@ export function warrantySchedule(warranty, appointments = [], now = new Date()) 
     retreatments: [...visits.retreatments].sort(byDate),
   };
 }
+
+// ---- the Warranty page: every warranty with its service, checkups and follow-ups
+
+/** Every warranty on file (quotations and contracts), running ones first, then newest. */
+export function allWarranties({ quotes = [], contracts = [], appointments = [] } = {}, now = new Date()) {
+  const order = { ACTIVE: 0, NOT_STARTED: 1, ENDED: 2 };
+  return [
+    ...contracts.map((contract) => warrantyOf("CONTRACT", contract, appointments)),
+    ...quotes.map((quote) => warrantyOf("QUOTE", quote, appointments)),
+  ]
+    .filter(Boolean)
+    .sort((a, b) => (order[warrantyState(a, now)] - order[warrantyState(b, now)])
+      || (b.start || "9999").localeCompare(a.start || "9999")
+      || String(b.reference).localeCompare(String(a.reference)));
+}
+
+/**
+ * One warranty in full, for the Warranty page:
+ *   service     the paid job the warranty was sold with (the quotation's
+ *               visits, or the contract plan's)
+ *   periods / extras / retreatments   as warrantySchedule()
+ *   followUps   follow-up visits booked on the job (068)
+ *   checkupsDone, checkupsPlanned, next   from warrantyVisits()
+ * Cancelled visits are left out, as in warrantySchedule().
+ */
+export function warrantyOverview(warranty, appointments = [], now = new Date()) {
+  const source = warranty?.source || {};
+  const live = (visit) => visit.status !== "Cancelled";
+  const byDate = (a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt);
+  const service = appointments
+    .filter((visit) => live(visit) && !visit.warrantyKind && !visit.followUpOf && (warranty.type === "CONTRACT"
+      ? Boolean(source.planId) && visit.planId === source.planId
+      : visit.quoteId === warranty.id))
+    .sort(byDate);
+  const jobIds = new Set(service.map((visit) => visit.id));
+  const followUps = appointments
+    .filter((visit) => live(visit) && !visit.warrantyKind && visit.followUpOf && jobIds.has(visit.followUpOf))
+    .sort(byDate);
+  const visits = warrantyVisits(warranty, appointments, now);
+  return {
+    ...warrantySchedule(warranty, appointments, now),
+    service,
+    followUps,
+    checkupsDone: visits.done,
+    checkupsPlanned: plannedCheckupCount(warranty),
+    next: visits.next,
+  };
+}

@@ -36,6 +36,7 @@ import InventoryPage from "./pages/InventoryPage";
 import SchedulingPage from "./pages/SchedulingPage";
 import ServicesPage from "./pages/ServicesPage";
 import BillingPage from "./pages/BillingPage";
+import WarrantyPage from "./pages/WarrantyPage";
 import ReportsPage from "./pages/ReportsPage";
 
 import { SUBSYSTEMS } from "./utils/permissions";
@@ -130,6 +131,10 @@ function App() {
                 <Route
                   path="/billing"
                   element={<Guarded subsystem={SUBSYSTEMS.BILLING} action="view"><BillingPage /></Guarded>}
+                />
+                <Route
+                  path="/warranty"
+                  element={<Guarded subsystem={SUBSYSTEMS.BILLING} action="view"><WarrantyPage /></Guarded>}
                 />
                 <Route
                   path="/services"

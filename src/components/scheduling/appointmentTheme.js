@@ -28,7 +28,7 @@ const VISUALS = {
   "In progress": { label: "In progress", edge: brand.base, fill: "rgba(127, 17, 17, 0.07)", borderStyle: "solid", strike: false, muted: false },
   Reschedule: { label: "Reschedule", edge: semantic.warning, fill: semantic.warningSurface, borderStyle: "solid", strike: false, muted: false },
   Completed: { label: "Completed", edge: semantic.success, fill: semantic.successSurface, borderStyle: "solid", strike: false, muted: false },
-  Cancelled: { label: "Cancelled", edge: neutral.loam, fill: "transparent", borderStyle: "solid", strike: true, muted: true },
+  Cancelled: { label: "Cancel", edge: neutral.loam, fill: "transparent", borderStyle: "solid", strike: true, muted: true },
 };
 
 /** The statuses the legend explains, in the order it lists them. */

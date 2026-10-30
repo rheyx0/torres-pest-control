@@ -15,7 +15,7 @@ import { ROLES } from "../../utils/constants";
 import useAuth from "../../hooks/useAuth";
 import useInventory from "../../hooks/useInventory";
 import { useScheduling } from "../../context/SchedulingContext";
-import { lowStockItems, needsScheduling } from "../../utils/dashboardMetrics";
+import { lowStockItems, upcomingAppointments } from "../../utils/dashboardMetrics";
 import { SUBSYSTEMS } from "../../utils/permissions";
 import { useOptionalBilling } from "../../hooks/useBilling";
 import { paymentReminders } from "../../utils/sprint4";
@@ -23,15 +23,17 @@ import { layout } from "../../styles/tokens";
 import { appBackground } from "../../styles/theme";
 
 /**
- * Sidebar counts: visits nobody has been assigned to, active items at or
- * below their reorder level, and invoices overdue or due within 3 days
- * (Sprint 4's payment reminders). Each only for someone who can act on it.
+ * Sidebar counts: upcoming visits still open (Pending, Scheduled or
+ * Confirmed, from today on; the unassigned ones are on the Today page),
+ * active items at or below their reorder level, and invoices overdue or due
+ * within 3 days (Sprint 4's payment reminders). Each only for someone who
+ * can act on it.
  */
-export function navBadges({ appointments, inventory, canSchedule, canStock, billing = null }) {
+export function navBadges({ appointments, inventory, canSchedule, canStock, billing = null, now = new Date() }) {
   const reminders = billing ? paymentReminders(billing.invoices || [], billing.payments || []) : null;
   return {
     billing: reminders ? reminders.overdue.length + reminders.dueSoon.length : 0,
-    scheduling: canSchedule ? needsScheduling(appointments).length : 0,
+    scheduling: canSchedule ? upcomingAppointments(appointments, now).length : 0,
     inventory: canStock
       ? lowStockItems(inventory.filter((item) => item.status !== "DISABLED")).length
       : 0,
