@@ -17,7 +17,7 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import PageHeader from "../components/common/PageHeader";
-import { Button, Card, Collapsible, Input, Modal, SegmentedControl, StatusPill } from "../components/ui";
+import { Button, Card, Collapsible, Field, Input, Modal, SegmentedControl, StatusPill, Textarea } from "../components/ui";
 import { StatTile, TileRow } from "../components/dashboard/DashboardParts";
 import WarrantyBookingModal from "../components/billing/WarrantyBookingModal";
 import WarrantyFields, { validateWarranty } from "../components/billing/WarrantyFields";
@@ -33,7 +33,7 @@ import { formatDate } from "../utils/formatters";
 import { checkupLabel } from "../utils/categories";
 import { SUBSYSTEMS } from "../utils/permissions";
 import { appointmentReference, crewOf } from "../utils/scheduling";
-import { allWarranties, checkupDatesToBook, checkupReminders, warrantyLabel, warrantyOverview, warrantyServiceIds, warrantyState } from "../utils/warranty";
+import { allWarranties, checkupDatesToBook, checkupReminders, warrantyEditCheck, warrantyLabel, warrantyOverview, warrantyServiceIds, warrantyState } from "../utils/warranty";
 
 const STATE_WORDS = { ACTIVE: "Under warranty", NOT_STARTED: "Not started", ENDED: "Ended" };
 const STATE_TONES = { ACTIVE: "success", NOT_STARTED: "neutral", ENDED: "neutral" };
@@ -243,17 +243,30 @@ function WarrantyCard({ warranty, appointments, clientName, serviceNames, crewNa
   );
 }
 
-/** Its warranty and checkups, saved on the quotation or contract (078). */
-function EditWarrantyModal({ warranty, onSave, onClose }) {
+/**
+ * Its warranty and checkups, saved on the quotation or contract (078). Safe
+ * by design (087): the new dates show before saving; an edit that would
+ * strand booked free visits is refused here and on the server; shortening or
+ * removing it needs a reason, and ending it today or earlier needs a tick.
+ * The change, with its reason, goes to the activity log.
+ */
+function EditWarrantyModal({ warranty, appointments, now, onSave, onClose }) {
   const [values, setValues] = useState({ warrantyMonths: warranty.months ?? "", checkupFrequency: warranty.frequency || "" });
+  const [reason, setReason] = useState("");
+  const [understood, setUnderstood] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const check = warrantyEditCheck(warranty, { months: values.warrantyMonths, frequency: values.checkupFrequency }, appointments, now);
+  const invalid = validateWarranty(values.warrantyMonths);
+  const needsReason = check.changed && check.shorter;
+  const blocked = Boolean(invalid || check.problem) || !check.changed
+    || (needsReason && reason.trim().length < 5) || (check.endsNow && !understood);
+
   const save = async (event) => {
     event.preventDefault();
-    const problem = validateWarranty(values.warrantyMonths);
-    if (problem) { setError(problem); return; }
+    if (blocked) return;
     setSaving(true);
-    const result = await onSave(warranty, values);
+    const result = await onSave(warranty, values, reason.trim());
     setSaving(false);
     if (typeof result === "string") setError(result);
     else onClose();
@@ -267,7 +280,7 @@ function EditWarrantyModal({ warranty, onSave, onClose }) {
       footer={(
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" type="submit" form="edit-warranty-form" loading={saving}>Save warranty</Button>
+          <Button variant="primary" type="submit" form="edit-warranty-form" loading={saving} disabled={blocked}>Save warranty</Button>
         </>
       )}
     >
@@ -275,10 +288,35 @@ function EditWarrantyModal({ warranty, onSave, onClose }) {
         <WarrantyFields
           months={values.warrantyMonths}
           frequency={values.checkupFrequency}
-          onChange={(next) => { setError(""); setValues((current) => ({ ...current, ...next })); }}
+          onChange={(next) => { setError(""); setUnderstood(false); setValues((current) => ({ ...current, ...next })); }}
           startsWhen={warranty.type === "CONTRACT" ? "when the contract is signed" : "when the job is completed"}
         />
+        <p style={{ margin: 0, fontSize: "0.85rem", color: colors.body }}>
+          <strong style={{ fontWeight: 500, color: colors.ink }}>Now: </strong>
+          {warranty.start ? `${formatDate(warranty.start)} – ${formatDate(warranty.end)}` : "not started yet"}
+          {warranty.start && (
+            <>
+              <br />
+              <strong style={{ fontWeight: 500, color: colors.ink }}>After this change: </strong>
+              {check.end ? `${formatDate(warranty.start)} – ${formatDate(check.end)}` : "no warranty"}
+            </>
+          )}
+        </p>
+        {invalid && <p role="alert" style={{ margin: 0, color: colors.danger }}>{invalid}</p>}
+        {check.problem && <p role="alert" style={{ margin: 0, color: colors.danger }}>{check.problem}</p>}
+        {!check.problem && check.endsNow && (
+          <label style={{ display: "flex", gap: "8px", alignItems: "flex-start", fontSize: "0.85rem", color: colors.danger }}>
+            <input type="checkbox" checked={understood} onChange={(event) => setUnderstood(event.target.checked)} style={{ marginTop: "3px" }} />
+            <span>This ends the warranty {check.end < dayKey(now) ? `as of ${formatDate(check.end)}, which has already passed` : "today"}. It will no longer cover free checkups or re-treatments.</span>
+          </label>
+        )}
+        {!check.problem && needsReason && (
+          <Field label="Reason for shortening or removing it *">
+            <Textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} placeholder="e.g. Client agreed to a shorter warranty after the price change" />
+          </Field>
+        )}
         {error && <p role="alert" style={{ margin: 0, color: colors.danger }}>{error}</p>}
+        <span style={{ color: colors.muted, fontSize: "0.8rem" }}>The change is recorded in the activity log.</span>
       </form>
     </Modal>
   );
@@ -317,12 +355,12 @@ function WarrantyPage() {
   const activeTechs = technicianAccounts.filter((account) => account.status !== "INACTIVE");
   const canBook = can(SUBSYSTEMS.SCHEDULING, "create") && Boolean(bookWarrantyVisits);
   const canEdit = can(SUBSYSTEMS.BILLING, "edit") && Boolean(billing?.setQuoteWarranty);
-  const saveWarranty = async (warranty, values) => {
+  const saveWarranty = async (warranty, values, reason) => {
     const months = values.warrantyMonths === "" ? null : Number(values.warrantyMonths);
     const checkups = months ? values.checkupFrequency || null : null;
     const result = warranty.type === "CONTRACT"
-      ? await billing.setContractWarranty(warranty.source, months, checkups)
-      : await billing.setQuoteWarranty(warranty.source, months, checkups);
+      ? await billing.setContractWarranty(warranty.source, months, checkups, reason)
+      : await billing.setQuoteWarranty(warranty.source, months, checkups, reason);
     if (typeof result === "string") return result;
     showSuccess(`Warranty on ${warranty.reference} saved.`);
     return true;
@@ -443,7 +481,7 @@ function WarrantyPage() {
         </div>
       )}
 
-      {editing && <EditWarrantyModal warranty={editing} onSave={saveWarranty} onClose={() => setEditing(null)} />}
+      {editing && <EditWarrantyModal warranty={editing} appointments={appointments} now={now} onSave={saveWarranty} onClose={() => setEditing(null)} />}
     </div>
   );
 }

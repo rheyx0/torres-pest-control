@@ -327,3 +327,46 @@ export function warrantyOverview(warranty, appointments = [], now = new Date()) 
     next: visits.next,
   };
 }
+
+// ---- editing a warranty safely (migration 087) ---------------------------------
+
+const openWarrantyVisits = (warranty, appointments) => appointments
+  .filter((visit) => belongsTo(visit, warranty) && visit.warrantyKind && !["Completed", "Cancelled"].includes(visit.status))
+  .sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+const visitList = (visits) => visits.map((visit) => `${visit.reference || "a visit"} (${shortDay(localDay(visit.scheduledAt))})`).join(", ");
+
+/**
+ * What changing a warranty to `months` / `frequency` would do, checked the
+ * same way as the server's guard_warranty_edit() (087):
+ *   problem   why it is refused ("" when allowed): removing it, or a new end
+ *             before a visit still booked under it, or new checkups while
+ *             checkups are booked on the current schedule
+ *   end       the new last day ("" when not started or removed)
+ *   endsNow   the new end is today or already past: it stops covering now
+ *   shorter   shorter than before, or removed: asks for a reason
+ */
+export function warrantyEditCheck(warranty, { months, frequency }, appointments = [], now = new Date()) {
+  const nextMonths = months === "" || months === null || months === undefined ? null : Number(months);
+  const nextFrequency = nextMonths ? frequency || "" : "";
+  const open = openWarrantyVisits(warranty, appointments);
+  const end = warranty.start && nextMonths ? addMonths(warranty.start, nextMonths) : "";
+  let problem = "";
+  if (!nextMonths) {
+    if (open.length) problem = `The warranty cannot be removed while visits are booked under it: ${visitList(open)}. Cancel them first.`;
+  } else {
+    const after = end ? open.filter((visit) => localDay(visit.scheduledAt) > end) : [];
+    const checkups = open.filter((visit) => visit.warrantyKind === "CHECKUP");
+    if (after.length) {
+      problem = `The warranty would end on ${shortDay(end)}, but these visits are booked after that: ${visitList(after)}. Cancel them first, or keep a longer warranty.`;
+    } else if (nextFrequency !== (warranty.frequency || "") && checkups.length) {
+      problem = `The checkups cannot change while these checkups are booked on the current schedule: ${visitList(checkups)}. Cancel them first.`;
+    }
+  }
+  return {
+    problem,
+    end,
+    endsNow: Boolean(end) && end <= localDay(now),
+    shorter: !nextMonths || nextMonths < Number(warranty.months || 0),
+    changed: nextMonths !== (warranty.months ?? null) || nextFrequency !== (warranty.frequency || ""),
+  };
+}

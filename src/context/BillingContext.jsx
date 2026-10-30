@@ -11,6 +11,16 @@ import { addLog, LOG_TYPES } from "../services/logService";
 import { ROLES } from "../utils/constants";
 import { useAuthContext } from "./AuthContext";
 import { useOptionalScheduling } from "./SchedulingContext";
+import { warrantyLabel } from "../utils/warranty";
+import { checkupLabel } from "../utils/categories";
+
+const warrantyTerms = (months, checkups) => (months
+  ? `${warrantyLabel(Number(months))}, ${checkups ? `${checkupLabel(checkups).toLowerCase()} checkups` : "no checkups"}`
+  : "no warranty");
+
+/** "Warranty on TPC-Q-00002 changed from 1 year, quarterly checkups to 3 months, quarterly checkups. Reason: …" */
+export const warrantyLogLine = (record, months, checkups, reason = "") =>
+  `Warranty on ${record.reference} changed from ${warrantyTerms(record.warrantyMonths, record.checkupFrequency)} to ${warrantyTerms(months, months ? checkups : "")}.${reason ? ` Reason: ${reason}` : ""}`;
 
 const BillingContext = createContext(null);
 
@@ -108,8 +118,16 @@ export function BillingProvider({ children }) {
       (saved) => `${contractId ? "Updated" : "Created"} contract ${saved?.reference || ""}.`.replace(" .", ".")
     ),
     setContractDeposit: (contract, type, value) => run(() => billingService.setContractDeposit(contract.id, type, value)),
-    setQuoteWarranty: (quote, months, checkups) => run(() => billingService.setQuoteWarranty(quote.id, months, checkups)),
-    setContractWarranty: (contract, months, checkups) => run(() => billingService.setContractWarranty(contract.id, months, checkups)),
+    // Every warranty change goes to the activity log, old and new terms and
+    // any reason given (the server refuses one that strands booked visits, 087).
+    setQuoteWarranty: (quote, months, checkups, reason = "") => run(
+      () => billingService.setQuoteWarranty(quote.id, months, checkups),
+      warrantyLogLine(quote, months, checkups, reason)
+    ),
+    setContractWarranty: (contract, months, checkups, reason = "") => run(
+      () => billingService.setContractWarranty(contract.id, months, checkups),
+      warrantyLogLine(contract, months, checkups, reason)
+    ),
     attachContractDocument: (contract, documentId) => run(() => billingService.attachContractDocument(contract.id, documentId), `Attached the signed copy of contract ${contract.reference}.`),
     setContractStatus: (contract, status) => run(
       () => billingService.setContractStatus(contract.id, status),

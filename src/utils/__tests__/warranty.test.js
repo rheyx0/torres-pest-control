@@ -146,3 +146,23 @@ test("the Warranty page: every warranty, running first, with its service, checku
   const contractOverview = warrantyOverview(warrantyOf("CONTRACT", contract), [planVisit, job], now);
   expect(contractOverview.service.map((visit) => visit.id)).toEqual(["pv1"]);
 });
+
+test("editing a warranty: refused when it would strand booked visits, flagged when it ends now (087)", () => {
+  const { warrantyEditCheck } = require("../warranty");
+  const started = warrantyOf("QUOTE", quote, [job]); // Oct 1, 2026 – Oct 1, 2027, monthly
+  const checkup = { id: "w1", reference: "TPC-V-00070", warrantyKind: "CHECKUP", warrantyQuoteId: "q1", status: "Pending", scheduledAt: "2027-03-01T09:00:00" };
+  const done = { ...checkup, id: "w2", reference: "TPC-V-00069", status: "Completed", scheduledAt: "2026-11-01T09:00:00" };
+  const later = new Date("2027-02-15T09:00:00");
+
+  // 12 → 3 months, with a checkup booked for March: refused, and it names the visit.
+  const shorter = warrantyEditCheck(started, { months: 3, frequency: "MONTHLY" }, [job, checkup, done], later);
+  expect(shorter.problem).toMatch(/end on Jan 1, 2027.*TPC-V-00070 \(Mar 1, 2027\)/);
+  // With that checkup cancelled it is allowed, but it ends at once and counts as shorter.
+  const allowed = warrantyEditCheck(started, { months: 3, frequency: "MONTHLY" }, [job, { ...checkup, status: "Cancelled" }, done], later);
+  expect(allowed).toMatchObject({ problem: "", end: "2027-01-01", endsNow: true, shorter: true, changed: true });
+  // Removing it, or new checkups, with a checkup booked: refused.
+  expect(warrantyEditCheck(started, { months: "", frequency: "" }, [job, checkup], later).problem).toMatch(/cannot be removed/);
+  expect(warrantyEditCheck(started, { months: 12, frequency: "QUARTERLY" }, [job, checkup], later).problem).toMatch(/checkups cannot change/);
+  // Longer: fine, not shorter.
+  expect(warrantyEditCheck(started, { months: 24, frequency: "MONTHLY" }, [job, checkup], later)).toMatchObject({ problem: "", shorter: false, endsNow: false });
+});
