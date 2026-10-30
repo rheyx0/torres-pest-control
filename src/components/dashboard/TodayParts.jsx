@@ -432,7 +432,7 @@ const SIGNATURE_TONES = { Signed: "success", "No signature": "warning", "Report 
  * Schedule badge (which now counts upcoming visits) for the Today page, where
  * the office assigns them: each row opens the visit to pick its crew.
  */
-export function UnassignedList({ rows, loading = false, limit = 8 }) {
+export function UnassignedList({ rows, loading = false, limit = 4 }) {
   const shown = rows.slice(0, limit);
   return (
     <Card title={`Unassigned appointments${rows.length ? ` (${rows.length})` : ""}`} padded={false}>
@@ -455,7 +455,7 @@ export function UnassignedList({ rows, loading = false, limit = 8 }) {
           ))}
           {rows.length > limit && (
             <li style={{ ...rowStyle(true), color: neutral.bark, fontSize: "12.5px" }}>
-              and {rows.length - limit} more. Use the Unassigned filter on the Schedule to see them all.
+              and {rows.length - limit} more. On the Schedule, click "No technician" to see them all.
             </li>
           )}
         </ul>

@@ -15,7 +15,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 import PageHeader from "../components/common/PageHeader";
-import { Button, Card, DataTable, Input, SegmentedControl, StatusPill } from "../components/ui";
+import { Button, Card, Collapsible, DataTable, Input, SegmentedControl, StatusPill } from "../components/ui";
 import QuoteEditor from "../components/billing/QuoteEditor";
 import QuoteDetail from "../components/billing/QuoteDetail";
 import InvoiceEditor from "../components/billing/InvoiceEditor";
@@ -463,8 +463,18 @@ function BillingPage() {
         )}
       </div>
 
-      {/* Where the money stands; each tile opens the list it counts. */}
-      <div style={{ marginBottom: "1rem" }}>
+      {/* Where the money stands; each tile opens the list it counts. Folds
+          away to one line, which still carries the main figures. */}
+      <Collapsible
+        title="Money summary"
+        summary={[
+          invoicesAvailable && `${formatPeso(overview.toCollect)} to collect`,
+          invoicesAvailable && overview.overdueCount ? `${formatPeso(overview.overdue)} overdue` : null,
+          `${formatPeso(overview.collectedThisMonth)} collected this month`,
+        ].filter(Boolean).join(" · ")}
+        storageKey="billing-summary"
+        style={{ marginBottom: "1rem" }}
+      >
         <TileRow min="170px">
           {invoicesAvailable && (
             <StatTile label="To collect" value={formatPeso(overview.toCollect)} note={`${overview.toCollectCount} unpaid invoice${overview.toCollectCount === 1 ? "" : "s"}`} onClick={() => goTo("invoices", "All")} />
@@ -475,7 +485,7 @@ function BillingPage() {
           <StatTile label="Collected this month" tone="done" value={formatPeso(overview.collectedThisMonth)} note="Payments and down payments" onClick={() => goTo("payments", "All")} />
           <StatTile label="Down payments due" tone={overview.depositsDueCount ? "attn" : "plain"} value={formatPeso(overview.depositsDue)} note={`${overview.depositsDueCount} approved quote${overview.depositsDueCount === 1 ? "" : "s"} waiting`} onClick={() => goTo("quotes", "Approved")} />
         </TileRow>
-      </div>
+      </Collapsible>
 
       {error && <p role="alert" style={{ color: colors.danger }}>{error}</p>}
       {!invoicesAvailable && <p style={{ color: colors.muted, fontSize: "0.85rem" }}>Invoices need migration 062.</p>}

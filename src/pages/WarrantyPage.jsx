@@ -17,7 +17,7 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import PageHeader from "../components/common/PageHeader";
-import { Button, Card, Input, Modal, SegmentedControl, StatusPill } from "../components/ui";
+import { Button, Card, Collapsible, Input, Modal, SegmentedControl, StatusPill } from "../components/ui";
 import { StatTile, TileRow } from "../components/dashboard/DashboardParts";
 import WarrantyBookingModal from "../components/billing/WarrantyBookingModal";
 import WarrantyFields, { validateWarranty } from "../components/billing/WarrantyFields";
@@ -170,6 +170,19 @@ function WarrantyCard({ warranty, appointments, clientName, serviceNames, crewNa
           )}
         </div>
 
+        {/* The visit lists fold away; the summary above says what is in them. */}
+        <Collapsible
+          title="Visits under this warranty"
+          summary={[
+            `${overview.service.length} service`,
+            `${checkupCount} checkup${checkupCount === 1 ? "" : "s"}${overview.periods.length ? ` (${booked} booked)` : ""}`,
+            `${overview.followUps.length} follow-up${overview.followUps.length === 1 ? "" : "s"}`,
+            `${overview.retreatments.length} free re-treatment${overview.retreatments.length === 1 ? "" : "s"}`,
+          ].join(" · ")}
+          storageKey={`warranty-${warranty.type}-${warranty.id}`}
+          variant="plain"
+          style={{ borderTop: `1px solid ${colors.line}`, paddingTop: "4px" }}
+        >
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "14px 24px" }}>
           <Section title="Service" count={overview.service.length} empty={state === "NOT_STARTED" ? "No visit done yet." : "No service visit on file."}>
             {overview.service.map((visit) => (
@@ -212,6 +225,7 @@ function WarrantyCard({ warranty, appointments, clientName, serviceNames, crewNa
             ))}
           </Section>
         </div>
+        </Collapsible>
       </div>
 
       {booking && (

@@ -9,10 +9,10 @@
 //     upcoming visits instead);
 //   - Needs attention: one row per kind of loose end, each with the one
 //     action that closes it;
-//   - visits per day this week, and the visits that just finished with their
-//     report / signature state;
-//   - billing: owed, overdue, collected, and the loose ends (Sprint 3);
-//   - for admins, the cost & stock figures.
+//   - folded away (Collapsible, remembered per browser): visits per day this
+//     week and the visits that just finished with their report / signature
+//     state; billing: owed, overdue, collected (Sprint 3); for admins, the
+//     cost & stock figures.
 //
 // Every figure is computed in utils/dispatch.js from lists already in
 // context; nothing here queries.
@@ -61,6 +61,7 @@ import {
 import { colors, pageShell } from "../../styles/theme";
 import { neutral } from "../../styles/tokens";
 import StatusPill from "../ui/StatusPill";
+import Collapsible from "../ui/Collapsible";
 import { Panel, RankedBars, StatTile, TileRow, whenLabel } from "./DashboardParts";
 import { AttentionList, DispatchBoard, KpiCard, RecentList, UnassignedList, WeekBarsCard } from "./TodayParts";
 import BillingPanel from "./BillingPanel";
@@ -281,16 +282,38 @@ function OfficeDashboard() {
 
         <UnassignedList rows={unassignedRows} loading={loading} />
 
-        <div className="today-columns dash-joined">
-          <AttentionList items={attention} loading={loading} />
-          <div className="dash-joined">
+        <AttentionList items={attention} loading={loading} />
+
+        {/* Less urgent figures fold away so the page opens on today's work;
+            each remembers whether it was left open. */}
+        <Collapsible
+          title="This week"
+          summary={`${plural(bars.reduce((sum, bar) => sum + bar.value, 0), "visit")} (${rangeLabel}) · ${plural(recent.length, "recently completed visit")}`}
+          storageKey="today-week"
+          variant="plain"
+          style={{ background: "#ffffff", padding: "6px 18px" }}
+        >
+          <div className="today-columns dash-joined" style={{ marginBottom: "12px" }}>
             <WeekBarsCard bars={bars} rangeLabel={rangeLabel} />
             <RecentList rows={recent} />
           </div>
-        </div>
+        </Collapsible>
 
-        <BillingPanel />
-        {isAdmin && <CostPanel inventory={inventory} movements={movements} appointments={appointments} />}
+        {billing?.office && billing.available && (
+          <Collapsible title="Billing" summary="What is owed, overdue and collected" storageKey="today-billing" variant="plain" style={{ background: "#ffffff", padding: "6px 18px" }}>
+            <div className="dash-joined" style={{ marginBottom: "12px" }}>
+              <BillingPanel />
+            </div>
+          </Collapsible>
+        )}
+
+        {isAdmin && (
+          <Collapsible title="Cost & stock" summary="What the stock on hand costs" storageKey="today-cost" variant="plain" style={{ background: "#ffffff", padding: "6px 18px" }}>
+            <div className="dash-joined" style={{ marginBottom: "12px" }}>
+              <CostPanel inventory={inventory} movements={movements} appointments={appointments} />
+            </div>
+          </Collapsible>
+        )}
       </div>
     </div>
   );

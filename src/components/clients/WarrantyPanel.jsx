@@ -4,6 +4,7 @@
 
 import { ShieldCheck } from "lucide-react";
 import StatusPill from "../ui/StatusPill";
+import Collapsible from "../ui/Collapsible";
 import WarrantyActions from "../billing/WarrantyActions";
 import WarrantyVisitList from "../billing/WarrantyVisitList";
 import { colors } from "../../styles/theme";
@@ -19,9 +20,17 @@ function WarrantyPanel({ clientId, quotes = [], contracts = [], appointments = [
   const warranties = clientWarranties(clientId, { quotes, contracts, appointments });
   if (!warranties.length) return null;
 
+  // Folded to one line by default ("Under warranty until Oct 23, 2027"); the
+  // details and booking buttons are a click away.
+  const running = warranties.filter((warranty) => warrantyState(warranty, now) === "ACTIVE");
+  const summary = running.length
+    ? `Under warranty until ${formatDate(running.map((warranty) => warranty.end).sort().pop())}${running.length > 1 ? ` (${running.length} warranties)` : ""}`
+    : `${warranties.length} warrant${warranties.length === 1 ? "y" : "ies"}, none running`;
+
   return (
-    <section aria-label="Warranty" style={{ padding: "12px 18px", borderBottom: `1px solid ${colors.line}`, display: "grid", gap: "10px" }}>
-      <span style={{ fontSize: "11px", letterSpacing: "0.08em", textTransform: "uppercase", color: colors.muted, fontWeight: 500 }}>Warranty</span>
+    <section aria-label="Warranty" style={{ padding: "6px 18px", borderBottom: `1px solid ${colors.line}` }}>
+      <Collapsible title="Warranty" summary={summary} storageKey="client-warranty" variant="plain">
+      <div style={{ display: "grid", gap: "10px", paddingBottom: "8px" }}>
       {warranties.map((warranty) => {
         const state = warrantyState(warranty, now);
         const visits = warrantyVisits(warranty, appointments, now);
@@ -51,6 +60,8 @@ function WarrantyPanel({ clientId, quotes = [], contracts = [], appointments = [
           </div>
         );
       })}
+      </div>
+      </Collapsible>
     </section>
   );
 }

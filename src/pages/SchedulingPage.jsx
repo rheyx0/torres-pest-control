@@ -52,6 +52,7 @@ import CalendarLegend from "../components/scheduling/CalendarLegend";
 import ScheduleSidePanel from "../components/scheduling/ScheduleSidePanel";
 import { awaitingReschedule, upcomingAppointments, upcomingBreakdown } from "../utils/dashboardMetrics";
 import UpcomingStrip from "../components/scheduling/UpcomingStrip";
+import Collapsible from "../components/ui/Collapsible";
 import { UNASSIGNED_ONLY } from "../components/scheduling/TechnicianFilter";
 import { bookingReminders } from "../utils/dispatch";
 import { openCheckouts } from "../utils/custody";
@@ -161,6 +162,8 @@ function SchedulingPage() {
   const listFiltersSet = Boolean(
     appointmentSearch || statusFilter !== "ALL" || clientFilter !== "ALL" || pestConcernFilter !== "ALL" || serviceFilter !== "ALL" || categoryFilter !== "ALL" || dateFrom || dateTo
   );
+  // How many of the folded filters are in use, so a closed "More filters" still says so.
+  const moreFiltersSet = [clientFilter !== "ALL", serviceFilter !== "ALL", categoryFilter !== "ALL", pestConcernFilter !== "ALL", Boolean(dateFrom), Boolean(dateTo)].filter(Boolean).length;
   // Chemical or Non-chemical (075), from the visit's services.
   const categoryOf = useCallback((appointment) => visitCategory(servicesOf(appointment, serviceById, serviceByName)), [serviceById, serviceByName]);
   // A technician "owns" a visit they are on, lead or not — an appointment can
@@ -1216,6 +1219,15 @@ function SchedulingPage() {
                   {APPOINTMENT_STATUSES.map((status) => <option key={status}>{status}</option>)}
                 </Select>
               </Field>
+            </div>
+            {/* Search and Status are what most people use; the rest fold away. */}
+            <Collapsible
+              title="More filters"
+              summary={moreFiltersSet ? `${moreFiltersSet} set` : "client, service, category, pest concern, dates"}
+              storageKey="schedule-more-filters"
+              variant="plain"
+            >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "10px", alignItems: "end" }}>
               <Field label="Client">
                 <Select value={clientFilter} onChange={(event) => setClientFilter(event.target.value)}>
                   <option value="ALL">All clients</option>
@@ -1247,6 +1259,7 @@ function SchedulingPage() {
                 <Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} />
               </Field>
             </div>
+            </Collapsible>
             </div>
           )}
 
