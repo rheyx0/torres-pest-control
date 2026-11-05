@@ -22,7 +22,7 @@
     "eject": "react-scripts eject",
     "db:new": "npx supabase@2 migration new",
     "db:push": "npx supabase@2 db push",
-    "db:status": "npx supabase@2 migration list",
+    "db:status": "npx supabase@2 migration list --linked",
     "db:local": "node supabase/local/db.mjs setup",
     "local": "node supabase/local/server.mjs"
   },
