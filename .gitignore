@@ -28,3 +28,7 @@ env.download
 
 # files uploaded while running locally (npm run local)
 /supabase/local/storage
+
+# Supabase CLI working files
+/supabase/.temp
+/supabase/.branches

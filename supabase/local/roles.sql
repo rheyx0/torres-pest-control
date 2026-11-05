@@ -1,10 +1,9 @@
 -- Torres Pest Control — the database roles Supabase provides, for a plain
 -- PostgreSQL (the local setup in Technical Manual §4).
 --
--- Roles belong to the whole PostgreSQL server, not to one database, so a
--- pg_dump snapshot does not carry them: `npm run db:local` runs this file
--- first, both before loading supabase/local/torres-database.sql and before
--- bootstrap.sql on the migrations path. Re-runnable.
+-- Roles belong to the whole PostgreSQL server, not to one database, so no
+-- migration can carry them: `npm run db:local` runs this file first, before
+-- bootstrap.sql and the migrations. Re-runnable.
 --
 --   anon           every request from the app runs as this role, as on
 --                  Supabase (the app does not use Supabase Auth)

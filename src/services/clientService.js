@@ -8,7 +8,7 @@
 // pointer was persisted but the file was not, so every document 404'd after a
 // refresh and nothing was ever visible to a teammate.
 //
-// Run supabase/migrations/001-clients-and-documents.sql before using this.
+// Run supabase/archive/migrations/001-clients-and-documents.sql before using this.
 
 import { supabase } from "./supabaseClient";
 

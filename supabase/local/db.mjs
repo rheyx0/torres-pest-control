@@ -5,16 +5,12 @@
 //   npm run db:local                   create torres_pest_control and the admin account
 //   npm run db:local -- --demo         … and load the demo data (also works on an existing database)
 //   npm run db:local -- --reset        delete the database and build it again from scratch
-//   npm run db:local -- --migrations   build from schema-v2.sql + every migration, not the snapshot
-//   npm run db:snapshot                rebuild supabase/local/torres-database.sql from the migrations
 //
-// The usual path loads ONE file, torres-database.sql: the database exactly as
-// schema-v2.sql plus migrations 001…NNN leave it, exported with pg_dump. It is
-// faster and has fewer moving parts on a lab PC than replaying every
-// migration. The migrations stay the source of truth: after adding one, run
-// `npm run db:snapshot` (needs pg_dump, which comes with PostgreSQL) and
-// commit the regenerated file, or `--migrations` builds the same database the
-// long way.
+// The database is built the way a new Supabase project gets it: roles.sql and
+// bootstrap.sql (the parts of Supabase a plain PostgreSQL lacks), then every
+// file in supabase/migrations in name order: the baseline, which is the whole
+// database in one file, then any migration added after it. Nothing has to be
+// regenerated after adding a migration; the next build runs it too.
 //
 // Settings come from .env.local in the project root:
 //
@@ -23,18 +19,16 @@
 //   LOCAL_DB_HOST / LOCAL_DB_PORT / LOCAL_DB_USER / LOCAL_DB_NAME
 //                         optional; default localhost / 5432 / postgres / torres_pest_control
 
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 import pg from "pg";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SUPABASE_DIR = join(HERE, "..");
 const ROOT = join(SUPABASE_DIR, "..");
 const MIGRATIONS_DIR = join(SUPABASE_DIR, "migrations");
-const SNAPSHOT = join(HERE, "torres-database.sql");
-const SNAPSHOT_BUILD_DB = "torres_snapshot_build";
+const SEED_DIR = join(SUPABASE_DIR, "seed");
 const MIN_PASSWORD_LENGTH = 6; // src/utils/constants.js
 
 function fail(message) {
@@ -115,15 +109,11 @@ function stripPsqlCommands(sql) {
     .join("\n");
 }
 
-const numberOf = (file) => {
-  const match = /^(\d+)-.*\.sql$/.exec(file);
-  return match ? Number(match[1]) : null;
-};
-
+/** Supabase CLI migrations, <timestamp>_<name>.sql, oldest first. */
 function migrationFiles() {
   return readdirSync(MIGRATIONS_DIR)
-    .filter((file) => numberOf(file) !== null)
-    .sort((a, b) => numberOf(a) - numberOf(b) || a.localeCompare(b));
+    .filter((file) => /^\d{14}_.+\.sql$/.test(file))
+    .sort();
 }
 
 async function databaseExists(admin, name) {
@@ -143,29 +133,17 @@ async function isBuilt(cfg) {
   return rows[0].built;
 }
 
-/** schema-v2.sql + every migration, the way the hosted database was built. */
+/** bootstrap.sql, then every migration: the baseline first, then any added after it. */
 async function buildFromMigrations(cfg, database) {
+  const files = migrationFiles();
+  if (files.length === 0) fail("supabase/migrations has no migrations; the baseline (20261105000000_baseline.sql) must be there.");
   const client = await connect(cfg, database);
   await runFile(client, join(HERE, "bootstrap.sql"), "bootstrap.sql");
-  process.stdout.write("  schema-v2.sql … ");
-  await runFile(client, join(SUPABASE_DIR, "schema-v2.sql"), "schema-v2.sql");
-  console.log("ok");
-  const files = migrationFiles();
-  process.stdout.write(`  ${files.length} migrations `);
   for (const file of files) {
+    process.stdout.write(`  ${file} … `);
     await runFile(client, join(MIGRATIONS_DIR, file), `Migration ${file}`);
-    process.stdout.write(".");
+    console.log("ok");
   }
-  console.log(" ok");
-  await client.end();
-}
-
-async function buildFromSnapshot(cfg) {
-  if (!existsSync(SNAPSHOT)) fail("supabase/local/torres-database.sql is missing. Run: npm run db:local -- --migrations");
-  const client = await connect(cfg, cfg.database);
-  process.stdout.write("  torres-database.sql … ");
-  await runFile(client, SNAPSHOT, "torres-database.sql");
-  console.log("ok");
   await client.end();
 }
 
@@ -219,8 +197,8 @@ async function createDemoAccounts(client) {
 async function loadDemo(cfg) {
   const client = await connect(cfg, cfg.database);
   await createDemoAccounts(client);
-  process.stdout.write("  demo data (seed-demo-data.sql) … ");
-  await runFile(client, join(SUPABASE_DIR, "seed-demo-data.sql"), "seed-demo-data.sql");
+  process.stdout.write("  demo data (seed/seed-demo-data.sql) … ");
+  await runFile(client, join(SEED_DIR, "seed-demo-data.sql"), "seed-demo-data.sql");
   console.log("ok");
   await client.end();
 }
@@ -264,8 +242,7 @@ async function setup(flags) {
   await admin.end();
 
   console.log(`\nSetting up ${cfg.database} on ${cfg.host}:${cfg.port}\n`);
-  if (flags.has("--migrations")) await buildFromMigrations(cfg, cfg.database);
-  else await buildFromSnapshot(cfg);
+  await buildFromMigrations(cfg, cfg.database);
   await createAdmin(cfg);
   if (flags.has("--demo")) await loadDemo(cfg);
   const tables = await summary(cfg);
@@ -279,43 +256,7 @@ Next: run  npm run local  and keep it open, then  npm start  in a second window.
 `);
 }
 
-async function snapshot() {
-  const cfg = settings();
-  const admin = await connect(cfg, "postgres");
-  await admin.query(readFileSync(join(HERE, "roles.sql"), "utf8"));
-  await dropDatabase(admin, SNAPSHOT_BUILD_DB);
-  await admin.query(`create database "${SNAPSHOT_BUILD_DB}"`);
-
-  console.log(`\nBuilding ${SNAPSHOT_BUILD_DB} from the migrations\n`);
-  await buildFromMigrations(cfg, SNAPSHOT_BUILD_DB);
-
-  process.stdout.write("  pg_dump … ");
-  const dump = spawnSync(
-    "pg_dump",
-    ["--no-owner", "--inserts", "-h", cfg.host, "-p", String(cfg.port), "-U", cfg.user, "-d", SNAPSHOT_BUILD_DB],
-    { env: { ...process.env, PGPASSWORD: cfg.password }, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 },
-  );
-  await dropDatabase(admin, SNAPSHOT_BUILD_DB);
-  await admin.end();
-  if (dump.error) fail(`Could not run pg_dump (${dump.error.message}). Add PostgreSQL's bin folder to PATH.`);
-  if (dump.status !== 0) fail(`pg_dump failed:\n${dump.stderr}`);
-  console.log("ok");
-
-  const files = migrationFiles();
-  const last = files[files.length - 1];
-  const header = [
-    "-- Torres Pest Control — the whole database in one file, for `npm run db:local`.",
-    "--",
-    `-- GENERATED by \`npm run db:snapshot\`: supabase/schema-v2.sql plus migrations up to ${last},`,
-    "-- after supabase/local/roles.sql and bootstrap.sql, exported with pg_dump. Do not edit by",
-    "-- hand: add a migration, then regenerate this file and commit both.",
-    "",
-  ].join("\n");
-  writeFileSync(SNAPSHOT, `${header}\n${stripPsqlCommands(dump.stdout)}`);
-  console.log(`\nWrote supabase/local/torres-database.sql (up to ${last}). Commit it with the migration.\n`);
-}
-
-const [command, ...rest] = process.argv.slice(2);
+const [, ...rest] = process.argv.slice(2);
 const flags = new Set(rest);
-const run = command === "snapshot" ? snapshot() : setup(flags);
+const run = setup(flags);
 run.catch((error) => fail(error.stack || error.message));

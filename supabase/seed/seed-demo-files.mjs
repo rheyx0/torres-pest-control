@@ -24,7 +24,7 @@
 //
 //   export SUPABASE_URL='https://<project>.supabase.co'
 //   export SUPABASE_SERVICE_ROLE_KEY='<service role key>'
-//   node supabase/seed-demo-files.mjs
+//   node supabase/seed/seed-demo-files.mjs
 //
 // The SERVICE ROLE key, not the publishable one. Uploading into a private
 // bucket and writing appointment_report_attachments both sit behind rules the
@@ -354,7 +354,7 @@ async function main(injected = null) {
   if (!clients?.length || !appointments?.length) {
     console.error(
       "\nNothing to attach files to.\n" +
-        "Run supabase/seed-demo-data.sql first — this script decorates the\n" +
+        "Run supabase/seed/seed-demo-data.sql first — this script decorates the\n" +
         "clients and completed visits that it creates."
     );
     process.exit(1);

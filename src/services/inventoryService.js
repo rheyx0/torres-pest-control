@@ -5,7 +5,7 @@
 // RLS on it without writing a policy, so every request was denied and the app
 // fell back to the browser. Items added in the UI never reached Postgres.
 //
-// Run supabase/migrations/003-inventory.sql before using this.
+// Run supabase/archive/migrations/003-inventory.sql before using this.
 //
 // One table holds three sub-types. `type` selects which block of columns
 // applies; the rest stay null.

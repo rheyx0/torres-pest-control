@@ -206,7 +206,7 @@ export const statusChoiceLabel = (status) => STATUS_CHOICE_LABELS[status] || sta
 export const IN_PROGRESS = "In progress";
 
 // Follows the appointments_enforce_status_transition trigger in
-// supabase/migrations/027-appointment-integrity.sql. Completed is final and
+// supabase/archive/migrations/027-appointment-integrity.sql. Completed is final and
 // Cancelled only reopens as Reschedule; keep both in sync.
 //
 // The Sprint 2 flow is Pending → Scheduled → Confirmed → Completed:

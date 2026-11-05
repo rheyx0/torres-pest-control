@@ -623,7 +623,7 @@ export default function ServiceProfilesAdmin() {
       {loading && <Skeleton label="Loading…" lines={5} />}
       {!loading && error && (
         <div role="alert" style={{ padding: "0.9rem", borderRadius: "3.75px", background: colors.brandWash, color: colors.danger, fontSize: "0.84rem" }}>
-          Could not load services: {error}. If this mentions a missing table, apply supabase/migrations/047-service-profiles-and-safeguards.sql.
+          Could not load services: {error}. If this mentions a missing table, the database is missing migrations: see supabase/README.md.
         </div>
       )}
       {!loading && !error && services.length === 0 && (

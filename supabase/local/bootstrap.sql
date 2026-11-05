@@ -1,12 +1,10 @@
 -- Torres Pest Control — the pieces of Supabase a plain PostgreSQL lacks.
 --
--- Used by `npm run db:local -- --migrations` (and `npm run db:snapshot`) on an
--- empty database, after roles.sql and before schema-v2.sql and the
--- migrations. The schema and the migrations were written for Supabase, which
--- ships these already; on a plain PostgreSQL 16 (the local setup in Technical
--- Manual §4) they have to exist first or the migrations fail. The usual
--- `npm run db:local` loads torres-database.sql instead, which already holds
--- all of this.
+-- Used by `npm run db:local` on an empty database, after roles.sql and before
+-- the migrations in supabase/migrations. The migrations are written for
+-- Supabase, which ships these already; on a plain PostgreSQL 16 (the local
+-- setup in Technical Manual §4) they have to exist first or the migrations
+-- fail.
 --
 --   * schema `extensions` with pgcrypto: the password functions call
 --     extensions.crypt() / extensions.gen_salt() (migration 043).

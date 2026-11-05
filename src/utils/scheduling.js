@@ -1,7 +1,7 @@
 // Appointment overlap and status-transition helpers.
 //
 // The transition rules mirror the appointments_enforce_status_transition trigger
-// in supabase/migrations/027-appointment-integrity.sql. The database is the
+// in supabase/archive/migrations/027-appointment-integrity.sql. The database is the
 // authority; these exist so the UI can hide moves the server would reject.
 
 import { ACCOUNT_STATUS, APPOINTMENT_STATUS_TRANSITIONS } from "./constants";

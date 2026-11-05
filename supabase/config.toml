@@ -1,0 +1,14 @@
+# Supabase CLI settings (https://supabase.com/docs/guides/cli).
+#
+# This project only uses the CLI to manage migrations on the hosted project:
+#   npx supabase@2 link --project-ref <ref>   once per computer
+#   npm run db:new -- <name>                a new migration in supabase/migrations
+#   npm run db:push                         run the migrations the project has not had yet
+#   npm run db:status                       which migrations the project has
+# See supabase/README.md. Everything not set here keeps the CLI's default.
+
+project_id = "torres-pest-control"
+
+[db]
+# The hosted project runs PostgreSQL 17.
+major_version = 17

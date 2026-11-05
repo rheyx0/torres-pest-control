@@ -64,10 +64,10 @@ export const mockAppointments = [
   },
 ];
 
-// initialClients moved to supabase/migrations/002-seed-clients.sql —
+// initialClients moved to supabase/archive/migrations/002-seed-clients.sql —
 // client profiles are Postgres rows now, so their seed data lives in SQL.
 
-// initialInventory moved to supabase/migrations/004-seed-inventory.sql —
+// initialInventory moved to supabase/archive/migrations/004-seed-inventory.sql —
 // inventory is a Postgres table now, so its seed data lives in SQL.
 
 export const initialSystemLogs = [
