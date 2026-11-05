@@ -136,7 +136,7 @@ async function isBuilt(cfg) {
 /** bootstrap.sql, then every migration: the baseline first, then any added after it. */
 async function buildFromMigrations(cfg, database) {
   const files = migrationFiles();
-  if (files.length === 0) fail("supabase/migrations has no migrations; the baseline (20261105000000_baseline.sql) must be there.");
+  if (files.length === 0) fail("supabase/migrations has no migrations; the baseline (20261105000000_torres_database.sql) must be there.");
   const client = await connect(cfg, database);
   await runFile(client, join(HERE, "bootstrap.sql"), "bootstrap.sql");
   for (const file of files) {

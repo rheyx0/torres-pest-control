@@ -6,7 +6,7 @@ Storage for files. This folder holds everything that defines that database.
 ```
 supabase/
 ├── migrations/      what the database is, one file per change (the Supabase CLI runs these)
-│   └── 20261105000000_baseline.sql   the whole database as of Nov 5, 2026
+│   └── 20261105000000_torres_database.sql   the whole database as of Nov 5, 2026
 ├── seed/            demo data and one-off data scripts (never migrations)
 ├── functions/       the forgot-password edge function
 ├── local/           running the database on a plain PostgreSQL (Technical Manual §4)
