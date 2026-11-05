@@ -109,11 +109,19 @@ function stripPsqlCommands(sql) {
     .join("\n");
 }
 
-/** Supabase CLI migrations, <timestamp>_<name>.sql, oldest first. */
+/**
+ * Supabase CLI migrations, <timestamp>_<name>.sql, oldest first. Any other
+ * .sql file here (an old-style "088-name.sql") would be skipped by the CLI and
+ * never reach the hosted project, so it stops the build instead.
+ */
 function migrationFiles() {
-  return readdirSync(MIGRATIONS_DIR)
-    .filter((file) => /^\d{14}_.+\.sql$/.test(file))
-    .sort();
+  const sql = readdirSync(MIGRATIONS_DIR).filter((file) => file.endsWith(".sql"));
+  const strays = sql.filter((file) => !/^\d{14}_.+\.sql$/.test(file));
+  if (strays.length) {
+    fail(`supabase/migrations has files the Supabase CLI will not run: ${strays.join(", ")}.\n`
+      + "Make each change with  npm run db:new -- <name>  and move the SQL into the new file (see supabase/README.md).");
+  }
+  return sql.sort();
 }
 
 async function databaseExists(admin, name) {

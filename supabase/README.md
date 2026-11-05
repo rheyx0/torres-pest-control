@@ -64,6 +64,12 @@ Rules:
 - One change per file.
 - Demo or test data goes in `seed/`, never in a migration.
 - No passwords, keys or connection strings in any file.
+- No old-style names like `088-something.sql`: the CLI skips them, so they
+  never reach the live project. `npm test` and `npm run db:local` stop if
+  one is in the folder. If you wrote one before this change, make a new file
+  with `npm run db:new -- <name>` and move the SQL into it.
+- Do not paste migrations into the Supabase SQL Editor any more: the CLI
+  would not know they ran.
 
 ## A brand-new Supabase project (testing, or a new copy)
 
