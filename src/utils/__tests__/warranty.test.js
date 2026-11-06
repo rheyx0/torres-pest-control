@@ -166,3 +166,16 @@ test("editing a warranty: refused when it would strand booked visits, flagged wh
   // Longer: fine, not shorter.
   expect(warrantyEditCheck(started, { months: 24, frequency: "MONTHLY" }, [job, checkup], later)).toMatchObject({ problem: "", shorter: false, endsNow: false });
 });
+
+test("a multi-day job's warranty starts on its last day, not Day 1", () => {
+  const day = (id, date, extra = {}) => ({ id, clientId: "c1", quoteId: "q1", status: "Completed", planId: "job", planKind: "MULTI_DAY", scheduledAt: `${date}T08:00:00`, ...extra });
+  const job = [
+    day("d1", "2026-10-26"),
+    day("d2", "2026-10-27"),
+    day("d3", "2026-10-28", { signedAt: "2026-10-28T16:00:00" }),
+  ];
+  expect(warrantyOf("QUOTE", quote, job)).toMatchObject({ start: "2026-10-28", end: "2027-10-28" });
+  // Finished early on Day 2 (Day 3 cancelled): Day 2 is the last live day.
+  const early = [day("d1", "2026-10-26"), day("d2", "2026-10-27", { signedAt: "2026-10-27T15:00:00" }), day("d3", "2026-10-28", { status: "Cancelled" })];
+  expect(warrantyOf("QUOTE", quote, early)).toMatchObject({ start: "2026-10-27" });
+});

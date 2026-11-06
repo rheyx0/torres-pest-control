@@ -5,6 +5,8 @@
 // that window; a re-treatment is a ₱0 visit when pests come back under it.
 // Visits that belong to a warranty carry warrantyKind, and are never invoiced.
 
+import { isEarlierJobDay } from "./plans";
+
 export const WARRANTY_MONTH_OPTIONS = [3, 6, 12, 24];
 export const CHECKUP_STEP_MONTHS = { MONTHLY: 1, QUARTERLY: 3 };
 
@@ -42,11 +44,14 @@ export const warrantyLabel = (months) => {
 /**
  * When the job behind a quotation was completed: its first completed visit,
  * on the day the client signed, else the day the report went in, else its
- * scheduled day (migration 083, the same as warranty_window()).
+ * scheduled day (migration 083, the same as warranty_window()). The earlier
+ * days of a multi-day job are skipped: the job is done on its last day
+ * (20261106115819_close_open_access_and_job_warranty.sql).
  */
 export function quoteCompletedOn(quote, appointments = []) {
   const done = appointments
     .filter((visit) => visit.quoteId === quote?.id && visit.status === "Completed" && !visit.warrantyKind)
+    .filter((visit) => !isEarlierJobDay(visit, appointments))
     .map((visit) => localDay(visit.signedAt || visit.reportSubmittedAt || visit.scheduledAt))
     .filter(Boolean)
     .sort();
