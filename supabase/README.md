@@ -99,3 +99,5 @@ in `seed/seed-parts/` in order, if the editor refuses the long one).
 | `seed-demo-files.mjs` | Optional: uploads placeholder PDFs and photos for the demo records. |
 | `reset-test-data.sql` | Clears every job and billing record for a clean test, keeping accounts, clients, services and stock. |
 | `cleanup-absurd-amounts.sql` | Clears impossible costs left by old test data (see archived migration 058). |
+| `cleanup-2026-11-06.sql` | One-off: removes six visits left Pending since October and the test client "QA Claude Client" with its records, putting the stock its visits used back on the shelf. |
+| `delete-orphan-files.mjs` | Lists uploaded client documents no record points at; `--delete` removes them. Needs the service role key in the environment. |
