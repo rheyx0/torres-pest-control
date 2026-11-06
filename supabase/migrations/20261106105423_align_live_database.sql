@@ -7,26 +7,32 @@
 --
 -- 1. Account tables (admins, staff, technicians). On live, anon and
 --    authenticated could SELECT every column, password and password_hash
---    included, so anyone holding the app's public key could read them. The
+--    included, so anyone holding the app's public key (which every page of
+--    the site carries) could read them. The
 --    files allowed column SELECT without those two, but still let anon INSERT,
 --    UPDATE and DELETE the tables directly. The app only reads these tables
 --    (userService.fetchAccounts); every write goes through a security-definer
 --    function (check_login, create_role_account, update_role_account,
 --    reset_password, change_password, ...), which these grants do not affect.
 --    So: no direct writes, and SELECT on the columns the app reads.
--- 2. Plain-text passwords. Old accounts still had their password in the
---    `password` column. Where it matches password_hash it is cleared (login
---    is unchanged: the hash still accepts it); where there is no hash, the
---    hash is made from it first. A plain-text password that does NOT match
---    the account's hash is left alone, since clearing it would lock out
---    whoever uses it; the next password change or reset clears it.
+-- 2. Plain-text passwords. The owner reads accounts' passwords in the
+--    Supabase dashboard (Table Editor, which uses the owner's own login, not
+--    the public key), so the `password` column is KEPT and now always holds
+--    the current password: change_password, reset_password,
+--    request_password_reset and create_role_account write it as well as the
+--    hash. Point 1 is what keeps it away from the public key. An account with
+--    a plain-text password but no hash gets its hash made from it.
 -- 3. change_password. Live still ran the pre-018 version, which reads the
 --    old `users` table that no longer exists, so changing your own password
---    failed. The files' version worked but saved the new password as plain
---    text and dropped the hash, and accepted any current password when the
---    hash was missing. Now it checks the current password properly, applies
---    reset_password's rule (6+ characters, a letter and a number), stores
---    only the hash, and ends the account's sessions, as reset_password does.
+--    failed. The files' version dropped the hash, and accepted any current
+--    password when the hash was missing. Now it checks the current password
+--    properly, applies reset_password's rule (6+ characters, a letter and a
+--    number), stores the hash and the plain copy (point 2), and ends the
+--    account's sessions, as reset_password does.
+-- 3b. reset_password, request_password_reset and move_account_role wrote to
+--    system_logs without actor_role, which 085 made required, so an admin's
+--    Reset password, Forgot password and changing an account's role all
+--    failed (on live as well). They now log the role.
 -- 4. update_role_account_avatar. Live had the older own-picture-only version;
 --    the files' version (039-admin-avatar-management) lets an admin change
 --    anyone's. Both returned the whole row, hash included; this one doesn't.
@@ -79,13 +85,6 @@ begin
     execute format(
       'update public.%I set password_hash = crypt(password, gen_salt(''bf''))
         where nullif(password, '''') is not null and nullif(password_hash, '''') is null', t);
-    -- The hash already accepts it: the plain copy is not needed.
-    execute format(
-      'update public.%I set password = ''''
-        where nullif(password, '''') is not null
-          and case when password_hash like ''$2%%''
-                   then password_hash = crypt(password, password_hash)
-                   else false end', t);
   end loop;
 end;
 $$;
@@ -133,7 +132,7 @@ begin
   end if;
 
   execute format(
-    'update %I set password_hash = crypt($1, gen_salt(''bf'')), password = '''' where id = $2',
+    'update %I set password_hash = crypt($1, gen_salt(''bf'')), password = $1 where id = $2',
     caller.table_name
   ) using new_password, caller.id;
 
@@ -141,6 +140,276 @@ begin
   delete from public.sessions where sessions.user_id = caller.id;
 end;
 $fn$;
+
+
+-- 2b. The other password writers keep the plain copy too ------------------------
+
+CREATE OR REPLACE FUNCTION public.create_role_account(session_token uuid, new_name text, new_username text, new_email text, new_phone text, new_password text, new_role text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare caller_id uuid; caller_role text; created jsonb;
+begin
+  select id, role_name into caller_id, caller_role from role_account_for_session(session_token) limit 1;
+  if caller_id is null or caller_role <> 'ADMIN' then raise exception 'You do not have permission to create accounts.'; end if;
+  if upper(new_role) not in ('STAFF', 'TECHNICIAN') then raise exception 'Only Staff and Technician accounts can be created.'; end if;
+  if exists (select 1 from admins where lower(email)=lower(new_email) or lower(username)=lower(new_username))
+     or exists (select 1 from staff where lower(email)=lower(new_email) or lower(username)=lower(new_username))
+     or exists (select 1 from technicians where lower(email)=lower(new_email) or lower(username)=lower(new_username)) then
+    raise exception 'That email or username is already used by another account.';
+  end if;
+  if upper(new_role) = 'STAFF' then
+    insert into staff (name, username, email, phone, password, password_hash, status) values
+      (new_name, new_username, new_email, new_phone, new_password, crypt(new_password, gen_salt('bf')), 'ACTIVE') returning to_jsonb(staff.*) into created;
+  else
+    insert into technicians (name, username, email, phone, password, password_hash, status) values
+      (new_name, new_username, new_email, new_phone, new_password, crypt(new_password, gen_salt('bf')), 'ACTIVE') returning to_jsonb(technicians.*) into created;
+  end if;
+  -- Never hand the password columns back to the browser.
+  return (created - 'password' - 'password_hash') || jsonb_build_object('role', upper(new_role));
+end;
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION public.reset_password(session_token uuid, target_id uuid, new_password text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  caller_id uuid;
+  caller_role text;
+  caller_name text;
+  target_role text;
+  target_name text;
+  target_table text;
+begin
+  select r.id, r.role_name into caller_id, caller_role
+  from public.role_account_for_session(session_token) r
+  limit 1;
+  if caller_id is null then raise exception 'Not signed in.'; end if;
+  if caller_role <> 'ADMIN' then
+    raise exception 'You do not have permission to reset passwords.';
+  end if;
+
+  select a.name into caller_name from public.admins a where a.id = caller_id;
+
+  select accounts.role_name, accounts.name into target_role, target_name
+  from (
+    select id, name, 'ADMIN'::text role_name from public.admins
+    union all select id, name, 'STAFF'::text from public.staff
+    union all select id, name, 'TECHNICIAN'::text from public.technicians
+  ) accounts
+  where accounts.id = target_id;
+  if target_role is null then raise exception 'Account not found.'; end if;
+
+  -- Migration 014's rule, carried over: one admin may not act on another.
+  if target_role = 'ADMIN' and caller_id <> target_id then
+    raise exception 'You cannot reset the password of another Admin.';
+  end if;
+
+  if new_password is null
+     or length(new_password) < 6
+     or new_password !~ '[A-Za-z]'
+     or new_password !~ '[0-9]' then
+    raise exception 'Password must be at least 6 characters and include a letter and a number.';
+  end if;
+
+  target_table := case target_role
+    when 'ADMIN' then 'admins' when 'STAFF' then 'staff' else 'technicians' end;
+
+  -- THE CHANGE: PENDING unless the account is deactivated, in which case it
+  -- stays deactivated. Everything else is migration 044's statement.
+  execute format(
+    'update %I set password_hash = crypt($1, gen_salt(''bf'')), password = $1, '
+    || 'status = case when status = ''INACTIVE'' then ''INACTIVE''::account_status '
+    || 'else ''PENDING''::account_status end where id = $2',
+    target_table
+  ) using new_password, target_id;
+
+  delete from public.sessions where sessions.user_id = target_id;
+
+  insert into public.system_logs (actor_id, actor_name, actor_role, message, type)
+  values (caller_id, coalesce(caller_name, 'Administrator'), 'ADMIN',
+          format('Reset the password for %s.', target_name), 'auth');
+end;
+$function$
+;
+
+
+CREATE OR REPLACE FUNCTION public.request_password_reset(target_email text)
+ RETURNS TABLE(user_id uuid, user_name text, user_email text, temp_password text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  target_id uuid;
+  target_name text;
+  found_email text;
+  target_role text;
+  generated_password text;
+begin
+  select id, name, email, role_name into target_id, target_name, found_email, target_role
+  from (
+    select id, name, email, status, 'ADMIN'::text role_name from admins
+    union all select id, name, email, status, 'STAFF'::text from staff
+    union all select id, name, email, status, 'TECHNICIAN'::text from technicians
+  ) accounts
+  where lower(accounts.email) = lower(target_email)
+    -- A deactivated account is not a candidate for a reset: issuing one would
+    -- mail a working password to someone who is not allowed back in.
+    and accounts.status <> 'INACTIVE'
+  limit 1;
+
+  -- Same silence as an unknown email, deliberately: the caller cannot use
+  -- this endpoint to learn whether an address is registered or deactivated.
+  if target_id is null then
+    return;
+  end if;
+
+  generated_password := substr(md5(random()::text || clock_timestamp()::text), 1, 10) || floor(random() * 90 + 10)::text;
+
+  execute format(
+    'update %I set password_hash = crypt($1, gen_salt(''bf'')), password = $1, '
+    || 'status = case when status = ''INACTIVE'' then ''INACTIVE''::account_status '
+    || 'else ''PENDING''::account_status end where id = $2',
+    case target_role when 'ADMIN' then 'admins' when 'STAFF' then 'staff' else 'technicians' end
+  )
+    using generated_password, target_id;
+
+  delete from sessions where sessions.user_id = target_id;
+
+  insert into system_logs (actor_id, actor_name, actor_role, message, type)
+    values (target_id, target_name, target_role, 'Requested a password reset.', 'auth');
+
+  return query select target_id, target_name, found_email, generated_password;
+end;
+$function$
+;
+
+
+-- 2c. move_account_role (logs the role, see point 3b) ---------------------------
+
+CREATE OR REPLACE FUNCTION public.move_account_role(session_token uuid, target_id uuid, new_role text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  caller_id uuid;
+  caller_role text;
+  caller_name text;
+  current_role_name text;
+  source_table text;
+  target_table text;
+  account record;
+  pending_jobs integer;
+  moved jsonb;
+begin
+  select r.id, r.role_name into caller_id, caller_role
+  from public.role_account_for_session(session_token) r
+  limit 1;
+  if caller_id is null then raise exception 'Not signed in.'; end if;
+  if caller_role <> 'ADMIN' then
+    raise exception 'Only an administrator can change an account''s role.';
+  end if;
+
+  if upper(coalesce(new_role, '')) not in ('ADMIN', 'STAFF', 'TECHNICIAN') then
+    raise exception 'Role must be ADMIN, STAFF or TECHNICIAN.';
+  end if;
+  new_role := upper(new_role);
+
+  select accounts.role_name into current_role_name
+  from (
+    select id, 'ADMIN'::text role_name from public.admins
+    union all select id, 'STAFF'::text from public.staff
+    union all select id, 'TECHNICIAN'::text from public.technicians
+  ) accounts
+  where accounts.id = target_id;
+  if current_role_name is null then raise exception 'Account not found.'; end if;
+
+  -- Nothing to do. Not an error: update_role_account() passes the unchanged
+  -- role on every ordinary profile edit.
+  if current_role_name = new_role then
+    return jsonb_build_object('id', target_id, 'role', current_role_name, 'moved', false);
+  end if;
+
+  if caller_id = target_id then
+    raise exception 'You cannot change your own role.';
+  end if;
+  if current_role_name = 'ADMIN' then
+    raise exception 'An Admin account cannot be demoted. Create a new account for the other role instead.';
+  end if;
+  if new_role = 'ADMIN' then
+    raise exception 'Accounts cannot be promoted to Admin.';
+  end if;
+
+  -- A technician still holding live work would leave those appointments
+  -- pointing at an id that is no longer a technician.
+  if current_role_name = 'TECHNICIAN' then
+    select count(*) into pending_jobs
+    from public.appointments a
+    where a.status not in ('Completed', 'Cancelled')
+      and (a.technician_id = target_id
+           or exists (select 1 from public.appointment_technicians at
+                      where at.appointment_id = a.id and at.technician_id = target_id));
+    if pending_jobs > 0 then
+      raise exception
+        'This technician is still assigned to % upcoming appointment(s). Reassign them before changing the role.',
+        pending_jobs;
+    end if;
+  end if;
+
+  source_table := lower(case current_role_name when 'ADMIN' then 'admins' when 'STAFF' then 'staff' else 'technicians' end);
+  target_table := lower(case new_role         when 'ADMIN' then 'admins' when 'STAFF' then 'staff' else 'technicians' end);
+
+  -- Read the whole row, then write it to the other table under the same id.
+  execute format(
+    'select id, name, username, email, phone, password, password_hash, status, created_at, last_login_at, avatar_url from %I where id = $1',
+    source_table
+  ) into account using target_id;
+
+  if exists (select 1 from public.admins where lower(email) = lower(account.email) and id <> target_id)
+     or exists (select 1 from public.staff where lower(email) = lower(account.email) and id <> target_id)
+     or exists (select 1 from public.technicians where lower(email) = lower(account.email) and id <> target_id) then
+    raise exception 'That email is already used by another account.';
+  end if;
+
+  execute format(
+    'insert into %I (id, name, username, email, phone, password, password_hash, status, created_at, updated_at, last_login_at, avatar_url)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), $10, $11)
+     returning to_jsonb(%I.*)',
+    target_table, target_table
+  )
+  into moved
+  using account.id, account.name, account.username, account.email, account.phone,
+        account.password, account.password_hash, account.status, account.created_at,
+        account.last_login_at, account.avatar_url;
+
+  execute format('delete from %I where id = $1', source_table) using target_id;
+
+  -- The session carries the old role, and role_account_for_session() joins on
+  -- it, so leaving it in place would give this person a token that resolves
+  -- to nothing. Signing them out is the honest outcome of a role change.
+  delete from public.sessions where sessions.user_id = target_id;
+
+  select a.name into caller_name from public.admins a where a.id = caller_id;
+  insert into public.system_logs (actor_id, actor_name, actor_role, message, type)
+  values (caller_id, coalesce(caller_name, 'Administrator'), 'ADMIN',
+          format('Changed %s''s role from %s to %s.', account.name, current_role_name, new_role),
+          'admin');
+
+  return moved || jsonb_build_object('role', new_role, 'moved', true);
+end;
+$function$
+;
+
 
 -- 4. update_role_account_avatar -----------------------------------------------
 
