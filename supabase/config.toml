@@ -12,3 +12,8 @@ project_id = "torres-pest-control"
 [db]
 # The hosted project runs PostgreSQL 17.
 major_version = 17
+
+[functions.forgot-password]
+# Called from the login page, before anyone has a session: the app's key is
+# not checked (the same as deploying with --no-verify-jwt).
+verify_jwt = false

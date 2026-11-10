@@ -101,3 +101,19 @@ in `seed/seed-parts/` in order, if the editor refuses the long one).
 | `cleanup-absurd-amounts.sql` | Clears impossible costs left by old test data (see archived migration 058). |
 | `cleanup-2026-11-06.sql` | One-off: removes six visits left Pending since October and the test client "QA Claude Client" with its records, putting the stock its visits used back on the shelf. |
 | `delete-orphan-files.mjs` | Lists uploaded client documents no record points at; `--delete` removes them. Needs the service role key in the environment. |
+
+## The forgot-password function
+
+`functions/forgot-password` emails a temporary password. It looks the account
+up, sends the email through Resend, and only changes the password once the
+email was accepted, so a failed email never locks anyone out. It needs the
+secret `RESEND_API_KEY` (Dashboard → Edge Functions → Secrets). Deploy a
+change with:
+
+```
+npx supabase@2 functions deploy forgot-password --no-verify-jwt
+```
+
+Until a domain is verified in Resend, its free sender only delivers to the
+address that owns the Resend account; anyone else should ask an admin to
+reset their password on the Accounts page.
