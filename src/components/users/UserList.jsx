@@ -12,13 +12,14 @@
 // control would be lying. ResetPasswordDialog covers the admin reset path.
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, MoreHorizontal, Search, X } from "lucide-react";
+import { Download, Search, X } from "lucide-react";
 import Field from "../common/Field";
 import EmptyState from "../common/EmptyState";
 import { ACCOUNT_STATUS, SPRINT_ROLES } from "../../utils/constants";
 import { validateEmailFormat, isEmailTaken, isUsernameTaken, validatePersonName, validatePhilippinePhone } from "../../utils/validators";
 import { colors, inputStyle, invalidInputStyle } from "../../styles/theme";
 import StatusPill, { toneFor } from "../ui/StatusPill";
+import MoreMenu from "../ui/MoreMenu";
 import { formatLastLogin, humanizeEnum } from "../../utils/formatters";
 
 function UserList({ users, canEdit, onEdit, onAvatarChange, onToggleStatus, onResetPassword }) {
@@ -27,8 +28,6 @@ function UserList({ users, canEdit, onEdit, onAvatarChange, onToggleStatus, onRe
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [selectedUser, setSelectedUser] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [menuOpenId, setMenuOpenId] = useState(null);
-  const [menuDirection, setMenuDirection] = useState({});
   const [form, setForm] = useState({ name: "", username: "", email: "", phone: "", role: "STAFF" });
   const [errors, setErrors] = useState({});
   const [avatarUploadId, setAvatarUploadId] = useState(null);
@@ -47,15 +46,7 @@ function UserList({ users, canEdit, onEdit, onAvatarChange, onToggleStatus, onRe
     });
   }, [users, searchTerm, roleFilter, statusFilter]);
 
-  const handleMenuToggle = (event, userId) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const shouldOpenUp = bounds.bottom + 180 > window.innerHeight;
-    setMenuDirection((previous) => ({ ...previous, [userId]: shouldOpenUp ? "up" : "down" }));
-    setMenuOpenId((current) => (current === userId ? null : userId));
-  };
-
   const openEditModal = (user) => {
-    setMenuOpenId(null);
     setSelectedUser(user);
     setForm({
       name: user.name || "",
@@ -363,99 +354,17 @@ function UserList({ users, canEdit, onEdit, onAvatarChange, onToggleStatus, onRe
                       {formatLastLogin(user.lastLoginAt)}
                     </td>
 
-                    <td style={{ padding: "0.95rem 1rem", verticalAlign: "middle", position: "relative" }}>
+                    <td style={{ padding: "0.95rem 1rem", verticalAlign: "middle" }}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
-                        <button
-                          type="button"
-                          aria-label="User actions"
-                          onClick={(event) => handleMenuToggle(event, user.id)}
-                          style={{
-                            width: "2rem",
-                            height: "2rem",
-                            borderRadius: "3.75px",
-                            border: "1px solid #efe9e0",
-                            background: "#fff",
-                            color: "#50463c",
-                            display: "grid",
-                            placeItems: "center",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <MoreHorizontal size={16} />
-                        </button>
+                        <MoreMenu
+                          ariaLabel="User actions"
+                          items={[
+                            canEdit && { label: "Edit user", onClick: () => openEditModal(user) },
+                            { label: isDeactivated ? "Activate" : "Deactivate", color: isDeactivated ? "#4a6b4a" : "#9a2d24", onClick: () => onToggleStatus?.(user.id) },
+                            { label: "Reset password", color: "#50463c", onClick: () => onResetPassword?.(user) },
+                          ]}
+                        />
                       </div>
-
-                      {menuOpenId === user.id && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            right: "0.8rem",
-                            top: menuDirection[user.id] === "up" ? "auto" : "calc(100% - 0.2rem)",
-                            bottom: menuDirection[user.id] === "up" ? "calc(100% - 0.2rem)" : "auto",
-                            zIndex: 2,
-                            background: "#fff",
-                            border: "1px solid #efe9e0",
-                            borderRadius: "3.75px",
-                            boxShadow: "none",
-                            minWidth: "170px",
-                            padding: "0.35rem",
-                          }}
-                        >
-                          {canEdit && (
-                            <button
-                              type="button"
-                              onClick={() => openEditModal(user)}
-                              style={{
-                                width: "100%",
-                                border: "none",
-                                background: "transparent",
-                                color: "#211b15",
-                                textAlign: "left",
-                                padding: "0.6rem 0.7rem",
-                                borderRadius: "3.75px",
-                                fontWeight: 500,
-                                cursor: "pointer",
-                              }}
-                            >
-                              Edit user
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => onToggleStatus?.(user.id)}
-                            style={{
-                              width: "100%",
-                              border: "none",
-                              background: "transparent",
-                              color: isDeactivated ? "#4a6b4a" : "#9a2d24",
-                              textAlign: "left",
-                              padding: "0.6rem 0.7rem",
-                              borderRadius: "3.75px",
-                              fontWeight: 500,
-                              cursor: "pointer",
-                            }}
-                          >
-                            {isDeactivated ? "Activate" : "Deactivate"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onResetPassword?.(user)}
-                            style={{
-                              width: "100%",
-                              border: "none",
-                              background: "transparent",
-                              color: "#50463c",
-                              textAlign: "left",
-                              padding: "0.6rem 0.7rem",
-                              borderRadius: "3.75px",
-                              fontWeight: 500,
-                              cursor: "pointer",
-                            }}
-                          >
-                            Reset password
-                          </button>
-                        </div>
-                      )}
                     </td>
                   </tr>
                 );

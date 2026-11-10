@@ -13,13 +13,14 @@
 // original note this replaced) — the file's just bigger now.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, FlaskConical, MoreHorizontal, Package, PackageMinus, PackagePlus, Plus, Search, Wrench } from "lucide-react";
+import { AlertTriangle, FlaskConical, Package, PackageMinus, PackagePlus, Plus, Search, Wrench } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import useInventory from "../hooks/useInventory";
 import useNow from "../hooks/useNow";
 import { useOptionalServiceList } from "../hooks/useServices";
 import Button from "../components/ui/Button";
+import MoreMenu from "../components/ui/MoreMenu";
 import SegmentedControl from "../components/ui/SegmentedControl";
 import StatusPill from "../components/ui/StatusPill";
 import { SUBSYSTEMS } from "../utils/permissions";
@@ -431,22 +432,7 @@ function InventoryPage() {
   const [returnTarget, setReturnTarget] = useState(null);
   const [disableTarget, setDisableTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [actionMenuItemId, setActionMenuItemId] = useState(null);
-  const [actionMenuDirection, setActionMenuDirection] = useState({});
   const [form, setForm] = useState(CREATE_FORM_DEFAULTS);
-  const actionMenuRef = useRef(null);
-
-  useEffect(() => {
-    const handlePointerDown = (event) => {
-      if (!actionMenuRef.current) return;
-      if (!actionMenuRef.current.contains(event.target)) {
-        setActionMenuItemId(null);
-      }
-    };
-
-    document.addEventListener("mousedown", handlePointerDown);
-    return () => document.removeEventListener("mousedown", handlePointerDown);
-  }, []);
 
   // Inventory and history filtering states
   // The top bar's search links an item here as ?q=<name>.
@@ -645,13 +631,6 @@ function InventoryPage() {
     refreshMovements();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
-
-  const handleActionMenuToggle = (event, itemId) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const shouldOpenUp = bounds.bottom + 180 > window.innerHeight;
-    setActionMenuDirection((previous) => ({ ...previous, [itemId]: shouldOpenUp ? "up" : "down" }));
-    setActionMenuItemId((current) => (current === itemId ? null : itemId));
-  };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -1057,9 +1036,6 @@ function InventoryPage() {
                     background: isDisabled ? "#f6f2ea" : low ? "#fffcf8" : "#ffffff",
                     opacity: isDisabled ? 0.75 : 1,
                     position: "relative",
-                    zIndex: actionMenuItemId === item.id ? 60 : 1,
-                    overflow: "visible",
-                    isolation: "isolate",
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
@@ -1095,69 +1071,29 @@ function InventoryPage() {
 
                   <div style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#211b15" }}>{isPlausibleItem(item) ? formatPeso(itemValue(item), { decimals: 0 }) : "—"}</div>
 
-                  <div ref={actionMenuItemId === item.id ? actionMenuRef : null} style={{ display: "flex", gap: "6px", alignItems: "center", justifyContent: "flex-end", overflow: "visible", position: "relative", zIndex: actionMenuItemId === item.id ? 200 : 1 }} onClick={(e) => e.stopPropagation()}>
+                  <div style={{ display: "flex", gap: "6px", alignItems: "center", justifyContent: "flex-end" }} onClick={(e) => e.stopPropagation()}>
                     {low && canManageStock && (
                       <Button size="sm" variant="secondary" onClick={() => { setStockInSeedItemId(item.id); setStockInOpen(true); }}>
                         Reorder
                       </Button>
                     )}
-                    <div style={{ position: "relative", display: "inline-block", overflow: "visible", zIndex: actionMenuItemId === item.id ? 300 : 1 }}>
-                      <button
-                        type="button"
-                        aria-label="More actions"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          handleActionMenuToggle(event, item.id);
-                        }}
-                        style={{
-                          width: "2rem",
-                          height: "2rem",
-                          borderRadius: "3.75px",
-                          border: "1px solid #efe9e0",
-                          background: "#ffffff",
-                          display: "grid",
-                          placeItems: "center",
-                          cursor: "pointer",
-                          color: "#50463c",
-                          padding: "0.375rem",
-                          position: "relative",
-                          zIndex: 500,
-                        }}
-                      >
-                        <MoreHorizontal size={15} />
-                      </button>
-
-                      {actionMenuItemId === item.id && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            right: 0,
-                            top: actionMenuDirection[item.id] === "up" ? "auto" : "calc(100% + 0.3rem)",
-                            bottom: actionMenuDirection[item.id] === "up" ? "calc(100% + 0.3rem)" : "auto",
-                            background: "#ffffff",
-                            border: "1px solid #efe9e0",
-                            borderRadius: "3.75px",
-                            boxShadow: "none",
-                            minWidth: "170px",
-                            padding: "0.35rem",
-                            zIndex: 5000,
-                            pointerEvents: "auto",
-                          }}
-                        >
-                          {!isDisabled && <button type="button" onClick={() => { setActionMenuItemId(null); setStockInSeedItemId(item.id); setStockInOpen(true); }} style={{ ...menuActionStyle, color: "#211b15" }}>Stock In</button>}
-                          <button type="button" onClick={() => { setActionMenuItemId(null); setEditItem(item); }} style={{ ...menuActionStyle, color: "#211b15" }}>Edit</button>
-                          {!isDisabled && <button type="button" onClick={() => { setActionMenuItemId(null); setStockOutSeed(item.id); }} style={{ ...menuActionStyle, color: "#9a2d24" }}>Stock Out</button>}
-                          {!isDisabled && <button type="button" onClick={() => { setActionMenuItemId(null); setCorrectionItem(item); }} style={{ ...menuActionStyle, color: "#211b15" }}>Correct Stock</button>}
-                          <button type="button" onClick={() => { setActionMenuItemId(null); if (isDisabled) setItemStatus(item.id, INVENTORY_STATUS.ACTIVE).then((r) => handleStatusResult(r, showSuccess, showError, item.name, "enabled")); else setDisableTarget(item); }} style={{ ...menuActionStyle, color: isDisabled ? "#4a6b4a" : "#9a2d24" }}>
-                            {isDisabled ? "Enable" : "Disable"}
-                          </button>
-                          <button type="button" onClick={() => { setActionMenuItemId(null); setDeleteTarget(item); }} style={{ ...menuActionStyle, color: "#7f1d1d" }}>
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    <MoreMenu
+                      items={[
+                        !isDisabled && { label: "Stock In", onClick: () => { setStockInSeedItemId(item.id); setStockInOpen(true); } },
+                        { label: "Edit", onClick: () => setEditItem(item) },
+                        !isDisabled && { label: "Stock Out", color: "#9a2d24", onClick: () => setStockOutSeed(item.id) },
+                        !isDisabled && { label: "Correct Stock", onClick: () => setCorrectionItem(item) },
+                        {
+                          label: isDisabled ? "Enable" : "Disable",
+                          color: isDisabled ? "#4a6b4a" : "#9a2d24",
+                          onClick: () => {
+                            if (isDisabled) setItemStatus(item.id, INVENTORY_STATUS.ACTIVE).then((r) => handleStatusResult(r, showSuccess, showError, item.name, "enabled"));
+                            else setDisableTarget(item);
+                          },
+                        },
+                        { label: "Delete", color: "#7f1d1d", onClick: () => setDeleteTarget(item) },
+                      ]}
+                    />
                   </div>
                 </div>
               );
@@ -3068,18 +3004,6 @@ function Field({ label, hint, note, children }) {
 function buttonWhen(disabled, base = primaryButton, extra = {}) {
   return { ...base, ...extra, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1 };
 }
-
-const menuActionStyle = {
-  width: "100%",
-  border: "none",
-  background: "#ffffff",
-  textAlign: "left",
-  padding: "0.6rem 0.7rem",
-  borderRadius: "3.75px",
-  fontWeight: 500,
-  cursor: "pointer",
-  opacity: 1,
-};
 
 const inputStyle = {
   width: "100%",
