@@ -418,7 +418,8 @@ export const invoiceableVisits = (appointments = [], clientId, prepaid = new Set
  *   awaiting        quotes sent and still valid, waiting for the client
  *   depositsDue     approved quotes whose down payment hasn't come in
  *   toInvoice       completed visits not yet invoiced, since billing began
- *                   (the first quote or invoice), so older history isn't flagged
+ *                   (the first quote or invoice), so older history isn't flagged;
+ *                   warranty visits and ₱0 visits are never invoiced, so they don't count
  * Each is { count, amount } (toInvoice: { count }).
  */
 export function billingSummary({ quotes = [], invoices = [], payments = [], appointments = [], prepaid = new Set() } = {}, now = new Date()) {
@@ -451,7 +452,12 @@ export function billingSummary({ quotes = [], invoices = [], payments = [], appo
   const starts = [...quotes, ...invoices].map((record) => record.createdAt).filter(Boolean).sort();
   if (starts.length) {
     const since = new Date(starts[0]);
-    summary.toInvoice.count = appointments.filter((visit) => visit.status === "Completed" && !visit.invoiceId && !(visit.planId && prepaid.has(visit.planId)) && new Date(visit.scheduledAt) >= since).length;
+    // Only visits an invoice can take: a warranty visit is free and refused on
+    // an invoice (082), and a ₱0 visit (a free inspection or checkup) has
+    // nothing to bill, so neither could ever clear the count.
+    summary.toInvoice.count = appointments.filter((visit) => visit.status === "Completed" && !visit.invoiceId
+      && !visit.warrantyKind && visit.price !== 0
+      && !(visit.planId && prepaid.has(visit.planId)) && new Date(visit.scheduledAt) >= since).length;
   }
   return summary;
 }

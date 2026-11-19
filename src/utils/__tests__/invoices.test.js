@@ -210,6 +210,17 @@ describe("billingSummary", () => {
     expect(summary.toInvoice.count).toBe(1);
   });
 
+  test("warranty visits and ₱0 visits are never waiting for an invoice; an unpriced one still is", () => {
+    const visits = [
+      { id: "w1", status: "Completed", scheduledAt: "2026-10-02T09:00:00", warrantyKind: "CHECKUP", price: 0 },
+      { id: "w2", status: "Completed", scheduledAt: "2026-10-02T11:00:00", warrantyKind: "RETREATMENT", price: 0 },
+      { id: "z1", status: "Completed", scheduledAt: "2026-10-03T09:00:00", price: 0 }, // free inspection
+      { id: "u1", status: "Completed", scheduledAt: "2026-10-03T11:00:00", price: "" }, // no price yet: still to bill
+      { id: "p1", status: "Completed", scheduledAt: "2026-10-04T09:00:00", price: 3500 },
+    ];
+    expect(billingSummary({ quotes, invoices, payments, appointments: visits }, now).toInvoice.count).toBe(2);
+  });
+
   test("before any billing there is nothing to invoice", () => {
     expect(billingSummary({ appointments }, now).toInvoice.count).toBe(0);
   });
