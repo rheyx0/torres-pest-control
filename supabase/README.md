@@ -117,3 +117,10 @@ npx supabase@2 functions deploy forgot-password --no-verify-jwt
 Until a domain is verified in Resend, its free sender only delivers to the
 address that owns the Resend account; anyone else should ask an admin to
 reset their password on the Accounts page.
+
+More one-off data scripts (run once in the SQL Editor; both safe to run twice):
+
+| File | What it does |
+|---|---|
+| `defense-data.sql` | Adds nine clients with complete stories for the Nov 20, 2026 defense (quotes, down payments, visits and reports, invoices in every state, a contract, a multi-day job, a warranty checkup, a delivery and stock use). Deletes nothing. |
+| `formal-names.sql` | Replaces informal test names (accounts' display names, test clients, a test service and item) with formal ones. Usernames and passwords are untouched. |

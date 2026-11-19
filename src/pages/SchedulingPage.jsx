@@ -2220,7 +2220,7 @@ function AppointmentPanel({
                 />
               </fieldset>
               )}
-              <VisitBillingLink appointment={appointment} />
+              <VisitBillingLink appointment={appointment} appointments={appointments} />
               <FollowUpLink appointment={appointment} />
               <StatusHistory appointment={appointment} />
             </>
