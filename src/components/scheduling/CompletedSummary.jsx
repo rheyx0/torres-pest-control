@@ -55,7 +55,11 @@ function CompletedSummary({ appointment, accounts = [], onCorrect, visitServices
     ["Materials used", materials.join(", ") || "None recorded"],
     ["Signed by", appointment.customerName || (appointment.completionNote ? `Office: ${appointment.completionNote}` : "—")],
     ["Follow-up", appointment.followUpDate ? formatDate(appointment.followUpDate) : "None set"],
-    ["Billing", appointment.invoiceId ? "Invoiced" : "Not invoiced yet"],
+    // A warranty visit is free and never invoiced (082); a ₱0 visit has nothing to bill.
+    ["Billing", appointment.warrantyKind ? "Free under warranty · never invoiced"
+      : appointment.invoiceId ? "Invoiced"
+        : appointment.price === 0 ? "No charge"
+          : "Not invoiced yet"],
   ];
 
   return (

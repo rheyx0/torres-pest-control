@@ -234,8 +234,8 @@ The shelf total always equals the sum of the batches. No movement can be future-
 - [ ] 4. Choose **Cancel** with a reason. ✅ Shown as Cancelled everywhere.
 - [ ] 5. Edit the crew and the time. ✅ Saved with a confirmation; clashes are refused.
 - [ ] 6. On a completed visit, **Book follow-up**. ✅ Prefills the Follow-up Visit service and its price.
-- [ ] 7. On a plan visit (**Kusina ni Lola**), open the **Plan** section. ✅ Change future visits, add a visit, cancel the rest, or **Don't renew**.
-- [ ] 8. On a multi-day job, **Finish job here** / finish a day. ✅ The job's days move together.
+- [ ] 7. On a plan visit (**Kusina ni Lola**), open the **Plan** section. ✅ **Change future visits**, **Cancel remaining**, or **Don't renew** (and **Remind me again**).
+- [ ] 8. On a multi-day job (**Mintal Rice Mill**), open the **Plan** section: **Finish here** or **Add a day**. ✅ Changing one day's status moves the other days with it.
 
 ### 9d — Report (the test client's visit)
 - [ ] 1. **Report** tab: tick the services performed, write findings and recommendations, set pest activity and open issues, a follow-up date. ✅ Saved.
