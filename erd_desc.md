@@ -1,14 +1,14 @@
 # The Torres Pest Control ERD, explained simply
 
-This folder holds the entity relationship diagram (ERD) of the Torres Pest Control Management System. This page explains it in plain words. The same diagram is in the Technical Manual, Section 6.1.
+The [docs/erd](docs/erd) folder holds the entity relationship diagram (ERD) of the Torres Pest Control Management System. This page explains it in plain words. The same diagram is in the Technical Manual, Section 6.1.
 
 | Figure | What it shows |
 |---|---|
-| [erd-figure-2-complete.jpg](erd-figure-2-complete.jpg) | The whole database: all 31 tables and all 52 links |
-| [erd-figure-2a-clients-scheduling.jpg](erd-figure-2a-clients-scheduling.jpg) | Clients and scheduling |
-| [erd-figure-2b-billing.jpg](erd-figure-2b-billing.jpg) | Billing |
-| [erd-figure-2c-catalog-inventory.jpg](erd-figure-2c-catalog-inventory.jpg) | Service catalog and inventory |
-| [erd-figure-2d-accounts.jpg](erd-figure-2d-accounts.jpg) | Accounts and system tables |
+| [erd-figure-2-complete.jpg](docs/erd/erd-figure-2-complete.jpg) | The whole database: all 31 tables and all 52 links |
+| [erd-figure-2a-clients-scheduling.jpg](docs/erd/erd-figure-2a-clients-scheduling.jpg) | Clients and scheduling |
+| [erd-figure-2b-billing.jpg](docs/erd/erd-figure-2b-billing.jpg) | Billing |
+| [erd-figure-2c-catalog-inventory.jpg](docs/erd/erd-figure-2c-catalog-inventory.jpg) | Service catalog and inventory |
+| [erd-figure-2d-accounts.jpg](docs/erd/erd-figure-2d-accounts.jpg) | Accounts and system tables |
 
 ## The short version
 
@@ -175,4 +175,4 @@ One appointment belongs to:
 - **Many-to-many:** visits and technicians (through `appointment_technicians`), and visits and services (through `appointment_services`)
 - **Four self-links:** follow-ups, quote revisions, batch splits and stock drawn from a hand-over
 
-The source files used to draw the diagram are `draw_erd.py`, `schema-columns.txt` (every column) and `schema-keys.txt` (every key).
+The source files used to draw the diagram are in `docs/erd/`: `draw_erd.py`, `schema-columns.txt` (every column) and `schema-keys.txt` (every key).
